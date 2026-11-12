@@ -7,6 +7,76 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+S4: the management UI (target 0.2.0).
+
+### Added
+
+- Management pages on UiKit scaffolds + FormKit forms (`ui.enabled: true`; routes
+  `@NowoShortLinkBundle/Resources/config/routes/ui.php`, loader type `nowo_short_link_ui`, empty while the UI is
+  disabled): list (search, state filter, keyset pages of `ui.page_size`, clicks of the last 30 days, copy button),
+  create / edit (target, optional custom code on create, title, expiry; quota "12 of 50 links", form replaced by a
+  message when the plan is full), disable / enable / delete (POST, one CSRF token per action, delete behind the UiKit
+  confirm dialog), statistics (people / machine totals, server-side SVG daily chart with its table as the accessible
+  fallback, top referrer hosts, countries, browser families, 7 / 30 / 90-day presets and a custom range) and the CSV
+  export (`ui.csv_max_days`, `?dimension=`, `?excel=1` BOM).
+- Every page resolves the tenant through the tenant-context port (none → 404) and checks the access port (View for the
+  pages, Manage for every change); ids of another tenant answer 404. `ui.tenant_route_parameter` keeps the host prefix
+  parameter (Beacon: `uuid`) in every UI link. New `ui.layout_template` (null = the UiKit admin layout).
+- FormKit profile `short_link` prepended by the bundle (translation domain `NowoShortLinkBundle`); a host profile of
+  the same name wins.
+- Translations of the UI in en, es, fr, it, pt, de and nl; Twig blocks for overrides (`docs/TEMPLATES.md`); UiKit page
+  contract test.
+- Audits L7 / NY-S4 L2–L3: per-person limit on custom-code lookups (`code.custom_code_rate_limit`, default 10 per
+  minute per tenant + actor, stored in `redirect.rate_limit.cache_pool`, atomic across processes with symfony/lock;
+  port `CustomCodeLimiterInterface`, replaceable through `code.custom_code_rate_limit.limiter`; new
+  `CodeAttemptsExceededException`). The attempt is consumed before the lookup (concurrent requests cannot all pass a
+  peek), so free codes count too; callers without an actor share one window per tenant unless the host's limiter keys
+  them better. Over the limit no custom code is looked up until the window ends; `system` callers and random codes
+  are never limited.
+- `twig/string-extra` is now a requirement (REQ-TWIG-004 baseline; the bundle ships Twig pages).
+- Demo: the UI under `/short-links` (demo access port, demo shell as `ui.layout_template`); Playwright e2e
+  (`make test-e2e`, workflow `e2e.yml` on every pull request) and README screenshots (`make demo-screenshots`).
+
+### Changed
+
+- The recheck evaluates its abort threshold after every link once `target.recheck_min_sample` is reached (not only at
+  the end of a batch), so a resolver outage stops the run at once; the non-DNS refusals found before the abort are
+  still disabled first. The description of `target.recheck_max_unresolvable_percent` says that `0` aborts on any
+  unresolvable target only once the minimum sample was checked (audit NY Info).
+- Contract §10: rollups are kept while the link exists and deleted with it when its tombstone is purged after
+  `code.quarantine`.
+
+### Fixed
+
+- Audit NY-S4 L1: links of kinds hidden from people (`show_in_ui: false`, e.g. `email`) answer 404 on every UI page
+  and action by id (edit, statistics, CSV, disable, enable, delete); they could be opened and changed by id before.
+- Audit NY-S4 L4: `quota.default_limit: null` (or `~`) is accepted again and means unlimited.
+- Audit NY-S4 N1: env placeholders. Every key with a custom validator was checked in a real compiled container
+  (MergeExtensionConfigurationPass + ValidateEnvPlaceholdersPass): `public_base_url`, `quota.default_limit`
+  (`%env(int:…)%`), the durations (`code.quarantine`, `click_log.retention`, `click_log.rollup.retention`), the
+  rate-limit intervals, `ui.tenant_route_parameter`, `target.self_paths`, the host lists and the integer keys accept
+  one (the retention cross-check is left to runtime when a value is a placeholder); `redirect.path_prefix`,
+  `ui.path_prefix` and `doctrine.table_prefix` refuse one with a clear message (they are used while compiling); a
+  literal empty value is still refused.
+- `ActorRef` accepts ZWNJ / ZWJ (U+200C / U+200D) inside a value (Persian names, emoji sequences), never at its
+  edges.
+- PAD SPACE sweep (affects 0.1.0; no advisory: 0.x release, host-triggered eraser): `utf8mb4_bin` is PAD SPACE on
+  MySQL / MariaDB, so `anonymiseActor('u1 ')` also cleared the attribution of `u1`. `ActorRef` now refuses leading /
+  trailing whitespace, control and format characters and invalid UTF-8 (`ActorRef::fromStored()` keeps reading 0.1.0
+  rows); `anonymiseActor()` selects the candidates, re-checks them with `===` in PHP and updates by primary key; the
+  identifier columns (`id`, `tenant_key`, `code`, `source_ref`, `created_by`, `updated_by`, click `link_id` /
+  `tenant_key`) use a NO PAD binary collation: `utf8mb4_0900_bin` on MySQL 8 (8.0.17+), `utf8mb4_nopad_bin` on
+  MariaDB, `utf8mb4_bin` on older MySQL. The role-based access port records no actor for an identifier the rule
+  refuses.
+- The list search (code, title, target host) is case-insensitive on every database (it was case-sensitive on
+  PostgreSQL, and for codes on MySQL / MariaDB). SQLite's `LOWER()` folds ASCII letters only.
+
+### Security
+
+- CSV cells starting with `=`, `+`, `-`, `@`, a tab or a carriage return (also after leading spaces) are prefixed with `'`; target URLs are printed
+  escaped and linked only when http(s), with `rel="noopener noreferrer nofollow"`. The forms never map `system` or
+  `kind` (extra fields are refused); people only create `manual` links.
+
 ## [0.1.0] - 2026-11-12
 
 First release: slices S1 (domain + persistence), S2 (public redirect) and S3 (statistics, retention, recheck, GDPR), audited (NY, NY re-verification). The admin UI (S4) follows in 0.2.0.

@@ -13,16 +13,16 @@
     <section class="nowo-ui-card" data-testid="demo-status">
         <div class="nowo-ui-card__body">
             <p>
-                <span class="nowo-ui-badge nowo-ui-badge--info">S0 scaffold</span>
-                The package is built slice by slice from its design contract (<code class="nowo-ui-code">docs/CONTRACT.md</code>).
-                S0 ships the bundle class and its strict configuration tree; the redirect, the management pages and the
-                statistics arrive with the next slices (<code class="nowo-ui-code">docs/ROADMAP.md</code>).
+                <span class="nowo-ui-badge nowo-ui-badge--info">S4</span>
+                Create short links in the <a href="{{ path('nowo_short_link_index') }}" data-testid="demo-open-ui">management pages</a>,
+                open them through <code class="nowo-ui-code">{{ redirect_prefix }}/{code}</code> and follow their clicks on the
+                statistics page (daily chart, referrer sites, countries, browser families, CSV export).
             </p>
             <table class="nowo-ui-data-table">
                 <tbody>
                     <tr><th scope="row">Bundle</th><td><code class="nowo-ui-code">Nowo\ShortLinkBundle\NowoShortLinkBundle</code> registered</td></tr>
                     <tr><th scope="row">Redirect path</th><td><code class="nowo-ui-code">{{ redirect_prefix }}/{code}</code></td></tr>
-                    <tr><th scope="row">Management UI</th><td><code class="nowo-ui-code">{{ ui_prefix }}</code> ({{ ui_enabled ? 'enabled' : 'disabled until S4' }})</td></tr>
+                    <tr><th scope="row">Management UI</th><td><code class="nowo-ui-code">{{ ui_prefix }}</code> ({{ ui_enabled ? 'enabled' : 'disabled' }})</td></tr>
                     <tr><th scope="row">Database</th><td>{{ database is null ? 'not reachable' : 'MySQL ' ~ database }}</td></tr>
                     <tr><th scope="row">FrankenPHP</th><td>{{ worker ? 'worker mode (kernel kept alive, not reset)' : 'classic mode' }}</td></tr>
                 </tbody>

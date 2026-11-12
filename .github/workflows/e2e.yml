@@ -1,0 +1,40 @@
+# REQ-DEMO-013 — Playwright e2e of the management UI against the running demo/symfony8 (FrankenPHP worker, MySQL):
+# create a link → open /s/{code} → the statistics show the click → CSV export; disable / delete; field errors.
+name: Demo e2e
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  e2e:
+    name: Demo symfony8 Playwright e2e
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Start the demo
+        run: make -C demo up-symfony8
+
+      - name: Playwright e2e
+        run: make test-e2e
+
+      - name: Demo logs on failure
+        if: failure()
+        run: docker compose -f demo/symfony8/docker-compose.yml logs --tail=200 || true
+
+      - name: Stop the demo
+        if: always()
+        run: make -C demo down-symfony8

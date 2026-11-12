@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Nowo\ShortLinkBundle\Infrastructure\Security;
 
+use Nowo\ShortLinkBundle\Domain\Exception\InvalidShortLinkArgumentException;
 use Nowo\ShortLinkBundle\Domain\Model\ActorRef;
 use Nowo\ShortLinkBundle\Domain\Model\ShortLinkPermission;
 use Nowo\ShortLinkBundle\Domain\Model\TenantKey;
@@ -12,12 +13,10 @@ use Symfony\Component\Security\Core\Authentication\Token\Storage\TokenStorageInt
 use Symfony\Component\Security\Core\Authorization\AuthorizationCheckerInterface;
 use Symfony\Component\Security\Core\Exception\AuthenticationCredentialsNotFoundException;
 
-use function strlen;
-
 /**
  * Default access port: `access.view_role` / `access.manage_role` through Symfony's authorization checker, the same
  * for every tenant (single-tenant hosts). Without SecurityBundle, or without a token, everything is denied. The actor
- * is the user identifier of the current token (when it fits 128 bytes). Reads the token storage on every call.
+ * is the user identifier of the current token (when it passes the {@see ActorRef} rule). Reads the token storage on every call.
  */
 final readonly class RoleBasedAccess implements ShortLinkAccessInterface
 {
@@ -56,10 +55,14 @@ final readonly class RoleBasedAccess implements ShortLinkAccessInterface
     public function currentActor(): ?ActorRef
     {
         $identifier = $this->tokens?->getToken()?->getUserIdentifier();
-        if ($identifier === null || $identifier === '' || strlen($identifier) > 128) {
+        if ($identifier === null) {
             return null;
         }
-
-        return ActorRef::fromString($identifier);
+        try {
+            return ActorRef::fromString($identifier);
+        } catch (InvalidShortLinkArgumentException) {
+            // An identifier the actor rule refuses (empty, too long, padded, control characters) is not recorded.
+            return null;
+        }
     }
 }

@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Nowo\ShortLinkBundle\Infrastructure\Doctrine;
 
-use Doctrine\DBAL\Platforms\AbstractMySQLPlatform;
 use Doctrine\ORM\Event\LoadClassMetadataEventArgs;
 use LogicException;
 use Nowo\ShortLinkBundle\Infrastructure\Doctrine\Entity\ShortLinkRecord;
@@ -15,8 +14,9 @@ use function is_string;
 
 /**
  * Doctrine `loadClassMetadata` listener of {@see ShortLinkRecord}: prefixes the table and its index names with
- * `doctrine.table_prefix` (REQ-ORM-002) and gives the identifier and code columns `utf8mb4_bin` on MySQL / MariaDB
- * (contract F3, rule LQ: `aB3xY9k` and `AB3XY9K` are two codes).
+ * `doctrine.table_prefix` (REQ-ORM-002) and gives the identifier, code and actor columns a binary NO PAD collation on
+ * MySQL / MariaDB ({@see BinaryCollation}; contract F3, rule LQ: `aB3xY9k` and `AB3XY9K` are two codes, `u1 ` is not
+ * `u1`).
  *
  * @internal
  */
@@ -60,12 +60,13 @@ final readonly class ShortLinkMetadataListener
         } catch (Throwable $exception) {
             throw new LogicException('nowo_short_link needs the database platform to map the code and identifier columns with a binary collation. Set doctrine.dbal.server_version (or make the database reachable) before warming up the cache.', 0, $exception);
         }
-        if (!$platform instanceof AbstractMySQLPlatform) {
+        $collation = BinaryCollation::for($platform);
+        if ($collation === null) {
             return;
         }
         foreach ($metadata->fieldMappings as $field => $mapping) {
             if (in_array($mapping->columnName, self::BINARY_COLUMNS, true)) {
-                $metadata->fieldMappings[$field]->options = ['charset' => 'utf8mb4', 'collation' => 'utf8mb4_bin'] + ($mapping->options ?? []);
+                $metadata->fieldMappings[$field]->options = ['charset' => 'utf8mb4', 'collation' => $collation] + ($mapping->options ?? []);
             }
         }
     }

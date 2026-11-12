@@ -96,7 +96,7 @@ src/Presentation/  UI controllers, view models, Twig
 | `LinkKind` | `^[a-z][a-z0-9_]{0,31}$`; constants `MANUAL = 'manual'`, `EMAIL = 'email'`; hosts may add kinds via config `kinds` |
 | `LinkSource` | Optional, for generated links: `ref` (send id etc., `^[A-Za-z0-9._:-]{1,64}$`), `label` (≤ 128 chars, control chars stripped), `position` (0–999) |
 | `LinkMetadata` | ≤ 16 keys `^[a-z][a-z0-9_]{0,31}$`, scalar or null values, ≤ 2 KiB JSON; never shown unescaped |
-| `ActorRef` | Opaque creator / editor id from the host, ≤ 128 chars, exact (rule LQ); nullable everywhere |
+| `ActorRef` | Opaque creator / editor id from the host, ≤ 128 bytes of UTF-8, exact (rule LQ), no leading / trailing whitespace, no control or format characters (PAD SPACE sweep); nullable everywhere |
 | `LinkTitle` | ≤ 255 chars, trimmed, control chars stripped |
 | `Expiry` | `?DateTimeImmutable` in UTC, must be in the future at create / update |
 | `ClientIpPrefix` | Built from a raw IP: IPv4 `/24`, IPv6 `/48` (config), stored as `203.0.113.0/24`, `2001:db8:1234::/48`; the raw IP never leaves the request |
@@ -346,8 +346,9 @@ CREATE TABLE nowo_short_link (
 ```
 
 - PostgreSQL: `VARCHAR` compares exactly; `JSONB` for metadata; `TIMESTAMP(0) WITHOUT TIME ZONE` (UTC by convention).
-  SQLite: `TEXT`, exact by default (verified in tests). Collation declared through mapping `options: {collation:
-  utf8mb4_bin}` on MySQL / MariaDB only (platform-aware listener, as HttpLog's `TablePrefixListener`).
+  SQLite: `TEXT`, exact by default (verified in tests). Collation declared through mapping `options: {collation: …}` on
+  MySQL / MariaDB only (NO PAD binary: `utf8mb4_0900_bin` on MySQL 8, `utf8mb4_nopad_bin` on MariaDB, `utf8mb4_bin` on
+  MySQL 5.7) (platform-aware listener, as HttpLog's `TablePrefixListener`).
 - The hot-path lookup is a DBAL `SELECT id, tenant_key, code, target_url, kind, active, expires_at, deleted_at FROM
   nowo_short_link WHERE code = ?` on `uniq_short_link_code`, then `$row['code'] === $code` in PHP. No ORM hydration.
 - `metadata` is never queried; only `source_ref` is.
@@ -426,7 +427,8 @@ prefix, checked in the container).
 - Unique per instance (one `/s/` namespace for every tenant). Taken → `CodeTaken` with a neutral message ("This code is
   not available"), the same for taken, reserved and quarantined codes, so the form does not reveal which other tenant
   owns it. The form is rate-limited by the host's normal UI limits; the manager adds a per-actor limiter on
-  `CodeTaken` answers (10 / minute) against enumeration through the form.
+  custom-code lookups (10 / minute per tenant + actor, consumed before the lookup; audit NY-S4) against enumeration
+  through the form.
 - Codes are immutable after creation (a new code = a new link; old printed links keep working).
 
 ### 6.3 Reserved words (built in, case-insensitive, plus `code.reserved` and the host provider)
@@ -553,8 +555,9 @@ Out of scope v1 (spec 230): custom domains per tenant, QR codes, UTM builder, A/
 ## 10. GDPR
 
 - Personal data in raw clicks: truncated IP, UA family, referrer host, country, time. Pseudonymous; legal basis is the
-  host's (Beacon: legitimate interest + opt-out for e-mail kind). Raw retention P90D (purge command), rollups hold no
-  personal data and are kept.
+  host's (Beacon: legitimate interest + opt-out for e-mail kind). Raw retention P90D (purge command); rollups hold no
+  personal data and are kept while the link exists, then deleted with the link when its tombstone is purged after
+  `code.quarantine`.
 - No raw IP, full UA, cookie, fingerprint or user id is ever stored. GPC honoured (Q-O10).
 - `created_by` / `updated_by` are personal data of the host's users: `anonymiseActor()`.
 - E-mail kind: the recipient is identified only through the host's `source_ref` (send); `exportSource()` /

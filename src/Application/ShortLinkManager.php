@@ -16,6 +16,7 @@ use Nowo\ShortLinkBundle\Domain\Event\ShortLinkStateChangedEvent;
 use Nowo\ShortLinkBundle\Domain\Event\ShortLinkTargetRefusedEvent;
 use Nowo\ShortLinkBundle\Domain\Event\ShortLinkUpdatedEvent;
 use Nowo\ShortLinkBundle\Domain\Exception\AccessDeniedException;
+use Nowo\ShortLinkBundle\Domain\Exception\CodeAttemptsExceededException;
 use Nowo\ShortLinkBundle\Domain\Exception\CodeReservedException;
 use Nowo\ShortLinkBundle\Domain\Exception\CodeTakenException;
 use Nowo\ShortLinkBundle\Domain\Exception\InvalidShortLinkArgumentException;
@@ -37,6 +38,7 @@ use Nowo\ShortLinkBundle\Domain\Model\TargetRefusal;
 use Nowo\ShortLinkBundle\Domain\Model\TargetUrl;
 use Nowo\ShortLinkBundle\Domain\Model\TenantKey;
 use Nowo\ShortLinkBundle\Domain\Model\UpdateShortLink;
+use Nowo\ShortLinkBundle\Domain\Port\CustomCodeLimiterInterface;
 use Nowo\ShortLinkBundle\Domain\Port\ReservedCodeProviderInterface;
 use Nowo\ShortLinkBundle\Domain\Port\ShortLinkAccessInterface;
 use Nowo\ShortLinkBundle\Domain\Port\ShortLinkIdGeneratorInterface;
@@ -83,6 +85,7 @@ final readonly class ShortLinkManager implements ShortLinkManagerInterface
         private ManagerSettings $settings = new ManagerSettings(),
         private ?ClockInterface $clock = null,
         private ?LoggerInterface $logger = null,
+        private ?CustomCodeLimiterInterface $codeLimiter = null,
     ) {
     }
 
@@ -97,7 +100,7 @@ final readonly class ShortLinkManager implements ShortLinkManagerInterface
         $target = $this->guardedTarget($tenant, $command->target, null);
         $expiry = $this->futureExpiry($command->expiresAt, $now);
         $title  = LinkTitle::fromString($command->title);
-        $custom = $command->customCode === null ? null : $this->availableCustomCode($kind, $command->customCode);
+        $custom = $command->customCode === null ? null : $this->availableCustomCode($tenant, $kind, $command->customCode, $command->system);
         $actor  = $this->access->currentActor();
 
         $insert = function () use ($tenant, $command, $kind, $target, $expiry, $title, $custom, $actor, $now): StoredLink {
@@ -449,14 +452,21 @@ final readonly class ShortLinkManager implements ShortLinkManagerInterface
     }
 
     /**
-     * @throws CodeTakenException|InvalidShortLinkArgumentException
+     * A free custom code. People (not `system` callers) are limited per tenant + actor on custom-code lookups
+     * (`code.custom_code_rate_limit`, audits L7 / NY-S4 L2): the attempt is consumed before the lookup, so concurrent
+     * requests cannot pass together; over the limit no code is looked up until the window ends.
+     *
+     * @throws CodeAttemptsExceededException|CodeTakenException|InvalidShortLinkArgumentException
      */
-    private function availableCustomCode(LinkKind $kind, string $value): ShortCode
+    private function availableCustomCode(TenantKey $tenant, LinkKind $kind, string $value, bool $system): ShortCode
     {
         if (!$this->settings->allowsCustomCode($kind->value)) {
             throw new InvalidShortLinkArgumentException('Custom codes are not allowed for this kind of link.');
         }
         $code = ShortCode::custom($value);
+        if (!$system && $this->codeLimiter instanceof CustomCodeLimiterInterface && !$this->codeLimiter->attempt($tenant, $this->access->currentActor())) {
+            throw new CodeAttemptsExceededException();
+        }
         if ($this->reserved->isReserved($code->value)) {
             throw new CodeReservedException();
         }

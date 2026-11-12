@@ -24,7 +24,7 @@ This bundle is **FrankenPHP worker mode friendly**.
 
 ## Features
 
-Planned for 1.0 (contract v1.0); S0 today ships the configuration tree.
+Slices S1–S4 (contract v1.0): the PHP API, the redirect, statistics and the management UI; 1.0.0 after the audit.
 
 - **FrankenPHP worker mode, kernel kept alive and not reset**: readonly services, no memo of codes, links, tenants or
   IPs; a worker test (one kernel, thousands of requests over two tenants, flat memory)
@@ -49,7 +49,7 @@ Planned for 1.0 (contract v1.0); S0 today ships the configuration tree.
 composer require nowo-tech/short-link-bundle
 ```
 
-See [docs/INSTALLATION.md](docs/INSTALLATION.md). In S0 the bundle registers no service, route or table.
+See [docs/INSTALLATION.md](docs/INSTALLATION.md).
 
 ## Configuration
 
@@ -74,7 +74,12 @@ Every key of the contract is already accepted (strict tree): [docs/CONFIGURATION
 
 `demo/symfony7` (Symfony 7.4, http://localhost:8230) and `demo/symfony8` (Symfony 8.1, http://localhost:8231):
 FrankenPHP worker mode, MySQL, UiKit layout and FormKit forms, Web Profiler, Twig Inspector and Hot Reload
-(`make -C demo up-symfony8`). See [docs/DEMO-FRANKENPHP.md](docs/DEMO-FRANKENPHP.md).
+(`make -C demo up-symfony8`), management UI under `/short-links`. Playwright e2e: `make test-e2e`; screenshots:
+`make demo-screenshots`. See [docs/DEMO-FRANKENPHP.md](docs/DEMO-FRANKENPHP.md).
+
+![Short links list](docs/images/demo/short-link-list.webp)
+
+![Statistics of a short link](docs/images/demo/short-link-stats.webp)
 
 ## Documentation
 

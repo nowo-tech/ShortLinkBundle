@@ -168,8 +168,18 @@ final class ValueObjectsTest extends TestCase
 
         self::assertTrue(ActorRef::fromString('UserA')->equals(ActorRef::fromString('UserA')));
         self::assertFalse(ActorRef::fromString('UserA')->equals(ActorRef::fromString('usera')));
-        foreach (['', str_repeat('a', 129), "a\nb"] as $actor) {
+        foreach (['', str_repeat('a', 129), "a\nb", 'u1 ', ' u1', "u1\t", "u1\u{00A0}", "u\u{200B}1", "u\u{202E}1", "\xFF"] as $actor) {
             $this->assertInvalid(static fn (): ActorRef => ActorRef::fromString($actor), 'actor');
+        }
+        self::assertSame('Ana María 7', ActorRef::fromString('Ana María 7')->value, 'inner spaces and letters are fine');
+        self::assertSame("\u{0645}\u{06CC}\u{200C}\u{0631}\u{0636}\u{0627}", ActorRef::fromString("\u{0645}\u{06CC}\u{200C}\u{0631}\u{0636}\u{0627}")->value, 'ZWNJ inside a Persian name');
+        self::assertSame("\u{1F468}\u{200D}\u{1F4BB}", ActorRef::fromString("\u{1F468}\u{200D}\u{1F4BB}")->value, 'ZWJ inside an emoji sequence');
+        foreach (["\u{200C}u1", "u1\u{200D}", "u\u{2060}1", "u\u{FEFF}1"] as $actor) {
+            $this->assertInvalid(static fn (): ActorRef => ActorRef::fromString($actor), 'actor edge or other format character');
+        }
+        self::assertSame('u1 ', ActorRef::fromStored('u1 ')->value, 'rows written by 0.1.0 still read back exactly');
+        foreach (['', str_repeat('a', 129), "a\nb"] as $actor) {
+            $this->assertInvalid(static fn (): ActorRef => ActorRef::fromStored($actor), 'stored actor');
         }
 
         self::assertSame('qr_code', LinkKind::fromString('qr_code')->value);

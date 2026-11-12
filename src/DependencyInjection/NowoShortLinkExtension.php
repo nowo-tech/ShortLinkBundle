@@ -16,10 +16,12 @@ use Nowo\ShortLinkBundle\Application\Default\ConfigQuota;
 use Nowo\ShortLinkBundle\Application\Default\ConfigReservedCodes;
 use Nowo\ShortLinkBundle\Application\Default\NullCountryResolver;
 use Nowo\ShortLinkBundle\Application\Default\SingleTenantContext;
+use Nowo\ShortLinkBundle\Application\Default\UnlimitedCustomCodeLimiter;
 use Nowo\ShortLinkBundle\Application\Guard\ChainTargetGuard;
 use Nowo\ShortLinkBundle\Application\Guard\DenylistGuard;
 use Nowo\ShortLinkBundle\Application\Guard\SelfLoopGuard;
 use Nowo\ShortLinkBundle\Application\ManagerSettings;
+use Nowo\ShortLinkBundle\Application\QuotaReader;
 use Nowo\ShortLinkBundle\Application\ShortLinkManager;
 use Nowo\ShortLinkBundle\Application\ShortUrlBuilderInterface;
 use Nowo\ShortLinkBundle\Application\Store\ClickStoreInterface;
@@ -27,6 +29,7 @@ use Nowo\ShortLinkBundle\Application\Store\ShortLinkStoreInterface;
 use Nowo\ShortLinkBundle\Domain\Model\ClickWriteMode;
 use Nowo\ShortLinkBundle\Domain\Port\ClickCountryResolverInterface;
 use Nowo\ShortLinkBundle\Domain\Port\CodeBlocklistInterface;
+use Nowo\ShortLinkBundle\Domain\Port\CustomCodeLimiterInterface;
 use Nowo\ShortLinkBundle\Domain\Port\ReservedCodeProviderInterface;
 use Nowo\ShortLinkBundle\Domain\Port\ShortLinkAccessInterface;
 use Nowo\ShortLinkBundle\Domain\Port\ShortLinkIdGeneratorInterface;
@@ -58,9 +61,18 @@ use Nowo\ShortLinkBundle\Infrastructure\Persistence\DbalClickStore;
 use Nowo\ShortLinkBundle\Infrastructure\Persistence\DbalEraser;
 use Nowo\ShortLinkBundle\Infrastructure\Persistence\DbalShortLinkStore;
 use Nowo\ShortLinkBundle\Infrastructure\Persistence\DbalStatsReader;
+use Nowo\ShortLinkBundle\Infrastructure\RateLimit\RateLimiterCustomCodeLimiter;
 use Nowo\ShortLinkBundle\Infrastructure\Routing\ShortUrlBuilder;
 use Nowo\ShortLinkBundle\Infrastructure\Security\RoleBasedAccess;
 use Nowo\ShortLinkBundle\Infrastructure\Uid\UuidV7IdGenerator;
+use Nowo\ShortLinkBundle\NowoShortLinkBundle;
+use Nowo\ShortLinkBundle\Presentation\Controller\ShortLinkUiController;
+use Nowo\ShortLinkBundle\Presentation\Form\ShortLinkActionType;
+use Nowo\ShortLinkBundle\Presentation\Form\ShortLinkFilterType;
+use Nowo\ShortLinkBundle\Presentation\Form\ShortLinkType;
+use Nowo\ShortLinkBundle\Presentation\Form\StatsRangeType;
+use Nowo\ShortLinkBundle\Presentation\Routing\UiRouteLoader;
+use Symfony\Component\Config\Definition\Exception\InvalidConfigurationException;
 use Symfony\Component\DependencyInjection\ContainerBuilder;
 use Symfony\Component\DependencyInjection\ContainerInterface;
 use Symfony\Component\DependencyInjection\Definition;
@@ -70,10 +82,16 @@ use Symfony\Component\DependencyInjection\Reference;
 use Symfony\Component\RateLimiter\RateLimiterFactory;
 use Symfony\Component\RateLimiter\Storage\CacheStorage;
 
+use function array_filter;
+use function array_key_exists;
+use function array_keys;
 use function array_unique;
 use function array_values;
+use function count;
+use function implode;
 use function is_array;
 use function is_string;
+use function sprintf;
 
 /**
  * Loads `nowo_short_link`: validates the strict configuration tree, publishes the container parameters and registers
@@ -89,6 +107,30 @@ final class NowoShortLinkExtension extends Extension implements PrependExtension
     public const MAPPING_NAME = 'NowoShortLinkBundle';
 
     /**
+     * Keys read at runtime that accept an env placeholder: their validators let the empty string Symfony checks
+     * placeholders with pass, so a literal empty value is refused here.
+     */
+    public const RUNTIME_STRING_PATHS = [
+        ['code', 'quarantine'],
+        ['click_log', 'retention'],
+        ['click_log', 'rollup', 'retention'],
+        ['redirect', 'rate_limit', 'misses', 'interval'],
+        ['redirect', 'rate_limit', 'hits', 'interval'],
+        ['code', 'custom_code_rate_limit', 'interval'],
+        ['ui', 'tenant_route_parameter'],
+    ];
+
+    /** Keys used while the container or the routes are compiled: no env placeholder. */
+    public const COMPILE_TIME_PATHS = [
+        ['redirect', 'path_prefix'],
+        ['ui', 'path_prefix'],
+        ['doctrine', 'table_prefix'],
+    ];
+
+    /** FormKit profile of the UI forms (`nowo_form_kit.profiles.short_link`). */
+    public const FORM_PROFILE = 'short_link';
+
+    /**
      * The extension alias, `nowo_short_link`.
      */
     public function getAlias(): string
@@ -101,6 +143,7 @@ final class NowoShortLinkExtension extends Extension implements PrependExtension
      */
     public function prepend(ContainerBuilder $container): void
     {
+        $this->prependFormKitProfile($container);
         if (!$container->hasExtension('doctrine')) {
             return;
         }
@@ -134,14 +177,37 @@ final class NowoShortLinkExtension extends Extension implements PrependExtension
     }
 
     /**
+     * FormKit profile `short_link` of the UI forms (REQ-TWIG-005 rule 11): the bundle's translation domain and UiKit's
+     * semantic input class. A host that defines `nowo_form_kit.profiles.short_link` keeps its own.
+     */
+    private function prependFormKitProfile(ContainerBuilder $container): void
+    {
+        if (!$container->hasExtension('nowo_form_kit')) {
+            return;
+        }
+        foreach ($container->getExtensionConfig('nowo_form_kit') as $config) {
+            if (is_array($config) && is_array($config['profiles'] ?? null) && array_key_exists(self::FORM_PROFILE, $config['profiles'])) {
+                return;
+            }
+        }
+        $container->prependExtensionConfig('nowo_form_kit', ['profiles' => [self::FORM_PROFILE => [
+            'alias'                           => self::FORM_PROFILE,
+            'translation_domain'              => NowoShortLinkBundle::TRANSLATION_DOMAIN,
+            'convention_requires_translation' => true,
+            'defaults'                        => ['attr' => ['class' => 'nowo-ui-input'], 'row_attr' => []],
+        ]]]);
+    }
+
+    /**
      * Processes the configuration, sets the `nowo_short_link.*` parameters and registers the services.
      *
      * @param array<array-key, mixed> $configs
      */
     public function load(array $configs, ContainerBuilder $container): void
     {
-        /** @var array{public_base_url: string|null, redirect: array{path_prefix: string, status: int, not_found_template: string, rate_limit: array{enabled: bool, cache_pool: string, ipv6_prefix: int, misses: array{limit: int, interval: string}, hits: array{limit: int, interval: string}, over_limit_hits: string}}, code: array{random_length: int, allow_custom: bool, reserved: list<string>, blocklist: bool, max_attempts: int, quarantine: string|null}, target: array{max_length: int, guard: string, recheck_max_unresolvable_percent: int, recheck_min_sample: int, save_resolve_dns: bool, self_paths: list<string>, own_hosts: list<string>, denylist: array{hosts: list<string>, provider: string|null}}, tenancy: array{context: string|null}, access: array{provider: string|null, view_role: string, manage_role: string, enforce_in_manager: bool}, quota: array{provider: string|null, default_limit: int|null, counted_kinds: list<string>}, kinds: array<string, array{allow_custom_code: bool, show_in_ui: bool, counted: bool}>, ui: array{enabled: bool, path_prefix: string}, doctrine: array{entity_manager: string|null, connection: string|null, table_prefix: string}, click_log: array{enabled: bool, write: string, store: array{ip_prefix: bool, user_agent_family: bool, referrer_host: bool, country: bool}, ipv4_prefix: int, ipv6_prefix: int, honour_gpc: bool, country_resolver: string|null, retention: string|null, rollup: array{lag_days: int, referrer_top_n: int, retention: string|null}}} $config */
+        /** @var array{public_base_url: string|null, redirect: array{path_prefix: string, status: int, not_found_template: string, rate_limit: array{enabled: bool, cache_pool: string, ipv6_prefix: int, misses: array{limit: int, interval: string}, hits: array{limit: int, interval: string}, over_limit_hits: string}}, code: array{random_length: int, allow_custom: bool, reserved: list<string>, blocklist: bool, max_attempts: int, quarantine: string|null, custom_code_rate_limit: array{enabled: bool, limit: int, interval: string, limiter: string|null}}, target: array{max_length: int, guard: string, recheck_max_unresolvable_percent: int, recheck_min_sample: int, save_resolve_dns: bool, self_paths: list<string>, own_hosts: list<string>, denylist: array{hosts: list<string>, provider: string|null}}, tenancy: array{context: string|null}, access: array{provider: string|null, view_role: string, manage_role: string, enforce_in_manager: bool}, quota: array{provider: string|null, default_limit: int|null, counted_kinds: list<string>}, kinds: array<string, array{allow_custom_code: bool, show_in_ui: bool, counted: bool}>, ui: array{enabled: bool, path_prefix: string, tenant_route_parameter: string|null, page_size: int, stats_default_days: int, csv_max_days: int, layout_template: string|null}, doctrine: array{entity_manager: string|null, connection: string|null, table_prefix: string}, click_log: array{enabled: bool, write: string, store: array{ip_prefix: bool, user_agent_family: bool, referrer_host: bool, country: bool}, ipv4_prefix: int, ipv6_prefix: int, honour_gpc: bool, country_resolver: string|null, retention: string|null, rollup: array{lag_days: int, referrer_top_n: int, retention: string|null}}} $config */
         $config = $this->processConfiguration(new Configuration(), $configs);
+        $this->assertPlaceholders($container, $config);
         $container->setParameter(self::ALIAS . '.redirect_path_prefix', $config['redirect']['path_prefix']);
         $container->setParameter(self::ALIAS . '.ui_enabled', $config['ui']['enabled']);
         $container->setParameter(self::ALIAS . '.ui_path_prefix', $config['ui']['path_prefix']);
@@ -197,6 +263,15 @@ final class NowoShortLinkExtension extends Extension implements PrependExtension
         $this->port($container, ShortLinkIdGeneratorInterface::class, null, new Definition(UuidV7IdGenerator::class));
         // TenantLockPass points this alias at the symfony/lock implementation when a lock factory exists.
         $this->port($container, TenantLockInterface::class, null, new Definition(NoTenantLock::class));
+        $limit = $config['code']['custom_code_rate_limit'];
+        $this->port($container, CustomCodeLimiterInterface::class, $limit['limiter'], $limit['enabled']
+            ? (new Definition(RateLimiterCustomCodeLimiter::class))->setArguments([(new Definition(RateLimiterFactory::class))->setArguments([[
+                'id'       => self::ALIAS . '_custom_code',
+                'policy'   => 'fixed_window',
+                'limit'    => $limit['limit'],
+                'interval' => $limit['interval'],
+            ], (new Definition(CacheStorage::class))->setArguments([new Reference($config['redirect']['rate_limit']['cache_pool'])]), new Reference('lock.factory', ContainerInterface::NULL_ON_INVALID_REFERENCE)])])
+            : new Definition(UnlimitedCustomCodeLimiter::class));
 
         // Target guard: self chain + OutboundUrlGuard (never private; DNS on save / recheck) + denylist.
         $guard = $config['target']['guard'];
@@ -233,24 +308,73 @@ final class NowoShortLinkExtension extends Extension implements PrependExtension
             $config['quota']['counted_kinds'],
         ]);
         $container->register(ShortLinkManager::class, ShortLinkManager::class)->setArguments([
-            '$store'    => new Reference(ShortLinkStoreInterface::class),
-            '$codes'    => new Reference(CodeGenerator::class),
-            '$reserved' => new Reference(ReservedCodeProviderInterface::class),
-            '$guard'    => new Reference(TargetGuardInterface::class),
-            '$access'   => new Reference(ShortLinkAccessInterface::class),
-            '$quota'    => new Reference(ShortLinkQuotaInterface::class),
-            '$lock'     => new Reference(TenantLockInterface::class),
-            '$ids'      => new Reference(ShortLinkIdGeneratorInterface::class),
-            '$urls'     => new Reference(ShortUrlBuilderInterface::class),
-            '$events'   => new Reference('event_dispatcher'),
-            '$settings' => new Reference(ManagerSettings::class),
-            '$clock'    => new Reference('clock', ContainerInterface::NULL_ON_INVALID_REFERENCE),
-            '$logger'   => $logger,
+            '$store'       => new Reference(ShortLinkStoreInterface::class),
+            '$codes'       => new Reference(CodeGenerator::class),
+            '$reserved'    => new Reference(ReservedCodeProviderInterface::class),
+            '$guard'       => new Reference(TargetGuardInterface::class),
+            '$access'      => new Reference(ShortLinkAccessInterface::class),
+            '$quota'       => new Reference(ShortLinkQuotaInterface::class),
+            '$lock'        => new Reference(TenantLockInterface::class),
+            '$ids'         => new Reference(ShortLinkIdGeneratorInterface::class),
+            '$urls'        => new Reference(ShortUrlBuilderInterface::class),
+            '$events'      => new Reference('event_dispatcher'),
+            '$settings'    => new Reference(ManagerSettings::class),
+            '$clock'       => new Reference('clock', ContainerInterface::NULL_ON_INVALID_REFERENCE),
+            '$logger'      => $logger,
+            '$codeLimiter' => new Reference(CustomCodeLimiterInterface::class),
         ]);
         $container->setAlias(ShortLinkManagerInterface::class, ShortLinkManager::class)->setPublic(true);
 
         $this->registerRedirect($container, $config, $logger);
         $this->registerStats($container, $config);
+        $this->registerUi($container, $config);
+    }
+
+    /**
+     * S4: the management UI. The route loader always exists (an import of the UI routes adds nothing while the UI is
+     * disabled); the controller and its forms only with `ui.enabled`.
+     *
+     * @param array{code: array{allow_custom: bool}, kinds: array<string, array{allow_custom_code: bool, show_in_ui: bool, counted: bool}>, ui: array{enabled: bool, path_prefix: string, tenant_route_parameter: string|null, page_size: int, stats_default_days: int, csv_max_days: int, layout_template: string|null}} $config
+     */
+    private function registerUi(ContainerBuilder $container, array $config): void
+    {
+        $ui = $config['ui'];
+        $container->register(UiRouteLoader::class, UiRouteLoader::class)
+            ->setArguments([$ui['enabled'], $ui['path_prefix'], '%kernel.environment%'])
+            ->addTag('routing.loader');
+        if (!$ui['enabled']) {
+            return;
+        }
+        foreach ([ShortLinkType::class, ShortLinkFilterType::class, StatsRangeType::class, ShortLinkActionType::class] as $type) {
+            $container->register($type, $type)->addTag('form.type');
+        }
+        $container->register(QuotaReader::class, QuotaReader::class)->setArguments([
+            new Reference(ShortLinkStoreInterface::class),
+            new Reference(ShortLinkQuotaInterface::class),
+            new Reference(ManagerSettings::class),
+        ]);
+        $container->register(ShortLinkUiController::class, ShortLinkUiController::class)
+            ->setPublic(true)
+            ->addTag('controller.service_arguments')
+            ->setArguments([
+                '$manager'          => new Reference(ShortLinkManagerInterface::class),
+                '$stats'            => new Reference(ShortLinkStatsReaderInterface::class),
+                '$tenants'          => new Reference(ShortLinkTenantContextInterface::class),
+                '$access'           => new Reference(ShortLinkAccessInterface::class),
+                '$quota'            => new Reference(QuotaReader::class),
+                '$forms'            => new Reference('form.factory'),
+                '$twig'             => new Reference('twig'),
+                '$router'           => new Reference('router'),
+                '$translator'       => new Reference('translator'),
+                '$customCodes'      => $config['code']['allow_custom'] && $config['kinds']['manual']['allow_custom_code'],
+                '$tenantParameter'  => $ui['tenant_route_parameter'],
+                '$pageSize'         => $ui['page_size'],
+                '$statsDefaultDays' => $ui['stats_default_days'],
+                '$csvMaxDays'       => $ui['csv_max_days'],
+                '$layout'           => $ui['layout_template'],
+                '$clock'            => new Reference('clock', ContainerInterface::NULL_ON_INVALID_REFERENCE),
+                '$listedKinds'      => array_keys(array_filter($config['kinds'], static fn (array $flags): bool => $flags['show_in_ui'])),
+            ]);
     }
 
     /**
@@ -360,6 +484,42 @@ final class NowoShortLinkExtension extends Extension implements PrependExtension
             throw new LogicException('nowo_short_link: a country resolver needs the raw IP, which never travels in a Messenger message. Use click_log.write "terminate" or "sync", or set click_log.store.country to false.');
         }
         $container->setParameter(self::ALIAS . '.click_write_mode', $mode?->value);
+    }
+
+    /**
+     * Env placeholders (audit NY-S4 N1): refused with a clear message where the value is needed while compiling;
+     * a literal empty value refused where an env placeholder is allowed (see {@see self::RUNTIME_STRING_PATHS}).
+     *
+     * @param array<array-key, mixed> $config
+     */
+    private function assertPlaceholders(ContainerBuilder $container, array $config): void
+    {
+        foreach (self::COMPILE_TIME_PATHS as $path) {
+            $value = $this->at($config, $path);
+            if (is_string($value) && $container->resolveEnvPlaceholders($value, '%%env(%s)%%') !== $value) {
+                throw new InvalidConfigurationException(sprintf('nowo_short_link.%s cannot be an environment variable: it is used while the container and the routes are compiled.', implode('.', $path)));
+            }
+        }
+        foreach (self::RUNTIME_STRING_PATHS as $path) {
+            $last = $path[count($path) - 1];
+            if ($this->at($config, $path) === '') {
+                throw new InvalidConfigurationException(sprintf('Invalid configuration for path "nowo_short_link.%s": %s.', implode('.', $path), $last === 'tenant_route_parameter' ? 'expected a route parameter name or null, got ""' : 'expected a value, got ""'));
+            }
+        }
+    }
+
+    /**
+     * @param array<array-key, mixed> $config
+     * @param list<string> $path
+     */
+    private function at(array $config, array $path): mixed
+    {
+        $value = $config;
+        foreach ($path as $key) {
+            $value = is_array($value) ? $value[$key] ?? null : null;
+        }
+
+        return $value;
     }
 
     /**

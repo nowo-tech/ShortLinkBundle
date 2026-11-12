@@ -31,7 +31,7 @@ final class ConfigurationTest extends TestCase
                 'over_limit_hits' => 'redirect_unlogged',
             ],
         ], $config['redirect']);
-        self::assertSame(['random_length' => 7, 'allow_custom' => true, 'reserved' => [], 'blocklist' => true, 'max_attempts' => 5, 'quarantine' => 'P365D'], $config['code']);
+        self::assertSame(['random_length' => 7, 'allow_custom' => true, 'reserved' => [], 'blocklist' => true, 'max_attempts' => 5, 'quarantine' => 'P365D', 'custom_code_rate_limit' => ['enabled' => true, 'limit' => 10, 'interval' => '1 minute', 'limiter' => null]], $config['code']);
         self::assertSame([
             'max_length'                       => 2048,
             'guard'                            => 'auto',
@@ -60,8 +60,14 @@ final class ConfigurationTest extends TestCase
             'manual' => ['allow_custom_code' => true, 'show_in_ui' => true, 'counted' => true],
             'email'  => ['allow_custom_code' => false, 'show_in_ui' => false, 'counted' => false],
         ], $config['kinds']);
-        self::assertSame(['enabled' => false, 'path_prefix' => '/short-links', 'tenant_route_parameter' => null, 'page_size' => 25, 'stats_default_days' => 30, 'csv_max_days' => 366], $config['ui']);
+        self::assertSame(['enabled' => false, 'path_prefix' => '/short-links', 'tenant_route_parameter' => null, 'page_size' => 25, 'stats_default_days' => 30, 'csv_max_days' => 366, 'layout_template' => null], $config['ui']);
         self::assertSame(['entity_manager' => null, 'connection' => null, 'table_prefix' => '', 'mapping' => 'xml'], $config['doctrine']);
+    }
+
+    public function testAnExplicitNullQuotaMeansUnlimited(): void
+    {
+        self::assertNull($this->at($this->process(['quota' => ['default_limit' => null]]), 'quota', 'default_limit'));
+        self::assertSame(3, $this->at($this->process(['quota' => ['default_limit' => 3]]), 'quota', 'default_limit'));
     }
 
     public function testBeaconConfigurationIsAccepted(): void
@@ -133,6 +139,7 @@ final class ConfigurationTest extends TestCase
         yield 'retention' => [['click_log' => ['retention' => 90]], 'retention'];
         yield 'top n' => [['click_log' => ['rollup' => ['referrer_top_n' => 0]]], 'referrer_top_n'];
         yield 'negative quota' => [['quota' => ['default_limit' => -1]], 'default_limit'];
+        yield 'quota as text' => [['quota' => ['default_limit' => '5']], 'default_limit'];
         yield 'unknown counted kind' => [['quota' => ['counted_kinds' => ['qr']]], 'counted_kinds'];
         yield 'counted kind not a string' => [['quota' => ['counted_kinds' => [5]]], 'counted_kinds'];
         yield 'kind name' => [['kinds' => ['QR' => []]], 'Kind names'];

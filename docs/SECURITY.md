@@ -12,8 +12,8 @@
 
 ## Status and scope
 
-S1–S2: the manager, the ports, the target guard, the DBAL store and the public redirect `GET|HEAD /s/{code}` with its
-click log (the only HTTP surface until the S4 UI).
+S1–S4: the manager, the ports, the target guard, the DBAL store, the public redirect `GET|HEAD /s/{code}` with its
+click log, and the opt-in management UI (S4, behind the host's firewall and the access port).
 
 **Covers (from S1):** how short codes are generated and reserved, how targets are validated at save and at redirect
 time, how the public redirect answers, what each click stores and for how long, and how tenants are isolated.
@@ -28,6 +28,8 @@ security (HTTPS is the host's job) and the content of the target sites.
 | `{code}` of the public redirect | `GET|HEAD /s/{code}` (S2) | Route requirement `[A-Za-z0-9-]{3,32}` before any I/O; one indexed lookup + PHP `===` re-check; identical neutral 404 for every failure |
 | Target URL | Manager / UI form (S1, S4) | `TargetUrl` VO (http/https, absolute, no userinfo, no control characters, ≤ 2 048 bytes, IDN → punycode); guard with DNS at save, literal checks + denylist on every redirect |
 | Request headers | Redirect (S2) | `User-Agent` (first 512 bytes, bounded regex list), `Referer` (host only), `Sec-GPC`, client IP (truncated, never stored raw) |
+| UI forms and actions | Management UI (S4) | FormKit Form Types (no `system` / `kind` field, extra fields refused), CSRF per action, POST only for changes, View / Manage per page, tenant-scoped lookups (another tenant's id → 404) |
+| CSV export | Statistics (S4) | Cells starting with `=`, `+`, `-`, `@`, tab or CR (also after leading spaces) prefixed with `'`; range bounded by `ui.csv_max_days` |
 | Host ports | Tenant context, access, quota, denylist, country | Host code; the bundle fails closed (no tenant → 404, denied access → 404 / 403) |
 
 ## Threat model
@@ -41,8 +43,8 @@ From contract §9. Each threat names the control and the slice that ships it.
 | Intranet pivot from the visitor's browser | Private, loopback, link-local, CGNAT, metadata targets refused at save (DNS) and at redirect (literals) | S1, S2 |
 | Scheme abuse, header injection | VO: http/https only, no control characters, no userinfo | S1 |
 | Redirect chains | `self_paths` on `own_hosts` refused | S1 |
-| Enumeration | 62^7 space, miss limiter, identical 404, no timing branch, neutral `CodeTaken`, per-actor limiter | S1, S2 |
-| Code collision / takeover | Unique index, binary collation (`utf8mb4_bin`), PHP `===`, tombstone quarantine (365 days), immutable codes | S0 (test), S1 |
+| Enumeration | 62^7 space, miss limiter, identical 404, no timing branch, neutral `CodeTaken`, per-person custom-code limiter | S1, S2, S4 |
+| Code collision / takeover | Unique index, binary NO PAD collation (`utf8mb4_0900_bin` / `utf8mb4_nopad_bin`), PHP `===`, tombstone quarantine (365 days), immutable codes | S0 (test), S1 |
 | Cross-tenant access | Every query filters on the tenant; another tenant's id answers as missing | S1–S4 |
 | CSRF, XSS, CSV injection | FormKit CSRF forms, Twig escaping, CSV cell prefixing | S4 |
 | Session / cookie on the public path | `stateless: true`, no `Set-Cookie` | S2 |
@@ -64,9 +66,7 @@ From contract §9. Each threat names the control and the slice that ships it.
   every anchored pattern; L5 counted creates refused inside a host transaction + a 10-process parallel test that
   creates exactly the limit (MySQL / MariaDB / PostgreSQL CI); L8 hidden kinds never listed for people; L9 no
   invisible / bidi characters, ASCII-only targets.
-- **Known gaps tracked for later slices:** the per-actor limiter on `CodeTakenException` answers (contract §6.2) lands
-  with the S4 form, where enumeration through the UI happens; without symfony/lock, concurrent creates may overshoot a
-  plan limit by a few links.
+- **Known gaps:** without symfony/lock, concurrent creates may overshoot a plan limit by a few links.
 - **S2:** the redirect takes only `{code}` (query ignored, `Location` from the database, no CRLF possible); one
   neutral 404 for every reason after the same single query; miss limiter peeked before the lookup; hit limiter with
   redirect-unlogged / block; HEAD never logged; stateless route, no cookie; redirect guard on every answer (literals +
@@ -83,7 +83,21 @@ From contract §9. Each threat names the control and the slice that ships it.
 - **Audit NY re-verification:** N1 cumulative recheck breaker with a minimum sample, non-DNS refusals applied before
   an abort; N2 retry-safe erasure order; N3 second click-delete pass; I1 liveness check only for Messenger clicks;
   I2 links in the export, tombstone rollups purged; I3 rollup deadlocks skipped.
-- **S3–S5:** see the table above and the contract.
+- **S4 (UI):** tenant from the context port on every page (none → 404), access port per action (View for pages,
+  Manage for changes; denial → 403), lookups by id scoped by tenant (another tenant's id → 404, never 403); POST + one
+  CSRF token per state change (missing / wrong → 403, nothing changed); forms never map `system` / `kind` (extra fields
+  refused); audits L7 / NY-S4 L2–L3 limit on custom-code lookups per tenant + actor (`code.custom_code_rate_limit`,
+  attempt consumed before the lookup, atomic with symfony/lock, hashed key; actor-less callers share one window per
+  tenant unless the host replaces the port); NY-S4 L1 kinds hidden from people answer 404 by id on every page and
+  action; the tenant route parameter only builds URLs (the host's tenant context must authorise it);
+  Twig escaping everywhere (title, target, referrer hosts), target linked only when http(s) with
+  `rel="noopener noreferrer nofollow"`; CSV formula neutralisation; no personal data logged by the UI; stateless
+  controller and services (worker mode). Fixtures: XSS title / referrer, CSV `=HYPERLINK`, cross-tenant matrix.
+- **PAD SPACE sweep (2026-11-12, affects 0.1.0, no advisory):** `ActorRef` refuses padded ids and control / format
+  characters; `anonymiseActor()` re-checks candidates with `===` and updates by primary key; identifier columns use
+  NO PAD binary collations (`utf8mb4_0900_bin` / `utf8mb4_nopad_bin`; `utf8mb4_bin` only on MySQL 5.7). Test emulates a
+  PAD collation (MySQL `utf8mb4_bin`, SQLite `RTRIM`).
+- **S5:** see the contract.
 
 ## Release security checklist (12.4.1)
 

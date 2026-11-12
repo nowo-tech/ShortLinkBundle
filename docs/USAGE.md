@@ -8,13 +8,13 @@
 - [Errors](#errors)
 - [Events](#events)
 - [Ports for multi-tenant and DDD hosts](#ports-for-multi-tenant-and-ddd-hosts)
+- [Management UI](#management-ui)
 - [Redirect path and firewalls](#redirect-path-and-firewalls)
 
 ## Status
 
-S1–S2: the PHP API (manager, ports, persistence) and the public redirect with its click log. Statistics (S3) and the
-UI (S4) follow
-([ROADMAP.md](ROADMAP.md)); the full design is [CONTRACT.md](CONTRACT.md) §3.
+S1–S4: the PHP API (manager, ports, persistence), the public redirect with its click log, statistics and retention, and
+the management UI ([ROADMAP.md](ROADMAP.md)); the full design is [CONTRACT.md](CONTRACT.md) §3.
 
 ## Creating and managing links
 
@@ -72,6 +72,7 @@ All implement `Nowo\ShortLinkBundle\Domain\Exception\ShortLinkExceptionInterface
 | --- | --- |
 | `TargetRefusedException` (`->refusal`: `Scheme`, `Userinfo`, `Length`, `PrivateHost`, `Metadata`, `Unresolvable`, `Denylisted`, `SelfLoop`) | The target cannot be used |
 | `CodeTakenException` / `CodeReservedException` | The custom code is not available (same neutral message for taken, reserved and quarantined codes) |
+| `CodeAttemptsExceededException` | The caller tried too many custom codes (`code.custom_code_rate_limit`, per tenant + actor); no custom code is looked up until the window ends (`system` commands are never limited) |
 | `QuotaExceededException` (`->limit`) | The tenant's plan limit for a counted kind is reached |
 | `AccessDeniedException` | The access port refused the action |
 | `ShortLinkNotFoundException` | No live link with this id in this tenant |
@@ -176,3 +177,50 @@ caught and logged with their class only: they never change the answer or stop a 
 Clicks are written after the response by default (`click_log.write: terminate`); `messenger` dispatches
 `Nowo\ShortLinkBundle\Infrastructure\Messenger\RecordShortLinkClick` (route it to a transport, or it is handled at once);
 `sync` writes before answering. HEAD requests are never logged.
+
+## Management UI
+
+Opt-in (`ui.enabled: true`, needs `NowoUiKitBundle` + `NowoFormKitBundle`, forms, sessions and Twig). Import the routes
+under your own prefix:
+
+```yaml
+# config/routes/nowo_short_link.yaml
+nowo_short_link_ui:
+    resource: '@NowoShortLinkBundle/Resources/config/routes/ui.php'
+    prefix: /organizations/{uuid}            # optional; then nowo_short_link.ui.tenant_route_parameter: uuid
+```
+
+| Route | Method | Path (under `ui.path_prefix`) | Permission |
+| --- | --- | --- | --- |
+| `nowo_short_link_index` | GET | `` (`?q=&state=&after=`) | View |
+| `nowo_short_link_new` | GET, POST | `/new` | Manage |
+| `nowo_short_link_edit` | GET, POST | `/{id}/edit` | Manage |
+| `nowo_short_link_disable` / `_enable` / `_delete` | POST + CSRF | `/{id}/disable` … | Manage |
+| `nowo_short_link_stats` | GET | `/{id}/stats?from=&to=` | View |
+| `nowo_short_link_stats_csv` | GET | `/{id}/stats.csv?from=&to=&dimension=&excel=1` | View |
+
+- The tenant comes from `ShortLinkTenantContextInterface` (none → 404); `ShortLinkAccessInterface` decides (denied →
+  403, which your firewall turns into a login for anonymous visitors). Another tenant's id answers 404.
+- The forms are Symfony Form Types on the FormKit profile `short_link`, rendered with `form_start` / the child loop with
+  `{% if not child.rendered %}` / `form_end` (REQ-TWIG-005); host overrides must not reintroduce raw `<form>` or
+  `<input>` markup. They never map `system` or `kind`: people create `manual` links (kinds with `show_in_ui: true`
+  are listed).
+- Disable, enable and delete are POST only, with one CSRF token per action (`nowo_short_link_<action>`); a missing or
+  wrong token answers 403 and changes nothing.
+- A custom code that is taken, reserved or quarantined answers "This code is not available." for every reason. Every
+  custom-code lookup counts against `code.custom_code_rate_limit` (per tenant + actor, taken before the lookup); over
+  the limit the form refuses custom codes for the rest of the window. Callers the access port does not identify share
+  one window per tenant; replace `CustomCodeLimiterInterface` to key them by session or network.
+- `ui.tenant_route_parameter` only builds URLs: it copies the `{uuid}` of the current request into the UI links. It
+  never chooses the tenant. Your `ShortLinkTenantContextInterface` must resolve the tenant from that parameter **and**
+  check the current user may act in it (or derive it from the session); the access port then authorises View / Manage
+  in that tenant.
+- Links of kinds with `show_in_ui: false` (e-mail links) are neither listed nor reachable by id: every page and action
+  answers 404 for them.
+- The search matches the code, title and target host case-insensitively (on SQLite only ASCII letters fold).
+- The list reads at most 4 queries per page (links, then the 30-day click totals); the clicks column counts people,
+  machine traffic is in the cell title.
+- Pages, blocks and view models: [TEMPLATES.md](TEMPLATES.md). Translations: domain `NowoShortLinkBundle` (en, es,
+  fr, it, pt, de, nl); add `ui.kind.<kind>` for your own kinds.
+
+![Short links list](images/demo/short-link-list.webp)

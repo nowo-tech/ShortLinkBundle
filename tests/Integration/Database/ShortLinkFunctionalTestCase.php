@@ -7,6 +7,8 @@ namespace Nowo\ShortLinkBundle\Tests\Integration\Database;
 use DateTimeImmutable;
 use DateTimeZone;
 use Doctrine\DBAL\Platforms\AbstractMySQLPlatform;
+use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
+use Doctrine\DBAL\Platforms\SQLitePlatform;
 use Nowo\ShortLinkBundle\Application\Store\ShortLinkStoreInterface;
 use Nowo\ShortLinkBundle\Application\Store\StoredLink;
 use Nowo\ShortLinkBundle\Domain\Event\ShortLinkCreatedEvent;
@@ -37,7 +39,9 @@ use Nowo\ShortLinkBundle\Domain\Model\TargetRefusal;
 use Nowo\ShortLinkBundle\Domain\Model\TargetUrl;
 use Nowo\ShortLinkBundle\Domain\Model\TenantKey;
 use Nowo\ShortLinkBundle\Domain\Model\UpdateShortLink;
+use Nowo\ShortLinkBundle\Domain\Service\ShortLinkEraserInterface;
 use Nowo\ShortLinkBundle\Domain\Service\ShortLinkManagerInterface;
+use Nowo\ShortLinkBundle\Infrastructure\Doctrine\BinaryCollation;
 use Nowo\ShortLinkBundle\Tests\Fixtures\RecordingListener;
 use Nowo\ShortLinkBundle\Tests\Integration\Kernel\Host;
 use Nowo\ShortLinkBundle\Tests\Integration\Kernel\KernelTestCase;
@@ -45,10 +49,14 @@ use Nowo\ShortLinkBundle\Tests\Integration\Kernel\TestKernel;
 use Symfony\Component\Clock\MockClock;
 use Symfony\Component\DependencyInjection\ContainerInterface;
 
+use function array_column;
 use function array_map;
 use function gc_collect_cycles;
+use function is_scalar;
 use function memory_get_usage;
 use function preg_match;
+use function preg_replace;
+use function sprintf;
 use function strlen;
 
 /**
@@ -513,7 +521,8 @@ abstract class ShortLinkFunctionalTestCase extends KernelTestCase
         self::assertTrue($actual->getTable($prefix . 'nowo_short_link')->hasIndex($prefix . 'uniq_short_link_code'));
 
         if ($connection->getDatabasePlatform() instanceof AbstractMySQLPlatform) {
-            self::assertSame('utf8mb4_bin', $actual->getTable($prefix . 'nowo_short_link')->getColumn('code')->getPlatformOption('collation'));
+            self::assertSame(BinaryCollation::for($connection->getDatabasePlatform()), $actual->getTable($prefix . 'nowo_short_link')->getColumn('code')->getPlatformOption('collation'));
+            self::assertSame(BinaryCollation::for($connection->getDatabasePlatform()), $actual->getTable($prefix . 'nowo_short_link')->getColumn('created_by')->getPlatformOption('collation'));
         }
     }
 
@@ -523,6 +532,49 @@ abstract class ShortLinkFunctionalTestCase extends KernelTestCase
         self::assertInstanceOf(ShortLinkManagerInterface::class, $manager);
 
         return $manager;
+    }
+
+    public function testAnonymisingAnActorMatchesItExactlyEvenUnderAPadSpaceCollation(): void
+    {
+        $exact  = $this->manager()->create($this->tenant, new CreateShortLink('https://example.com/a', system: true));
+        $padded = $this->manager()->create($this->tenant, new CreateShortLink('https://example.com/b', system: true));
+        $table  = $this->host()->tablePrefix() . 'nowo_short_link';
+        $db     = $this->host()->connection($this->kernel);
+        $db->update($table, ['created_by' => 'u1', 'updated_by' => 'u1'], ['id' => $exact->id->value]);
+        // A row written by 0.1.0, before ActorRef refused trailing spaces.
+        $db->update($table, ['created_by' => 'u1 ', 'updated_by' => 'u1 '], ['id' => $padded->id->value]);
+
+        // Emulate a PAD SPACE collation (utf8mb4_bin on MySQL / MariaDB, RTRIM on SQLite): 'u1 ' = 'u1' in SQL.
+        $platform = $db->getDatabasePlatform();
+        if ($platform instanceof AbstractMySQLPlatform) {
+            foreach (['created_by', 'updated_by'] as $column) {
+                $db->executeStatement(sprintf('ALTER TABLE %s MODIFY %s VARCHAR(128) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL', $table, $column));
+            }
+        } elseif ($platform instanceof SQLitePlatform) {
+            $ddl = $this->text($db->fetchOne("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?", [$table]));
+            $db->executeStatement(sprintf('ALTER TABLE %s RENAME TO %s_pad_old', $table, $table));
+            $db->executeStatement((string) preg_replace('/\b(created_by|updated_by) VARCHAR\(128\)/', '$1 VARCHAR(128) COLLATE RTRIM', $ddl));
+            $db->executeStatement(sprintf('INSERT INTO %s SELECT * FROM %s_pad_old', $table, $table));
+            $db->executeStatement(sprintf('DROP TABLE %s_pad_old', $table));
+        }
+        $emulated = !$platform instanceof PostgreSQLPlatform;
+        self::assertSame($emulated ? 2 : 1, (int) $this->text($db->fetchOne(sprintf('SELECT COUNT(*) FROM %s WHERE created_by = ?', $table), ['u1'])), 'the SQL comparison pads where emulated');
+
+        $eraser = $this->container()->get(ShortLinkEraserInterface::class);
+        self::assertInstanceOf(ShortLinkEraserInterface::class, $eraser);
+        self::assertSame(2, $eraser->anonymiseActor(ActorRef::fromString('u1')), 'created_by and updated_by of the exact row only');
+
+        $rows = $db->fetchAllAssociative(sprintf('SELECT id, created_by, updated_by FROM %s ORDER BY id', $table));
+        $byId = array_column($rows, null, 'id');
+        self::assertNull($byId[$exact->id->value]['created_by']);
+        self::assertNull($byId[$exact->id->value]['updated_by']);
+        self::assertSame('u1 ', $byId[$padded->id->value]['created_by'], 'another person\'s attribution is kept');
+        self::assertSame('u1 ', $byId[$padded->id->value]['updated_by']);
+    }
+
+    private function text(mixed $value): string
+    {
+        return is_scalar($value) ? (string) $value : '';
     }
 
     protected function store(): ShortLinkStoreInterface

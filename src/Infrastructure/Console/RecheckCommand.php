@@ -34,10 +34,11 @@ use function sprintf;
  * that only applies while the link is still active, not deleted and on the same target (an edit, a delete or an erasure
  * during the run wins); the {@see ShortLinkTargetRefusedEvent} and {@see ShortLinkStateChangedEvent} follow after
  * commit, only when that row changed. DNS failures never disable a link: an unresolvable target is skipped with a
- * warning. Once at least `target.recheck_min_sample` links were checked, the run aborts (exit 1) when more than
+ * warning. Once at least `target.recheck_min_sample` links were checked, the run aborts (exit 1) as soon as more than
  * `target.recheck_max_unresolvable_percent` of all checked targets were unresolvable (a resolver outage; `0` aborts on
- * any). The other refusals of the batch (denylist, private host, self chain) are applied before the check, so an abort
- * never leaves them enabled. `--dry-run` reports without writing. Run it daily.
+ * any unresolvable target once the sample is reached). The threshold is evaluated after every link, not only at the end
+ * of a batch, so an outage stops the run quickly; the other refusals already found in the batch (denylist, private
+ * host, self chain) are applied before the abort, so it never leaves them enabled. `--dry-run` reports without writing. Run it daily.
  */
 #[AsCommand(name: 'nowo:short-link:recheck', description: 'Re-check active short-link targets and disable refused ones')]
 final class RecheckCommand extends Command
@@ -81,38 +82,52 @@ final class RecheckCommand extends Command
         $disabled = 0;
         $skipped  = 0;
         do {
-            $page         = $this->store->activeAfter($cursor, $size);
-            $cursor       = $page->cursor;
-            $refused      = [];
-            $unresolvable = 0;
+            $page    = $this->store->activeAfter($cursor, $size);
+            $cursor  = $page->cursor;
+            $refused = [];
             foreach ($page->links as $link) {
                 ++$checked;
                 $refusal = $this->guard->check($link->target, GuardStage::Recheck)->refusal;
                 if ($refusal === TargetRefusal::Unresolvable) {
-                    ++$unresolvable;
+                    ++$skipped;
                     $this->logger?->warning('nowo_short_link: recheck skipped link {link}: its host could not be resolved.', ['link' => $link->id->value]);
                 } elseif ($refusal instanceof TargetRefusal) {
                     $refused[] = [$link, $refusal];
                 }
-            }
-            $skipped += $unresolvable;
-            foreach ($refused as [$link, $refusal]) {
-                if ($dryRun) {
-                    $output->writeln(sprintf('Would disable %s (%s).', $link->id->value, $refusal->value));
-                    ++$disabled;
-                    continue;
-                }
-                $disabled += $this->disable($link, $refusal) ? 1 : 0;
-            }
-            if ($checked >= $this->minSample && $checked > 0 && $skipped * 100 > $this->maxUnresolvablePercent * $checked) {
-                $output->writeln(sprintf('Aborted: %d of %d checked targets could not be resolved (DNS outage?). Disabled %d.', $skipped, $checked, $disabled));
+                // Evaluated per link once the sample is reached, so a resolver outage stops the run at once; the
+                // refusals already found are applied first.
+                if ($checked >= $this->minSample && $skipped * 100 > $this->maxUnresolvablePercent * $checked) {
+                    $disabled += $this->apply($refused, $dryRun, $output);
+                    $output->writeln(sprintf('Aborted: %d of %d checked targets could not be resolved (DNS outage?). Disabled %d.', $skipped, $checked, $disabled));
 
-                return Command::FAILURE;
+                    return Command::FAILURE;
+                }
             }
+            $disabled += $this->apply($refused, $dryRun, $output);
         } while ($page->rawCount === $size && $cursor !== null);
         $output->writeln(sprintf('%sChecked %d link(s), disabled %d, skipped %d unresolvable.', $dryRun ? '[dry run] ' : '', $checked, $disabled, $skipped));
 
         return Command::SUCCESS;
+    }
+
+    /**
+     * Disables (or, in a dry run, reports) the refused links of a batch; returns how many.
+     *
+     * @param list<array{StoredLink, TargetRefusal}> $refused
+     */
+    private function apply(array $refused, bool $dryRun, OutputInterface $output): int
+    {
+        $disabled = 0;
+        foreach ($refused as [$link, $refusal]) {
+            if ($dryRun) {
+                $output->writeln(sprintf('Would disable %s (%s).', $link->id->value, $refusal->value));
+                ++$disabled;
+                continue;
+            }
+            $disabled += $this->disable($link, $refusal) ? 1 : 0;
+        }
+
+        return $disabled;
     }
 
     private function disable(StoredLink $link, TargetRefusal $refusal): bool

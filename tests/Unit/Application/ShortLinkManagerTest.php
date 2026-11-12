@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Nowo\ShortLinkBundle\Tests\Unit\Application;
 
+use ArrayObject;
 use Nowo\ShortLinkBundle\Application\CodeGenerator;
 use Nowo\ShortLinkBundle\Application\Default\ConfigDenylist;
 use Nowo\ShortLinkBundle\Application\Default\ConfigQuota;
@@ -12,6 +13,7 @@ use Nowo\ShortLinkBundle\Application\Guard\DenylistGuard;
 use Nowo\ShortLinkBundle\Application\ManagerSettings;
 use Nowo\ShortLinkBundle\Application\ShortLinkManager;
 use Nowo\ShortLinkBundle\Application\ShortUrlBuilderInterface;
+use Nowo\ShortLinkBundle\Domain\Exception\CodeAttemptsExceededException;
 use Nowo\ShortLinkBundle\Domain\Model\ActorRef;
 use Nowo\ShortLinkBundle\Domain\Model\CreateShortLink;
 use Nowo\ShortLinkBundle\Domain\Model\ShortCode;
@@ -19,6 +21,7 @@ use Nowo\ShortLinkBundle\Domain\Model\ShortLinkId;
 use Nowo\ShortLinkBundle\Domain\Model\ShortLinkListQuery;
 use Nowo\ShortLinkBundle\Domain\Model\ShortLinkPermission;
 use Nowo\ShortLinkBundle\Domain\Model\TenantKey;
+use Nowo\ShortLinkBundle\Domain\Port\CustomCodeLimiterInterface;
 use Nowo\ShortLinkBundle\Domain\Port\ShortLinkAccessInterface;
 use Nowo\ShortLinkBundle\Domain\Port\ShortLinkIdGeneratorInterface;
 use Nowo\ShortLinkBundle\Infrastructure\Lock\NoTenantLock;
@@ -59,7 +62,56 @@ final class ShortLinkManagerTest extends TestCase
         self::assertSame('https://s.example/' . $view->code->value, $manager->shortUrl($view->code));
     }
 
-    private function manager(ScriptedStore $store, ManagerSettings $settings, ?MemoryLogger $logger = null): ShortLinkManager
+    public function testACustomCodeAttemptIsTakenBeforeTheLookupAndNeverForSystemCommands(): void
+    {
+        $log   = new ArrayObject();
+        $store = new class($log) extends ScriptedStore {
+            /** @param ArrayObject<int, string> $log */
+            public function __construct(private readonly ArrayObject $log)
+            {
+                parent::__construct();
+            }
+
+            public function codeExists(string $code): bool
+            {
+                $this->log->append('lookup ' . $code);
+
+                return false;
+            }
+        };
+        $limiter = new class($log) implements CustomCodeLimiterInterface {
+            public int $left = 1;
+
+            /** @param ArrayObject<int, string> $log */
+            public function __construct(private readonly ArrayObject $log)
+            {
+            }
+
+            public function attempt(TenantKey $tenant, ?ActorRef $actor): bool
+            {
+                $this->log->append('attempt ' . $tenant->value . ' ' . ($actor instanceof ActorRef ? $actor->value : '-'));
+
+                return $this->left-- > 0;
+            }
+        };
+        $manager = $this->manager($store, new ManagerSettings(enforceAccess: false), null, $limiter);
+        $manager->create(TenantKey::default(), new CreateShortLink('https://example.com', customCode: 'first-code'));
+        self::assertSame(['attempt default -', 'lookup first-code'], $log->getArrayCopy(), 'the attempt is consumed before the lookup, so concurrent requests cannot all pass a peek');
+
+        $log->exchangeArray([]);
+        try {
+            $manager->create(TenantKey::default(), new CreateShortLink('https://example.com', customCode: 'second-code'));
+            self::fail('Over the limit.');
+        } catch (CodeAttemptsExceededException) {
+            self::assertSame(['attempt default -'], $log->getArrayCopy(), 'over the limit nothing is looked up');
+        }
+
+        $log->exchangeArray([]);
+        $manager->create(TenantKey::default(), new CreateShortLink('https://example.com', customCode: 'system-code', system: true));
+        self::assertSame(['lookup system-code'], $log->getArrayCopy(), 'system commands are never limited');
+    }
+
+    private function manager(ScriptedStore $store, ManagerSettings $settings, ?MemoryLogger $logger = null, ?CustomCodeLimiterInterface $limiter = null): ShortLinkManager
     {
         $deny = new class implements ShortLinkAccessInterface {
             public function isGranted(ShortLinkPermission $permission, TenantKey $tenant): bool
@@ -93,6 +145,6 @@ final class ShortLinkManagerTest extends TestCase
             }
         };
 
-        return new ShortLinkManager($store, new CodeGenerator(new ConfigReservedCodes(), null), new ConfigReservedCodes(), new DenylistGuard(new ConfigDenylist()), $deny, new ConfigQuota(null), new NoTenantLock(), $ids, $urls, $events, $settings, null, $logger);
+        return new ShortLinkManager($store, new CodeGenerator(new ConfigReservedCodes(), null), new ConfigReservedCodes(), new DenylistGuard(new ConfigDenylist()), $deny, new ConfigQuota(null), new NoTenantLock(), $ids, $urls, $events, $settings, null, $logger, $limiter);
     }
 }

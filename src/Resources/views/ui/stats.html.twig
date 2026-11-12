@@ -1,0 +1,127 @@
+{#
+  Statistics of one link (contract §11, REQ-UI-003): UiKit show scaffold. Variables: page (Nowo\UiKitBundle\View\ShowPage:
+  header with the range, CSV export and edit actions; key figures people / machine clicks; the link details section),
+  link (ShortLinkView), range_form (GET from / to), presets ([{days, href, active}]), chart (Presentation\View\DailyChart),
+  daily_table and breakdowns (Nowo\UiKitBundle\View\Table: referrer, country, ua).
+
+  nowo_ui_show_after renders, each in its own block: nowo_short_link_stats_range (presets + custom range form),
+  nowo_short_link_stats_chart (server-side SVG bars, no script or inline style; people at the bottom, machine traffic
+  above) followed by nowo_short_link_stats_daily (the same numbers as a table: the accessible fallback, always printed)
+  and nowo_short_link_stats_breakdowns. Referrer hosts and every other value are printed escaped; the target is a link
+  only when it is http(s), with rel="noopener noreferrer nofollow".
+#}
+{% extends '@NowoUiKit/page/show.html.twig' %}
+
+{% block nowo_ui_show_sections %}
+    {% set _b = page.bundle %}
+    {% set _d = 'NowoShortLinkBundle' %}
+    {% set _target = link.target.toString %}
+    <section class="{{ nowo_ui_class('section', _b) }} {{ nowo_ui_class('card', _b) }}" id="short-link-details" data-nowo-ui-region="section"{{ nowo_ui_attrs('section', _b) }}>
+        <header class="{{ nowo_ui_class('card_header', _b) }}"><h2 class="{{ nowo_ui_class('card_title', _b) }}">{{ 'ui.stats.link'|trans({}, _d) }}</h2></header>
+        <div class="{{ nowo_ui_class('card_body', _b) }}">
+            <dl class="{{ nowo_ui_class('detail_list', _b) }}"{{ nowo_ui_attrs('detail_list', _b) }}>
+                {% for item in page.sections|first.items %}
+                    {% set _key = item.label.key ?? null %}
+                    {% set _blank = item.value is null or item.value is same as('') %}
+                    <div class="{{ nowo_ui_class('detail_item', _b) }}">
+                        <dt class="{{ nowo_ui_class('detail_term', _b) }}">{{ item.label|nowo_ui_trans }}</dt>
+                        <dd class="{{ nowo_ui_class('detail_value', _b) }}">
+                            {%- if _blank -%}
+                                <span class="{{ nowo_ui_class('muted', _b) }}">—</span>
+                            {%- elseif _key == 'ui.column.short_url' -%}
+                                <code class="{{ nowo_ui_class('code', _b) }}" data-testid="short-link-url">{{ item.value }}</code>
+                                <button type="button" class="{{ nowo_ui_class('btn_link', _b) }} nowo-short-link-copy" data-nowo-ui-clipboard data-nowo-ui-clipboard-text="{{ item.value }}" data-nowo-ui-clipboard-label="{{ 'ui.action.copy'|trans({}, _d) }}" data-nowo-ui-clipboard-done-label="{{ 'ui.action.copied'|trans({}, _d) }}">{{ 'ui.action.copy'|trans({}, _d) }}</button>
+                            {%- elseif _key == 'ui.column.target' -%}
+                                {%- if _target starts with 'https://' or _target starts with 'http://' -%}
+                                    <a href="{{ _target }}" rel="noopener noreferrer nofollow" target="_blank" class="nowo-short-link-target">{{ _target }}</a>
+                                {%- else -%}
+                                    <span class="nowo-short-link-target">{{ _target }}</span>
+                                {%- endif -%}
+                            {%- elseif item.badge -%}
+                                <span class="{{ nowo_ui_class('badge_' ~ item.badge, _b) }}">{{ item.value|nowo_ui_trans }}</span>
+                            {%- else -%}
+                                {{ item.value|nowo_ui_trans }}
+                            {%- endif -%}
+                        </dd>
+                    </div>
+                {% endfor %}
+            </dl>
+        </div>
+    </section>
+{% endblock %}
+
+{% block nowo_ui_show_after %}
+    {% set _b = page.bundle %}
+    {% set _d = 'NowoShortLinkBundle' %}
+    {% block nowo_short_link_stats_range %}
+        <section class="{{ nowo_ui_class('section', _b) }} {{ nowo_ui_class('card', _b) }}" id="short-link-range" data-nowo-ui-region="section">
+            <header class="{{ nowo_ui_class('card_header', _b) }}"><h2 class="{{ nowo_ui_class('card_title', _b) }}">{{ 'ui.stats.range_title'|trans({}, _d) }}</h2></header>
+            <div class="{{ nowo_ui_class('card_body', _b) }}">
+                <nav class="{{ nowo_ui_class('toolbar', _b) }}" aria-label="{{ 'ui.stats.presets'|trans({}, _d) }}">
+                    {% for preset in presets %}
+                        <a class="{{ nowo_ui_class(preset.active ? 'btn_primary' : 'btn_secondary', _b) }}" href="{{ preset.href }}"{% if preset.active %} aria-current="page"{% endif %}>{{ 'ui.stats.last_days'|trans({'%days%': preset.days}, _d) }}</a>
+                    {% endfor %}
+                </nav>
+                {{ form_start(range_form, {attr: {class: nowo_ui_class('form', _b), 'data-testid': 'short-link-range-form'}}) }}
+                    {% for child in range_form %}
+                        {% if not child.rendered %}
+                            {{ form_row(child) }}
+                        {% endif %}
+                    {% endfor %}
+                    <div class="{{ nowo_ui_class('form_actions', _b) }}">
+                        <button type="submit" class="{{ nowo_ui_class('btn_secondary', _b) }}">{{ 'ui.stats.apply'|trans({}, _d) }}</button>
+                    </div>
+                {{ form_end(range_form) }}
+            </div>
+        </section>
+    {% endblock %}
+    <section class="{{ nowo_ui_class('section', _b) }} {{ nowo_ui_class('card', _b) }}" id="short-link-daily" data-nowo-ui-region="section">
+        <header class="{{ nowo_ui_class('card_header', _b) }}"><h2 class="{{ nowo_ui_class('card_title', _b) }}">{{ 'ui.stats.daily'|trans({}, _d) }}</h2></header>
+        <div class="{{ nowo_ui_class('card_body', _b) }}">
+            {% block nowo_short_link_stats_chart %}
+                <figure class="nowo-short-link-chart" aria-hidden="true">
+                    <svg class="nowo-short-link-chart__svg" viewBox="0 0 {{ chart.width }} {{ constant('Nowo\\ShortLinkBundle\\Presentation\\View\\DailyChart::HEIGHT') }}" width="100%" height="160" preserveAspectRatio="none" focusable="false">
+                        {% for bar in chart.bars %}
+                            {% if bar.height > 0 %}<rect x="{{ bar.x }}" y="{{ bar.y }}" width="{{ constant('Nowo\\ShortLinkBundle\\Presentation\\View\\DailyChart::BAR') }}" height="{{ bar.height }}" fill="currentColor"><title>{{ bar.day }}: {{ bar.clicks }}</title></rect>{% endif %}
+                            {% if bar.machineHeight > 0 %}<rect x="{{ bar.x }}" y="{{ bar.machineY }}" width="{{ constant('Nowo\\ShortLinkBundle\\Presentation\\View\\DailyChart::BAR') }}" height="{{ bar.machineHeight }}" fill="currentColor" fill-opacity="0.35"><title>{{ bar.day }}: {{ bar.machine }}</title></rect>{% endif %}
+                        {% endfor %}
+                    </svg>
+                    <figcaption class="{{ nowo_ui_class('muted', _b) }}">{{ 'ui.stats.chart_caption'|trans({'%max%': chart.max}, _d) }}</figcaption>
+                </figure>
+            {% endblock %}
+            {% block nowo_short_link_stats_daily %}
+                {{ include(nowo_ui_partial('table', _b), {table: daily_table, bundle: _b}, false) }}
+            {% endblock %}
+        </div>
+    </section>
+    {% block nowo_short_link_stats_breakdowns %}
+        {% for dimension, table in breakdowns %}
+            <section class="{{ nowo_ui_class('section', _b) }} {{ nowo_ui_class('card', _b) }}" id="short-link-{{ dimension }}" data-nowo-ui-region="section">
+                <div class="{{ nowo_ui_class('card_body', _b) }}">
+                    {% if table.rows is empty %}
+                        <p class="{{ nowo_ui_class('muted', _b) }}">{{ table.caption|nowo_ui_trans }}: {{ 'ui.stats.none'|trans({}, _d) }}</p>
+                    {% else %}
+                        {% embed nowo_ui_partial('table', bundle) with {table: table, bundle: _b, dimension: dimension} only %}
+                            {% block nowo_ui_table_row %}
+                                {%- set _value = row.value -%}
+                                <td class="{{ nowo_ui_class('table_cell', bundle) }} nowo-ui-cell--start">
+                                    {%- if _value == '' -%}
+                                        <span class="{{ nowo_ui_class('muted', bundle) }}">{{ 'ui.stats.unknown'|trans({}, 'NowoShortLinkBundle') }}</span>
+                                    {%- elseif _value == '~other' -%}
+                                        <span class="{{ nowo_ui_class('muted', bundle) }}">{{ 'ui.stats.other'|trans({}, 'NowoShortLinkBundle') }}</span>
+                                    {%- elseif dimension == 'ua' -%}
+                                        {{ ('ui.ua.' ~ _value)|trans({}, 'NowoShortLinkBundle') }}
+                                    {%- else -%}
+                                        {{ _value }}
+                                    {%- endif -%}
+                                </td>
+                                <td class="{{ nowo_ui_class('table_cell', bundle) }} nowo-ui-cell--end">{{ row.clicks }}</td>
+                                <td class="{{ nowo_ui_class('table_cell', bundle) }} nowo-ui-cell--end">{{ row.machineClicks }}</td>
+                            {% endblock %}
+                        {% endembed %}
+                    {% endif %}
+                </div>
+            </section>
+        {% endfor %}
+    {% endblock %}
+{% endblock %}

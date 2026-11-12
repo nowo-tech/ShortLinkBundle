@@ -1,0 +1,58 @@
+{#
+  Short links list (contract §11, REQ-UI-003): UiKit list scaffold. Variables: page (Nowo\UiKitBundle\View\ListPage;
+  rows: Presentation\View\ShortLinkRow: link, clicks, machine, stats, edit), next_href / first_href (keyset pages, null when none).
+  Header action (create), filters (search, state), table frame, row actions (statistics; edit, disable / enable,
+  delete behind the UiKit confirm dialog with Manage), empty state and confirm dialogs come from the scaffold; this
+  template fills the row cells (nowo_ui_list_row) and the keyset navigation (nowo_short_link_pager, inside
+  nowo_ui_list_after). Values are printed escaped; the target is shown as its host, the full URL as the title.
+
+  Override: a template that extends '@!NowoShortLink/ui/list.html.twig' and overrides one of these blocks. Restyle
+  through nowo_ui_kit.theme (slots), never here.
+#}
+{% extends '@NowoUiKit/page/list.html.twig' %}
+
+{% block nowo_ui_list_row %}
+    {%- set _b = page.bundle -%}
+    {%- set _cell = nowo_ui_class('table_cell', _b) -%}
+    {%- set _link = row.link -%}
+    {%- set _state = _link.state.value -%}
+    {%- set _d = 'NowoShortLinkBundle' -%}
+    <td class="{{ _cell }} nowo-ui-cell--start" data-label="{{ 'ui.column.code'|trans({}, _d) }}" data-nowo-ui-phone="primary">
+        <a href="{{ row.stats }}"><code class="{{ nowo_ui_class('code', _b) }} nowo-short-link-code">{{ _link.code.value }}</code></a>
+        {% block nowo_short_link_copy %}
+            <button type="button" class="{{ nowo_ui_class('btn_link', _b) }} nowo-short-link-copy" data-nowo-ui-clipboard data-nowo-ui-clipboard-text="{{ _link.shortUrl }}" data-nowo-ui-clipboard-label="{{ 'ui.action.copy'|trans({}, _d) }}" data-nowo-ui-clipboard-done-label="{{ 'ui.action.copied'|trans({}, _d) }}" aria-label="{{ 'ui.action.copy_url'|trans({'%code%': _link.code.value}, _d) }}">{{ 'ui.action.copy'|trans({}, _d) }}</button>
+        {% endblock %}
+    </td>
+    <td class="{{ _cell }}{{ _link.title is null ? ' ' ~ nowo_ui_class('table_cell_muted', _b) }} nowo-ui-cell--start" data-label="{{ 'ui.column.title'|trans({}, _d) }}" data-nowo-ui-priority="2">
+        {{- _link.title is null ? '—' : _link.title.value -}}
+    </td>
+    <td class="{{ _cell }} nowo-ui-cell--start nowo-short-link-target" data-label="{{ 'ui.column.target'|trans({}, _d) }}" title="{{ _link.target.toString }}">
+        {{- _link.target.host -}}
+    </td>
+    <td class="{{ _cell }} nowo-ui-cell--start" data-label="{{ 'ui.column.kind'|trans({}, _d) }}" data-nowo-ui-priority="3">
+        <span class="{{ nowo_ui_class('badge_neutral', _b) }}">{{ ('ui.kind.' ~ _link.kind.value)|trans({}, _d) }}</span>
+    </td>
+    <td class="{{ _cell }} nowo-ui-cell--start" data-label="{{ 'ui.column.state'|trans({}, _d) }}">
+        <span class="{{ nowo_ui_class(_state == 'active' ? 'badge_success' : (_state == 'disabled' ? 'badge_warning' : 'badge_neutral'), _b) }}" data-testid="short-link-state-{{ _link.code.value }}">{{ ('ui.state.' ~ _state)|trans({}, _d) }}</span>
+    </td>
+    <td class="{{ _cell }}{{ _link.expiry is null ? ' ' ~ nowo_ui_class('table_cell_muted', _b) }} nowo-ui-cell--start" data-label="{{ 'ui.column.expires'|trans({}, _d) }}" data-nowo-ui-priority="3">
+        {%- if _link.expiry is null -%}—{%- else -%}<time datetime="{{ _link.expiry.at|date('c', 'UTC') }}">{{ _link.expiry.at|date('Y-m-d H:i', 'UTC') }}</time>{%- endif -%}
+    </td>
+    <td class="{{ _cell }} nowo-ui-cell--end" data-label="{{ 'ui.column.clicks'|trans({}, _d) }}" title="{{ 'ui.list.clicks_hint'|trans({'%machine%': row.machine}, _d) }}">
+        {{- row.clicks -}}
+    </td>
+    <td class="{{ _cell }} nowo-ui-cell--start" data-label="{{ 'ui.column.created'|trans({}, _d) }}" data-nowo-ui-priority="2">
+        <time datetime="{{ _link.createdAt|date('c', 'UTC') }}">{{ _link.createdAt|date('Y-m-d', 'UTC') }}</time>
+    </td>
+{% endblock %}
+
+{% block nowo_ui_list_after %}
+    {% block nowo_short_link_pager %}
+        {% if first_href|default(null) or next_href|default(null) %}
+            <nav class="{{ nowo_ui_class('toolbar', page.bundle) }} nowo-short-link-pager" aria-label="{{ 'ui.list.pages'|trans({}, 'NowoShortLinkBundle') }}">
+                {% if first_href|default(null) %}<a class="{{ nowo_ui_class('btn_secondary', page.bundle) }}" href="{{ first_href }}" data-testid="short-link-first">{{ 'ui.list.first_page'|trans({}, 'NowoShortLinkBundle') }}</a>{% endif %}
+                {% if next_href|default(null) %}<a class="{{ nowo_ui_class('btn_secondary', page.bundle) }}" href="{{ next_href }}" rel="next" data-testid="short-link-next">{{ 'ui.list.next_page'|trans({}, 'NowoShortLinkBundle') }}</a>{% endif %}
+            </nav>
+        {% endif %}
+    {% endblock %}
+{% endblock %}

@@ -220,12 +220,66 @@ final class StatsInfrastructureTest extends TestCase
         $store->disables = 0;
         $tester          = $run([], 5);
         self::assertSame(1, $tester->getStatusCode());
-        self::assertStringContainsString('Aborted: 3 of 10 checked targets could not be resolved (DNS outage?). Disabled 1.', $tester->getDisplay());
-        self::assertSame(1, $store->disables, 'the non-DNS refusals of the batch are applied before aborting');
+        self::assertStringContainsString('Aborted: 3 of 5 checked targets could not be resolved (DNS outage?). Disabled 1.', $tester->getDisplay(), 'evaluated per link once the sample is reached: the run stops at the fifth link, not at the end of the batch');
+        self::assertSame(1, $store->disables, 'the non-DNS refusals found before the abort are applied first');
 
         $guard->answers = ['h1.example' => TargetRefusal::Unresolvable];
         self::assertSame(1, $run([], 0, 0)->getStatusCode(), 'percent 0 with no minimum sample aborts on any unresolvable target');
         self::assertSame(0, $run([], 20, 0)->getStatusCode(), 'percent 0 waits for the minimum sample');
+    }
+
+    public function testAResolverOutageStopsTheRecheckAtTheMinimumSampleNotAtTheEndOfTheBatch(): void
+    {
+        $now   = new DateTimeImmutable('2026-11-12 10:00:00');
+        $links = [];
+        for ($i = 1; $i <= 100; ++$i) {
+            $links[] = new StoredLink(ShortLinkId::fromString(sprintf('0190a6d0-0000-7000-8000-%012d', $i)), TenantKey::default(), ShortCode::random('aB3xY' . sprintf('%03d', $i)), TargetUrl::fromString('https://h' . $i . '.example/'), null, LinkKind::manual(), null, null, true, null, null, $now, $now, null, null, null);
+        }
+        $store = new class($links) extends ScriptedStore {
+            /** @var list<string> */
+            public array $disabled = [];
+
+            /** @param list<StoredLink> $links */
+            public function __construct(private readonly array $links)
+            {
+                parent::__construct();
+            }
+
+            public function activeAfter(?string $afterId, int $limit): ActiveBatch
+            {
+                return $afterId === null ? new ActiveBatch($this->links, '0190a6d0-0000-7000-8000-000000000100', 100) : new ActiveBatch([], null, 0);
+            }
+
+            public function disableIfUnchanged(StoredLink $checked, string $reason, DateTimeImmutable $now): bool
+            {
+                $this->disabled[] = $checked->target->host();
+
+                return true;
+            }
+        };
+        $guard = new class implements TargetGuardInterface {
+            public int $checks = 0;
+
+            public function check(TargetUrl $target, GuardStage $stage): TargetVerdict
+            {
+                ++$this->checks;
+
+                return TargetVerdict::refuse($target->host() === 'h1.example' ? TargetRefusal::Denylisted : TargetRefusal::Unresolvable);
+            }
+        };
+        $events = new class implements EventDispatcherInterface {
+            public function dispatch(object $event): object
+            {
+                return $event;
+            }
+        };
+        $tester = new CommandTester(new RecheckCommand($store, $guard, $events, null, 20, new MemoryLogger(), 20));
+        $tester->execute(['--batch' => '100']);
+
+        self::assertSame(1, $tester->getStatusCode());
+        self::assertSame(20, $guard->checks, 'the outage is detected at the minimum sample, the other 80 targets are not resolved');
+        self::assertStringContainsString('Aborted: 19 of 20 checked targets could not be resolved (DNS outage?). Disabled 1.', $tester->getDisplay());
+        self::assertSame(['h1.example'], $store->disabled, 'the denylisted target found before the abort is disabled');
     }
 
     public function testTheRollupIsSerialisedWithSymfonyLock(): void
@@ -244,7 +298,7 @@ final class StatsInfrastructureTest extends TestCase
     {
         $connection = DriverManager::getConnection(['driver' => 'pdo_sqlite', 'memory' => true]);
         $schema     = new Schema();
-        (new ClickTablesSchemaListener())->addTables($schema, false);
+        (new ClickTablesSchemaListener())->addTables($schema, null);
         foreach ($schema->toSql($connection->getDatabasePlatform()) as $sql) {
             $connection->executeStatement($sql);
         }
@@ -298,7 +352,7 @@ final class StatsInfrastructureTest extends TestCase
         self::assertNotNull($links->fetchOne('SELECT deleted_at FROM nowo_short_link'));
 
         $schema = new Schema();
-        (new ClickTablesSchemaListener())->addTables($schema, false);
+        (new ClickTablesSchemaListener())->addTables($schema, null);
         foreach ($schema->toSql($clicks->getDatabasePlatform()) as $sql) {
             $clicks->executeStatement($sql);
         }

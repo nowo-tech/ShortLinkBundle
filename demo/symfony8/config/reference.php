@@ -1363,6 +1363,7 @@ use Symfony\Component\Config\Loader\ParamConfigurator as Param;
  *         rate_limit?: array{
  *             enabled?: bool|Param, // Default: true
  *             cache_pool?: scalar|Param|null, // Fast shared pool (Redis / APCu); a database or filesystem pool is unsuitable (contract §7.4) // Default: "cache.app"
+ *             ipv6_prefix?: int|Param, // IPv6 clients are limited per network of this many bits (IPv4 per address) // Default: 64
  *             misses?: array{
  *                 limit?: int|Param, // Default: 20
  *                 interval?: scalar|Param|null, // Default: "1 minute"
@@ -1381,10 +1382,18 @@ use Symfony\Component\Config\Loader\ParamConfigurator as Param;
  *         blocklist?: bool|Param, // Generated codes skip offensive substrings (Q-O9) // Default: true
  *         max_attempts?: int|Param, // Collisions before the length grows by one // Default: 5
  *         quarantine?: scalar|Param|null, // Deleted codes stay taken for this long (Q-O7); null = forever // Default: "P365D"
+ *         custom_code_rate_limit?: array{ // Per-person limit on custom-code lookups (audits L7 / NY-S4: no enumeration through the form), per tenant + actor, stored in redirect.rate_limit.cache_pool
+ *             enabled?: bool|Param, // Default: true
+ *             limit?: int|Param, // Default: 10
+ *             interval?: scalar|Param|null, // Default: "1 minute"
+ *             limiter?: scalar|Param|null, // CustomCodeLimiterInterface service (e.g. keyed on the session of callers without an actor); null = the rate limiter above // Default: null
+ *         },
  *     },
  *     target?: array{
  *         max_length?: int|Param, // Default: 2048
  *         guard?: scalar|Param|null, // auto (basic + OutboundUrlGuard), basic (literal checks only, warned) or a TargetGuardInterface service id // Default: "auto"
+ *         recheck_max_unresolvable_percent?: int|Param, // The recheck aborts when more than this share of the checked targets cannot be resolved (DNS outage); 0 = abort on any unresolvable target, but only once recheck_min_sample links have been checked // Default: 20
+ *         recheck_min_sample?: int|Param, // The recheck abort threshold applies once at least this many links were checked // Default: 20
  *         save_resolve_dns?: bool|Param, // DNS check on create / update / enable / recheck (never on the redirect) // Default: true
  *         self_paths?: list<scalar|Param|null>,
  *         own_hosts?: list<scalar|Param|null>,
@@ -1404,6 +1413,7 @@ use Symfony\Component\Config\Loader\ParamConfigurator as Param;
  *         },
  *         ipv4_prefix?: int|Param, // Default: 24
  *         ipv6_prefix?: int|Param, // Default: 48
+ *         country_resolver?: scalar|Param|null, // ClickCountryResolverInterface service (local lookup only); null = no country // Default: null
  *         honour_gpc?: bool|Param, // Sec-GPC: 1 → the click is counted, nothing else stored (Q-O10) // Default: true
  *         retention?: scalar|Param|null, // Raw click rows; null = keep (not recommended) // Default: "P90D"
  *         rollup?: array{
@@ -1423,7 +1433,7 @@ use Symfony\Component\Config\Loader\ParamConfigurator as Param;
  *     },
  *     quota?: array{
  *         provider?: scalar|Param|null, // ShortLinkQuotaInterface service; null = default_limit // Default: null
- *         default_limit?: int|Param, // Max non-deleted links per tenant and counted kind; null = unlimited // Default: null
+ *         default_limit?: scalar|Param|null, // Max non-deleted links per tenant and counted kind; null = unlimited // Default: null
  *         counted_kinds?: list<scalar|Param|null>,
  *     },
  *     kinds?: array<string, array{ // Default: {"manual":{"allow_custom_code":true,"show_in_ui":true,"counted":true},"email":{"allow_custom_code":false,"show_in_ui":false,"counted":false}}
@@ -1438,6 +1448,7 @@ use Symfony\Component\Config\Loader\ParamConfigurator as Param;
  *         page_size?: int|Param, // Default: 25
  *         stats_default_days?: int|Param, // Default: 30
  *         csv_max_days?: int|Param, // Default: 366
+ *         layout_template?: scalar|Param|null, // Layout of the UI pages (REQ-UI-003); null = the UiKit admin layout (nowo_ui_kit.layouts.admin) // Default: null
  *     },
  *     doctrine?: array{
  *         entity_manager?: scalar|Param|null, // null = the default entity manager; a dedicated one is recommended for DDD hosts // Default: null

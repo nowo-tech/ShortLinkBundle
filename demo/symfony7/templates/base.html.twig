@@ -9,8 +9,8 @@
     <header class="nowo-ui-header" data-testid="demo-masthead">
         <a class="nowo-ui-brand" href="{{ path('demo_home') }}">Short Link Bundle · Symfony 7</a>
         <nav class="nowo-ui-menu" aria-label="Demo">
-            {% for item in [{route: 'demo_home', label: 'Overview'}] %}
-                <a class="nowo-ui-link" href="{{ path(item.route) }}"{% if _route == item.route %} aria-current="page"{% endif %}>{{ item.label }}</a>
+            {% for item in [{route: 'demo_home', label: 'Overview'}, {route: 'nowo_short_link_index', label: 'Short links'}] %}
+                <a class="nowo-ui-link" href="{{ path(item.route) }}"{% if _route == item.route or (item.route != 'demo_home' and _route starts with 'nowo_short_link_') %} aria-current="page"{% endif %} data-testid="demo-nav-{{ item.route }}">{{ item.label }}</a>
             {% endfor %}
         </nav>
     </header>

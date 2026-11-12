@@ -13,6 +13,7 @@ use Symfony\Component\Config\Definition\ConfigurationInterface;
 use Symfony\Component\Config\Definition\Exception\InvalidConfigurationException;
 
 use function is_array;
+use function is_int;
 use function is_string;
 use function parse_url;
 use function preg_match;
@@ -73,7 +74,12 @@ final class Configuration implements ConfigurationInterface
                     ->addDefaultsIfNotSet()
                     ->children()
                         ->append(ConfigNodes::service('provider', 'ShortLinkQuotaInterface service; null = default_limit'))
-                        ->integerNode('default_limit')->defaultNull()->min(0)->info('Max non-deleted links per tenant and counted kind; null = unlimited')->end()
+                        ->scalarNode('default_limit')->defaultNull()->info('Max non-deleted links per tenant and counted kind; null = unlimited')
+                            ->validate()
+                                ->ifTrue(static fn (mixed $value): bool => $value !== null && (!is_int($value) || $value < 0))
+                                ->thenInvalid('Expected null (unlimited) or an integer >= 0, got %s.')
+                            ->end()
+                        ->end()
                         ->arrayNode('counted_kinds')
                             ->info('Kinds the quota applies to (e-mail links are never counted, Beacon Q-B10)')
                             ->defaultValue([self::KIND_MANUAL])
@@ -127,6 +133,10 @@ final class Configuration implements ConfigurationInterface
      */
     public static function retentionProblem(?string $retention, int $lagDays, ?string $rollupRetention): ?string
     {
+        // An env placeholder (or the empty value Symfony validates it with) is checked at runtime by the commands.
+        if (($retention !== null && !ConfigNodes::isDuration($retention)) || ($rollupRetention !== null && !ConfigNodes::isDuration($rollupRetention))) {
+            return null;
+        }
         $raw = $retention === null ? null : self::seconds($retention);
         if ($raw !== null && $raw < ($lagDays + 1) * 86400) {
             return 'click_log.retention must keep raw clicks at least click_log.rollup.lag_days + 1 days, or a recomputed day loses its clicks.';
@@ -252,6 +262,16 @@ final class Configuration implements ConfigurationInterface
                 ->booleanNode('blocklist')->defaultTrue()->info('Generated codes skip offensive substrings (Q-O9)')->end()
                 ->integerNode('max_attempts')->defaultValue(5)->min(1)->max(20)->info('Collisions before the length grows by one')->end()
                 ->append(ConfigNodes::duration('quarantine', 'P365D', 'Deleted codes stay taken for this long (Q-O7); null = forever'))
+                ->arrayNode('custom_code_rate_limit')
+                    ->info('Per-person limit on custom-code lookups (audits L7 / NY-S4: no enumeration through the form), per tenant + actor, stored in redirect.rate_limit.cache_pool')
+                    ->addDefaultsIfNotSet()
+                    ->children()
+                        ->booleanNode('enabled')->defaultTrue()->end()
+                        ->integerNode('limit')->defaultValue(10)->min(1)->max(100000)->end()
+                        ->append(ConfigNodes::interval('interval', '1 minute'))
+                        ->append(ConfigNodes::service('limiter', 'CustomCodeLimiterInterface service (e.g. keyed on the session of callers without an actor); null = the rate limiter above'))
+                    ->end()
+                ->end()
             ->end();
 
         return $node;
@@ -267,7 +287,7 @@ final class Configuration implements ConfigurationInterface
                     ->info('auto (basic + OutboundUrlGuard), basic (literal checks only, warned) or a TargetGuardInterface service id')
                 ->end()
                 ->integerNode('recheck_max_unresolvable_percent')->defaultValue(20)->min(0)->max(100)
-                    ->info('The recheck aborts when more than this share of the checked targets cannot be resolved (DNS outage); 0 = abort on any')
+                    ->info('The recheck aborts when more than this share of the checked targets cannot be resolved (DNS outage); 0 = abort on any unresolvable target, but only once recheck_min_sample links have been checked')
                 ->end()
                 ->integerNode('recheck_min_sample')->defaultValue(20)->min(0)->max(100000)
                     ->info('The recheck abort threshold applies once at least this many links were checked')
@@ -278,7 +298,7 @@ final class Configuration implements ConfigurationInterface
                     ->defaultValue(['/s/'])
                     ->scalarPrototype()
                         ->validate()
-                            ->ifTrue(static fn (mixed $value): bool => !is_string($value) || !str_starts_with($value, '/'))
+                            ->ifTrue(static fn (mixed $value): bool => $value !== '' && (!is_string($value) || !str_starts_with($value, '/')))
                             ->thenInvalid('Expected an absolute path such as "/s/", got %s.')
                         ->end()
                     ->end()
@@ -379,13 +399,16 @@ final class Configuration implements ConfigurationInterface
                 ->scalarNode('tenant_route_parameter')->defaultNull()
                     ->info('Route parameter of the host prefix kept when the UI builds its links (Beacon: "uuid" in /organizations/{uuid}/short-links)')
                     ->validate()
-                        ->ifTrue(static fn (mixed $value): bool => $value !== null && (!is_string($value) || preg_match('/^[A-Za-z_][A-Za-z0-9_]{0,63}$/D', $value) !== 1))
+                        ->ifTrue(static fn (mixed $value): bool => $value !== null && $value !== '' && (!is_string($value) || preg_match('/^[A-Za-z_][A-Za-z0-9_]{0,63}$/D', $value) !== 1))
                         ->thenInvalid('Expected a route parameter name such as "uuid", got %s.')
                     ->end()
                 ->end()
                 ->integerNode('page_size')->defaultValue(25)->min(10)->max(100)->end()
                 ->integerNode('stats_default_days')->defaultValue(30)->min(1)->max(366)->end()
                 ->integerNode('csv_max_days')->defaultValue(366)->min(1)->max(366)->end()
+                ->scalarNode('layout_template')->defaultNull()
+                    ->info('Layout of the UI pages (REQ-UI-003); null = the UiKit admin layout (nowo_ui_kit.layouts.admin)')
+                ->end()
             ->end();
 
         return $node;

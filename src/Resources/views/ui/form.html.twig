@@ -1,0 +1,32 @@
+{#
+  Create / edit page (contract §11, REQ-UI-003): UiKit form scaffold. Variables: page (Nowo\UiKitBundle\View\FormPage;
+  the header intro shows the quota "12 of 50 links" when the plan has a limit), quota (Application\QuotaUsage or null).
+  The form body is the scaffold's REQ-TWIG-003 child loop (FormKit profile short_link), after the errors of the whole
+  form (nowo_short_link_form_errors: plan limit reached meanwhile, CSRF). Over the quota the page has no
+  form (body-only mode): nowo_short_link_quota_full prints the message and a disabled button.
+
+  Override: a template that extends '@!NowoShortLink/ui/form.html.twig' and overrides nowo_ui_form_body,
+  nowo_ui_form_aside or nowo_short_link_quota_full.
+#}
+{% extends '@NowoUiKit/page/form.html.twig' %}
+
+{% block nowo_ui_form_body %}
+    {% if page.form is null %}
+        {% block nowo_short_link_quota_full %}
+            <div class="{{ nowo_ui_class('flash_warning', page.bundle) }}" role="status" data-testid="short-link-quota-full">
+                {{ 'ui.quota.full'|trans({'%limit%': quota.limit|default(0)}, 'NowoShortLinkBundle') }}
+            </div>
+            <div class="{{ nowo_ui_class('form_actions', page.bundle) }}">
+                <button type="button" class="{{ nowo_ui_class('btn_primary', page.bundle) }}" disabled>{{ 'ui.action.create'|trans({}, 'NowoShortLinkBundle') }}</button>
+            </div>
+        {% endblock %}
+    {% else %}
+        {#- errors of the whole form (plan limit, CSRF, an unexpected refusal): the child loop prints field errors only -#}
+        {% block nowo_short_link_form_errors %}
+            {% if page.form.vars.errors|length > 0 %}
+                <div class="{{ nowo_ui_class('flash_error', page.bundle) }}" role="alert" data-testid="short-link-form-errors">{{ form_errors(page.form) }}</div>
+            {% endif %}
+        {% endblock %}
+        {{ parent() }}
+    {% endif %}
+{% endblock %}
