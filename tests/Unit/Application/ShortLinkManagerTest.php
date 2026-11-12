@@ -4,8 +4,6 @@ declare(strict_types=1);
 
 namespace Nowo\ShortLinkBundle\Tests\Unit\Application;
 
-use Closure;
-use DateTimeImmutable;
 use Nowo\ShortLinkBundle\Application\CodeGenerator;
 use Nowo\ShortLinkBundle\Application\Default\ConfigDenylist;
 use Nowo\ShortLinkBundle\Application\Default\ConfigQuota;
@@ -14,12 +12,8 @@ use Nowo\ShortLinkBundle\Application\Guard\DenylistGuard;
 use Nowo\ShortLinkBundle\Application\ManagerSettings;
 use Nowo\ShortLinkBundle\Application\ShortLinkManager;
 use Nowo\ShortLinkBundle\Application\ShortUrlBuilderInterface;
-use Nowo\ShortLinkBundle\Application\Store\ShortLinkStoreInterface;
-use Nowo\ShortLinkBundle\Application\Store\StoredLink;
 use Nowo\ShortLinkBundle\Domain\Model\ActorRef;
 use Nowo\ShortLinkBundle\Domain\Model\CreateShortLink;
-use Nowo\ShortLinkBundle\Domain\Model\LinkKind;
-use Nowo\ShortLinkBundle\Domain\Model\ResolvedLink;
 use Nowo\ShortLinkBundle\Domain\Model\ShortCode;
 use Nowo\ShortLinkBundle\Domain\Model\ShortLinkId;
 use Nowo\ShortLinkBundle\Domain\Model\ShortLinkListQuery;
@@ -29,6 +23,7 @@ use Nowo\ShortLinkBundle\Domain\Port\ShortLinkAccessInterface;
 use Nowo\ShortLinkBundle\Domain\Port\ShortLinkIdGeneratorInterface;
 use Nowo\ShortLinkBundle\Infrastructure\Lock\NoTenantLock;
 use Nowo\ShortLinkBundle\Tests\Fixtures\MemoryLogger;
+use Nowo\ShortLinkBundle\Tests\Fixtures\ScriptedStore;
 use PHPUnit\Framework\TestCase;
 use Psr\EventDispatcher\EventDispatcherInterface;
 
@@ -99,75 +94,5 @@ final class ShortLinkManagerTest extends TestCase
         };
 
         return new ShortLinkManager($store, new CodeGenerator(new ConfigReservedCodes(), null), new ConfigReservedCodes(), new DenylistGuard(new ConfigDenylist()), $deny, new ConfigQuota(null), new NoTenantLock(), $ids, $urls, $events, $settings, null, $logger);
-    }
-}
-
-/**
- * Store whose first N code probes collide.
- */
-class ScriptedStore implements ShortLinkStoreInterface
-{
-    public int $probes = 0;
-
-    public function __construct(private readonly int $collisions = 0)
-    {
-    }
-
-    public function transactional(Closure $work, ?Closure $afterCommit = null): mixed
-    {
-        $result = $work();
-        if ($afterCommit instanceof Closure) {
-            $afterCommit($result);
-        }
-
-        return $result;
-    }
-
-    public function inTransaction(): bool
-    {
-        return false;
-    }
-
-    public function codeExists(string $code): bool
-    {
-        return ++$this->probes <= $this->collisions;
-    }
-
-    public function insert(StoredLink $link): void
-    {
-    }
-
-    public function update(StoredLink $link): void
-    {
-    }
-
-    public function findActiveByCode(string $code, DateTimeImmutable $now): ?ResolvedLink
-    {
-        return null;
-    }
-
-    public function activeAfter(?ShortLinkId $after, int $limit): array
-    {
-        return [];
-    }
-
-    public function find(TenantKey $tenant, ShortLinkId $id): ?StoredLink
-    {
-        return null;
-    }
-
-    public function findBySource(TenantKey $tenant, LinkKind $kind, string $ref, ?int $position): ?StoredLink
-    {
-        return null;
-    }
-
-    public function countLive(TenantKey $tenant, LinkKind $kind): int
-    {
-        return 0;
-    }
-
-    public function list(TenantKey $tenant, ShortLinkListQuery $query, array $kinds, DateTimeImmutable $now): array
-    {
-        return [];
     }
 }

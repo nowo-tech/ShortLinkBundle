@@ -34,7 +34,7 @@ use Nowo\ShortLinkBundle\Infrastructure\Http\ClickTerminateListener;
 use Nowo\ShortLinkBundle\Infrastructure\Http\RedirectController;
 use Nowo\ShortLinkBundle\Infrastructure\Persistence\DbalClickStore;
 use Nowo\ShortLinkBundle\Tests\Fixtures\MemoryLogger;
-use Nowo\ShortLinkBundle\Tests\Unit\Application\ScriptedStore;
+use Nowo\ShortLinkBundle\Tests\Fixtures\ScriptedStore;
 use PHPUnit\Framework\TestCase;
 use Psr\EventDispatcher\EventDispatcherInterface;
 use Psr\Log\AbstractLogger;

@@ -12,6 +12,8 @@ use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
+use Symfony\Component\Lock\LockFactory;
+use Symfony\Component\Lock\SharedLockInterface;
 
 use function count;
 use function is_numeric;
@@ -20,7 +22,8 @@ use function sprintf;
 
 /**
  * `nowo:short-link:rollup` (contract §5.3): rolls the raw clicks into the daily table. Run it daily (Beacon: in its
- * maintenance schedule); idempotent.
+ * maintenance schedule); idempotent. With symfony/lock (a `lock.factory`), concurrent runs are serialised; without it a
+ * day written twice at once is skipped instead of crashing (the next run recomputes it).
  */
 #[AsCommand(name: 'nowo:short-link:rollup', description: 'Roll raw short-link clicks into daily aggregates')]
 final class RollupCommand extends Command
@@ -34,6 +37,8 @@ final class RollupCommand extends Command
         private readonly int $lagDays = 2,
         private readonly int $topN = 50,
         private readonly ?ClockInterface $clock = null,
+        private readonly ?string $retention = 'P90D',
+        private readonly ?LockFactory $locks = null,
     ) {
         parent::__construct();
     }
@@ -51,8 +56,18 @@ final class RollupCommand extends Command
      */
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
-        $max  = $input->getOption('max-days');
-        $days = $this->maintenance->rollup($this->clock?->now() ?? new DateTimeImmutable(), $this->lagDays, $this->topN, is_numeric($max) ? max(1, (int) $max) : 400);
+        $lock = $this->locks?->createLock('nowo_short_link.rollup', 3600.0);
+        if ($lock instanceof SharedLockInterface && !$lock->acquire()) {
+            $output->writeln('Another rollup is running.');
+
+            return Command::SUCCESS;
+        }
+        try {
+            $max  = $input->getOption('max-days');
+            $days = $this->maintenance->rollup($this->clock?->now() ?? new DateTimeImmutable(), $this->lagDays, $this->topN, is_numeric($max) ? max(1, (int) $max) : 400, $this->retention);
+        } finally {
+            $lock?->release();
+        }
         $output->writeln(sprintf('Rolled %d day(s).', count($days)));
 
         return Command::SUCCESS;

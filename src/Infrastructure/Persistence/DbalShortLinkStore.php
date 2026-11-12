@@ -15,6 +15,7 @@ use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\Persistence\ManagerRegistry;
 use LogicException;
+use Nowo\ShortLinkBundle\Application\Store\ActiveBatch;
 use Nowo\ShortLinkBundle\Application\Store\ShortLinkStoreInterface;
 use Nowo\ShortLinkBundle\Application\Store\StoredLink;
 use Nowo\ShortLinkBundle\Domain\Exception\CodeTakenException;
@@ -36,6 +37,7 @@ use Psr\Log\LoggerInterface;
 use Throwable;
 
 use function array_map;
+use function count;
 use function implode;
 use function in_array;
 use function is_array;
@@ -175,12 +177,14 @@ final readonly class DbalShortLinkStore implements ShortLinkStoreInterface
     /**
      * {@inheritDoc}
      */
-    public function activeAfter(?ShortLinkId $after, int $limit): array
+    public function activeAfter(?string $afterId, int $limit): ActiveBatch
     {
-        $sql   = sprintf('SELECT %s FROM %s WHERE active = ? AND deleted_at IS NULL AND id > ? ORDER BY id', self::COLUMNS, $this->table);
-        $rows  = $this->read(static fn (Connection $c): array => $c->fetchAllAssociative($c->getDatabasePlatform()->modifyLimitQuery($sql, $limit), [true, $after->value ?? ''], [ParameterType::BOOLEAN, ParameterType::STRING]));
-        $links = [];
+        $sql    = sprintf('SELECT %s FROM %s WHERE active = ? AND deleted_at IS NULL AND id > ? ORDER BY id', self::COLUMNS, $this->table);
+        $rows   = $this->read(static fn (Connection $c): array => $c->fetchAllAssociative($c->getDatabasePlatform()->modifyLimitQuery($sql, $limit), [true, $afterId ?? ''], [ParameterType::BOOLEAN, ParameterType::STRING]));
+        $links  = [];
+        $cursor = null;
         foreach ($rows as $row) {
+            $cursor = $this->text($row['id']);
             try {
                 $links[] = $this->hydrate($row);
             } catch (Throwable $exception) {
@@ -188,7 +192,31 @@ final readonly class DbalShortLinkStore implements ShortLinkStoreInterface
             }
         }
 
-        return $links;
+        return new ActiveBatch($links, $cursor, count($rows));
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public function disableIfUnchanged(StoredLink $checked, string $reason, DateTimeImmutable $now): bool
+    {
+        $changed = $this->connection()->executeStatement(
+            sprintf('UPDATE %s SET active = ?, disabled_reason = ?, updated_at = ? WHERE id = ? AND tenant_key = ? AND active = ? AND deleted_at IS NULL AND target_url = ?', $this->table),
+            [false, $reason, $this->utc($now), $checked->id->value, $checked->tenant->value, true, $checked->target->toString()],
+            [ParameterType::BOOLEAN, ParameterType::STRING, ParameterType::STRING, ParameterType::STRING, ParameterType::STRING, ParameterType::BOOLEAN, ParameterType::STRING],
+        );
+
+        return $changed === 1;
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public function isLive(ShortLinkId $id, TenantKey $tenant): bool
+    {
+        $tenants = $this->read(fn (Connection $c): array => $c->fetchFirstColumn(sprintf('SELECT tenant_key FROM %s WHERE id = ? AND deleted_at IS NULL', $this->table), [$id->value]));
+
+        return in_array($tenant->value, $tenants, true);
     }
 
     /**

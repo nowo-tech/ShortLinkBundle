@@ -7,15 +7,16 @@ namespace Nowo\ShortLinkBundle\Infrastructure\Console;
 use DateTimeImmutable;
 use DateTimeZone;
 use Nowo\ShortLinkBundle\Application\Store\ShortLinkStoreInterface;
+use Nowo\ShortLinkBundle\Application\Store\StoredLink;
 use Nowo\ShortLinkBundle\Domain\Event\ShortLinkStateChangedEvent;
 use Nowo\ShortLinkBundle\Domain\Event\ShortLinkTargetRefusedEvent;
 use Nowo\ShortLinkBundle\Domain\Model\GuardStage;
-use Nowo\ShortLinkBundle\Domain\Model\ShortLinkId;
 use Nowo\ShortLinkBundle\Domain\Model\ShortLinkState;
 use Nowo\ShortLinkBundle\Domain\Model\TargetRefusal;
 use Nowo\ShortLinkBundle\Domain\Port\TargetGuardInterface;
 use Psr\Clock\ClockInterface;
 use Psr\EventDispatcher\EventDispatcherInterface;
+use Psr\Log\LoggerInterface;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputInterface;
@@ -30,30 +31,37 @@ use function sprintf;
 
 /**
  * `nowo:short-link:recheck` (contract §8, Q-O12): runs the save guard (DNS included when configured) over every active
- * link, in keyset batches; a refused link is disabled with `disabled_reason = recheck_refused`, a
- * {@see ShortLinkStateChangedEvent} and a {@see ShortLinkTargetRefusedEvent} (after commit). Run it daily.
+ * link, in keyset batches. A refused link is disabled with `disabled_reason = recheck_refused` through a narrow update
+ * that only applies while the link is still active, not deleted and on the same target (an edit, a delete or an erasure
+ * during the run wins); the {@see ShortLinkTargetRefusedEvent} and {@see ShortLinkStateChangedEvent} follow after
+ * commit, only when that row changed. DNS failures never disable a link: an unresolvable target is skipped with a
+ * warning, and a batch where more than `target.recheck_max_unresolvable_percent` of the targets are unresolvable aborts
+ * the run (a resolver outage). `--dry-run` reports without writing. Run it daily.
  */
 #[AsCommand(name: 'nowo:short-link:recheck', description: 'Re-check active short-link targets and disable refused ones')]
 final class RecheckCommand extends Command
 {
     /**
-     * Wires the store, the guard and the dispatcher.
+     * @param int $maxUnresolvablePercent abort when more than this share of a batch is unresolvable (0-100)
      */
     public function __construct(
         private readonly ShortLinkStoreInterface $store,
         private readonly TargetGuardInterface $guard,
         private readonly EventDispatcherInterface $events,
         private readonly ?ClockInterface $clock = null,
+        private readonly int $maxUnresolvablePercent = 20,
+        private readonly ?LoggerInterface $logger = null,
     ) {
         parent::__construct();
     }
 
     /**
-     * Declares `--batch`.
+     * Declares `--batch` and `--dry-run`.
      */
     protected function configure(): void
     {
         $this->addOption('batch', null, InputOption::VALUE_REQUIRED, 'Links read per batch (1-1000)', '500');
+        $this->addOption('dry-run', null, InputOption::VALUE_NONE, 'Report the links that would be disabled, change nothing');
     }
 
     /**
@@ -63,37 +71,61 @@ final class RecheckCommand extends Command
     {
         $batch    = $input->getOption('batch');
         $size     = is_numeric($batch) ? max(1, min(1000, (int) $batch)) : 500;
-        $after    = null;
+        $dryRun   = (bool) $input->getOption('dry-run');
+        $cursor   = null;
         $checked  = 0;
         $disabled = 0;
+        $skipped  = 0;
         do {
-            $links = $this->store->activeAfter($after, $size);
-            foreach ($links as $link) {
+            $page         = $this->store->activeAfter($cursor, $size);
+            $cursor       = $page->cursor;
+            $refused      = [];
+            $unresolvable = 0;
+            foreach ($page->links as $link) {
                 ++$checked;
-                $after   = $link->id;
-                $verdict = $this->guard->check($link->target, GuardStage::Recheck);
-                if (!$verdict->refusal instanceof TargetRefusal) {
+                $refusal = $this->guard->check($link->target, GuardStage::Recheck)->refusal;
+                if ($refusal === TargetRefusal::Unresolvable) {
+                    ++$unresolvable;
+                    $this->logger?->warning('nowo_short_link: recheck skipped link {link}: its host could not be resolved.', ['link' => $link->id->value]);
+                } elseif ($refusal instanceof TargetRefusal) {
+                    $refused[] = [$link, $refusal];
+                }
+            }
+            $skipped += $unresolvable;
+            if ($page->links !== [] && $unresolvable * 100 > $this->maxUnresolvablePercent * count($page->links)) {
+                $output->writeln(sprintf('Aborted: %d of %d targets in a batch could not be resolved (DNS outage?). Checked %d link(s), disabled %d.', $unresolvable, count($page->links), $checked, $disabled));
+
+                return Command::FAILURE;
+            }
+            foreach ($refused as [$link, $refusal]) {
+                if ($dryRun) {
+                    $output->writeln(sprintf('Would disable %s (%s).', $link->id->value, $refusal->value));
+                    ++$disabled;
                     continue;
                 }
-                $now     = ($this->clock?->now() ?? new DateTimeImmutable())->setTimezone(new DateTimeZone('UTC'));
-                $updated = $link->withActive(false, ShortLinkStateChangedEvent::REASON_RECHECK_REFUSED, $now, null);
-                $refusal = $verdict->refusal;
-                $this->store->transactional(
-                    // @igor-ignore - Closure passed to one transactional() call and released when it returns.
-                    function () use ($updated): void {
-                        $this->store->update($updated);
-                    },
-                    // @igor-ignore - After-commit work of one transactional() call, never stored.
-                    function () use ($link, $updated, $now, $refusal): void {
-                        $this->events->dispatch(new ShortLinkTargetRefusedEvent($link->tenant, GuardStage::Recheck, $refusal, $link->target->host(), $link->id));
-                        $this->events->dispatch(new ShortLinkStateChangedEvent($link->id, $link->tenant, ShortLinkState::Active, $updated->stateAt($now), ShortLinkStateChangedEvent::REASON_RECHECK_REFUSED, null));
-                    },
-                );
-                ++$disabled;
+                $disabled += $this->disable($link, $refusal) ? 1 : 0;
             }
-        } while (count($links) === $size && $after instanceof ShortLinkId);
-        $output->writeln(sprintf('Checked %d link(s), disabled %d.', $checked, $disabled));
+        } while ($page->rawCount === $size && $cursor !== null);
+        $output->writeln(sprintf('%sChecked %d link(s), disabled %d, skipped %d unresolvable.', $dryRun ? '[dry run] ' : '', $checked, $disabled, $skipped));
 
         return Command::SUCCESS;
+    }
+
+    private function disable(StoredLink $link, TargetRefusal $refusal): bool
+    {
+        $now = ($this->clock?->now() ?? new DateTimeImmutable())->setTimezone(new DateTimeZone('UTC'));
+
+        return (bool) $this->store->transactional(
+            // @igor-ignore - Closure passed to one transactional() call and released when it returns.
+            fn (): bool => $this->store->disableIfUnchanged($link, ShortLinkStateChangedEvent::REASON_RECHECK_REFUSED, $now),
+            // @igor-ignore - After-commit work of one transactional() call, never stored.
+            function (bool $changed) use ($link, $refusal): void {
+                if (!$changed) {
+                    return;
+                }
+                $this->events->dispatch(new ShortLinkTargetRefusedEvent($link->tenant, GuardStage::Recheck, $refusal, $link->target->host(), $link->id));
+                $this->events->dispatch(new ShortLinkStateChangedEvent($link->id, $link->tenant, ShortLinkState::Active, ShortLinkState::Disabled, ShortLinkStateChangedEvent::REASON_RECHECK_REFUSED, null));
+            },
+        );
     }
 }

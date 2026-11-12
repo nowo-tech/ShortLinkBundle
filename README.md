@@ -98,6 +98,7 @@ FrankenPHP worker mode, MySQL, UiKit layout and FormKit forms, Web Profiler, Twi
 - [Architecture](docs/ARCHITECTURE.md)
 - [FrankenPHP worker audit](docs/FRANKENPHP-WORKER-AUDIT.md)
 - [Performance](docs/PERFORMANCE.md)
+- [Privacy](docs/PRIVACY.md)
 - [Demo with FrankenPHP](docs/DEMO-FRANKENPHP.md)
 - [PSR compliance](docs/PSR.md)
 - [GitHub CI](docs/GITHUB_CI.md)

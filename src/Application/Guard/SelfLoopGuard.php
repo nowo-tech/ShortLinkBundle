@@ -28,7 +28,8 @@ use const PHP_URL_HOST;
  * Refuses targets on this application's own hosts under the redirect paths: no redirect chains or loops through
  * `/s/`. Own hosts are `target.own_hosts` plus the host of `public_base_url`; self paths are `target.self_paths` plus
  * `redirect.path_prefix` + `/`. Before the comparison the target path is normalised the way the router matches it:
- * fully percent-decoded (`%73%2F` → `s/`) and dot segments removed (`/x/../s/` → `/s/`).
+ * fully percent-decoded (`%73%2F` → `s/`), empty segments collapsed (`//s/` → `/s/`, as slash-merging proxies do)
+ * and dot segments removed (`/x/../s/` → `/s/`).
  */
 final readonly class SelfLoopGuard implements TargetGuardInterface
 {
@@ -75,12 +76,12 @@ final readonly class SelfLoopGuard implements TargetGuardInterface
                 if ($output === []) {
                     $output[] = '';
                 }
-            } elseif ($segment !== '.') {
+            } elseif ($segment !== '.' && ($segment !== '' || $output === [])) {
                 $output[] = $segment;
             }
         }
         $result = implode('/', $output);
-        if (str_ends_with($decoded, '/..') || str_ends_with($decoded, '/.')) {
+        if ((str_ends_with($decoded, '/') || str_ends_with($decoded, '/..') || str_ends_with($decoded, '/.')) && !str_ends_with($result, '/')) {
             $result .= '/';
         }
 

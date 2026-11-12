@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Nowo\ShortLinkBundle\Application\Click;
 
 use Nowo\ShortLinkBundle\Application\Store\ClickStoreInterface;
+use Nowo\ShortLinkBundle\Application\Store\ShortLinkStoreInterface;
 use Nowo\ShortLinkBundle\Domain\Event\ShortLinkClickedEvent;
 use Nowo\ShortLinkBundle\Domain\Model\CountryCode;
 use Nowo\ShortLinkBundle\Domain\Port\ClickCountryResolverInterface;
@@ -31,6 +32,7 @@ final readonly class ClickRecorder
         private array $store = ['ip_prefix' => true, 'user_agent_family' => true, 'referrer_host' => true, 'country' => true],
         private bool $honourGpc = true,
         private ?LoggerInterface $logger = null,
+        private ?ShortLinkStoreInterface $links = null,
     ) {
     }
 
@@ -39,6 +41,9 @@ final readonly class ClickRecorder
      */
     public function record(ClickPayload $click, #[SensitiveParameter] ?string $clientIp = null): void
     {
+        if (!$this->isLive($click)) {
+            return;
+        }
         $private = $click->gpc && $this->honourGpc;
         $ua      = !$private && $this->store['user_agent_family'] ? $click->uaFamily : null;
         $country = !$private && $this->store['country'] && $clientIp !== null ? $this->country($clientIp) : null;
@@ -62,6 +67,21 @@ final readonly class ClickRecorder
             $this->events->dispatch(new ShortLinkClickedEvent($click->linkId, $click->tenant, $click->kind, $click->sourceRef, $click->clickedAt, $click->isMachine(), $ua, $country));
         } catch (Throwable $exception) {
             $this->warn('nowo_short_link: a listener of the click event failed: {class}', ['class' => $exception::class]);
+        }
+    }
+
+    /**
+     * Whether the link is still live in the click's tenant: a late (Messenger) click of a deleted, erased or moved link
+     * is dropped, so an erasure is never undone by a queued click (audit NY M4).
+     */
+    private function isLive(ClickPayload $click): bool
+    {
+        try {
+            return !$this->links instanceof ShortLinkStoreInterface || $this->links->isLive($click->linkId, $click->tenant);
+        } catch (Throwable $exception) {
+            $this->warn('nowo_short_link: click of link {link} not recorded: {class}', ['link' => $click->linkId->value, 'class' => $exception::class]);
+
+            return false;
         }
     }
 

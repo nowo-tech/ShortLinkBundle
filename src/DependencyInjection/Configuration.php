@@ -4,9 +4,13 @@ declare(strict_types=1);
 
 namespace Nowo\ShortLinkBundle\DependencyInjection;
 
+use DateInterval;
+use DateTimeImmutable;
+use DateTimeZone;
 use Symfony\Component\Config\Definition\Builder\ArrayNodeDefinition;
 use Symfony\Component\Config\Definition\Builder\TreeBuilder;
 use Symfony\Component\Config\Definition\ConfigurationInterface;
+use Symfony\Component\Config\Definition\Exception\InvalidConfigurationException;
 
 use function is_array;
 use function is_string;
@@ -98,9 +102,50 @@ final class Configuration implements ConfigurationInterface
                     return self::unknownKind($typed['quota']['counted_kinds'], $typed['kinds']) !== null;
                 })
                 ->thenInvalid('quota.counted_kinds may only name configured kinds (manual, email and the keys of "kinds"), got %s.')
+            ->end()
+            ->validate()
+                ->ifTrue(static function (array $config): bool {
+                    /** @var array{click_log: array{retention: string|null, rollup: array{lag_days: int, retention: string|null}}} $typed */
+                    $typed = $config;
+
+                    return self::retentionProblem($typed['click_log']['retention'], $typed['click_log']['rollup']['lag_days'], $typed['click_log']['rollup']['retention']) !== null;
+                })
+                ->then(static function (array $config): array {
+                    /** @var array{click_log: array{retention: string|null, rollup: array{lag_days: int, retention: string|null}}} $typed */
+                    $typed = $config;
+
+                    throw new InvalidConfigurationException((string) self::retentionProblem($typed['click_log']['retention'], $typed['click_log']['rollup']['lag_days'], $typed['click_log']['rollup']['retention']));
+                })
             ->end();
 
         return $treeBuilder;
+    }
+
+    /**
+     * Why the retention settings would lose rolled clicks, or null (audit NY M3): raw clicks must outlive the days the
+     * rollup recomputes (`lag_days` + 1), and rollups must outlive raw clicks.
+     */
+    public static function retentionProblem(?string $retention, int $lagDays, ?string $rollupRetention): ?string
+    {
+        $raw = $retention === null ? null : self::seconds($retention);
+        if ($raw !== null && $raw < ($lagDays + 1) * 86400) {
+            return 'click_log.retention must keep raw clicks at least click_log.rollup.lag_days + 1 days, or a recomputed day loses its clicks.';
+        }
+        if ($rollupRetention !== null && ($raw === null || self::seconds($rollupRetention) < $raw)) {
+            return 'click_log.rollup.retention must be at least click_log.retention (rollups outlive raw clicks).';
+        }
+
+        return null;
+    }
+
+    /**
+     * Length of an ISO 8601 duration in seconds, from a fixed reference date.
+     */
+    public static function seconds(string $duration): int
+    {
+        $start = new DateTimeImmutable('2000-01-01 00:00:00', new DateTimeZone('UTC'));
+
+        return $start->add(new DateInterval($duration))->getTimestamp() - $start->getTimestamp();
     }
 
     /**
@@ -220,6 +265,9 @@ final class Configuration implements ConfigurationInterface
                 ->integerNode('max_length')->defaultValue(2048)->min(64)->max(2048)->end()
                 ->scalarNode('guard')->defaultValue('auto')->cannotBeEmpty()
                     ->info('auto (basic + OutboundUrlGuard), basic (literal checks only, warned) or a TargetGuardInterface service id')
+                ->end()
+                ->integerNode('recheck_max_unresolvable_percent')->defaultValue(20)->min(0)->max(100)
+                    ->info('The recheck command aborts when more than this share of a batch cannot be resolved (DNS outage)')
                 ->end()
                 ->booleanNode('save_resolve_dns')->defaultTrue()->info('DNS check on create / update / enable / recheck (never on the redirect)')->end()
                 ->arrayNode('self_paths')

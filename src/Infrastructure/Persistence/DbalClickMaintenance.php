@@ -9,7 +9,9 @@ use DateTimeImmutable;
 use DateTimeZone;
 use Doctrine\DBAL\ArrayParameterType;
 use Doctrine\DBAL\Connection;
+use Doctrine\DBAL\Exception\UniqueConstraintViolationException;
 use Nowo\ShortLinkBundle\Domain\Model\DimensionClicks;
+use Psr\Log\LoggerInterface;
 
 use function array_fill_keys;
 use function array_keys;
@@ -36,19 +38,22 @@ final readonly class DbalClickMaintenance
     /**
      * Holds the tables.
      */
-    public function __construct(private ClickTables $tables)
+    public function __construct(private ClickTables $tables, private ?LoggerInterface $logger = null)
     {
     }
 
     /**
      * Rolls every day that has raw rows and is not rolled yet, up to yesterday, plus the last `$lagDays` days again
-     * (late Messenger writes). Returns the rolled days (`Y-m-d`), oldest first.
+     * (late Messenger writes), except days at or before the raw retention cutoff that are already rolled: their raw rows
+     * may be partly purged, so recomputing them would lose clicks (audit NY M3). A day another run wrote at the same time
+     * (unique violation) is skipped. Returns the rolled days (`Y-m-d`), oldest first.
      *
      * @param int $maxDays most days rolled in one run
+     * @param string|null $retention `click_log.retention`
      *
      * @return list<string>
      */
-    public function rollup(DateTimeImmutable $now, int $lagDays, int $topN, int $maxDays = 400): array
+    public function rollup(DateTimeImmutable $now, int $lagDays, int $topN, int $maxDays = 400, ?string $retention = null): array
     {
         $clicks    = $this->tables->clickConnection();
         $today     = $this->day($now);
@@ -59,13 +64,19 @@ final readonly class DbalClickMaintenance
         }
         $rolled = $this->rolledDays($clicks);
         $redo   = $today->modify('-' . $lagDays . ' days');
+        $frozen = $retention === null ? null : $this->day($now->sub(new DateInterval($retention)));
         $done   = [];
         for ($day = $this->day(new DateTimeImmutable((string) $oldest, new DateTimeZone('UTC'))); $day <= $yesterday && count($done) < $maxDays; $day = $day->modify('+1 day')) {
             $key = $day->format('Y-m-d');
-            if (isset($rolled[$key]) && $day < $redo) {
+            if (isset($rolled[$key]) && ($day < $redo || ($frozen instanceof DateTimeImmutable && $day <= $frozen))) {
                 continue;
             }
-            $this->rollDay($clicks, $day, $topN, $now);
+            try {
+                $this->rollDay($clicks, $day, $topN, $now);
+            } catch (UniqueConstraintViolationException) {
+                $this->logger?->warning('nowo_short_link: rollup of {day} skipped: another run wrote it at the same time.', ['day' => $key]);
+                continue;
+            }
             $done[] = $key;
         }
 
