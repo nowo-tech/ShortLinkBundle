@@ -2,14 +2,15 @@
 
 **Baseline spec**: [`spec.md`](spec.md)  
 **Package**: `nowo-tech/short-link-bundle`  
-**Last audited**: 2026-11-12 (S2)
+**Last audited**: 2026-11-12 (S3)
 
-Scope: every file under `src/`. Audit command: `find src -type f | wc -l` → **108**.
+Scope: every file under `src/`. Audit command: `find src -type f | wc -l` → **123**.
 
 | Source file | Spec section | Requirement IDs |
 | --- | --- | --- |
 | `src/Application/Click/ClickPayload.php` | Redirect and click log | FR-REDIRECT-001, FR-CLICK-001 |
 | `src/Application/Click/ClickRecorder.php` | Redirect and click log | FR-REDIRECT-001, FR-CLICK-001 |
+| `src/Application/Click/RedirectDecision.php` | Redirect and click log | FR-REDIRECT-001, FR-CLICK-001 |
 | `src/Application/Click/RedirectResolver.php` | Redirect and click log | FR-REDIRECT-001, FR-CLICK-001 |
 | `src/Application/CodeGenerator.php` | Codes | FR-CODE-001, FR-CODE-002 |
 | `src/Application/Default/BuiltInCodeBlocklist.php` | Codes | FR-CODE-001, FR-CODE-002 |
@@ -47,12 +48,17 @@ Scope: every file under `src/`. Audit command: `find src -type f | wc -l` → **
 | `src/Domain/Exception/ShortLinkNotFoundException.php` | Errors | FR-ERROR-001 |
 | `src/Domain/Exception/TargetRefusedException.php` | Errors | FR-ERROR-001 |
 | `src/Domain/Model/ActorRef.php` | Value objects | FR-VO-001 |
+| `src/Domain/Model/ClickDimension.php` | Statistics | FR-STATS-001 |
 | `src/Domain/Model/ClickWriteMode.php` | Redirect and click log | FR-REDIRECT-001, FR-CLICK-001 |
 | `src/Domain/Model/ClientIpPrefix.php` | Redirect and click log | FR-REDIRECT-001, FR-CLICK-001 |
 | `src/Domain/Model/CountryCode.php` | Redirect and click log | FR-REDIRECT-001, FR-CLICK-001 |
 | `src/Domain/Model/CreateShortLink.php` | Value objects | FR-VO-001 |
+| `src/Domain/Model/DailyClicks.php` | Statistics | FR-STATS-001 |
+| `src/Domain/Model/DateRange.php` | Statistics | FR-STATS-001 |
+| `src/Domain/Model/DimensionClicks.php` | Statistics | FR-STATS-001 |
 | `src/Domain/Model/Expiry.php` | Value objects | FR-VO-001 |
 | `src/Domain/Model/GuardStage.php` | Target guard | FR-TARGET-001, FR-GUARD-001 |
+| `src/Domain/Model/LinkClickTotals.php` | Statistics | FR-STATS-001 |
 | `src/Domain/Model/LinkKind.php` | Value objects | FR-VO-001 |
 | `src/Domain/Model/LinkMetadata.php` | Value objects | FR-VO-001 |
 | `src/Domain/Model/LinkSource.php` | Value objects | FR-VO-001 |
@@ -84,8 +90,13 @@ Scope: every file under `src/`. Audit command: `find src -type f | wc -l` → **
 | `src/Domain/Port/TargetGuardInterface.php` | Ports | FR-PORT-001 |
 | `src/Domain/Port/TenantLockInterface.php` | Ports | FR-PORT-001 |
 | `src/Domain/Port/UserAgentClassifierInterface.php` | Redirect and click log | FR-REDIRECT-001, FR-CLICK-001 |
+| `src/Domain/Service/ShortLinkEraserInterface.php` | GDPR | FR-GDPR-001 |
 | `src/Domain/Service/ShortLinkManagerInterface.php` | Manager | FR-MANAGE-001, FR-BULK-001, FR-ACCESS-001, FR-QUOTA-001 |
-| `src/Infrastructure/Doctrine/ClickTablesSchemaListener.php` | Redirect and click log | FR-REDIRECT-001, FR-CLICK-001 |
+| `src/Domain/Service/ShortLinkStatsReaderInterface.php` | Statistics | FR-STATS-001 |
+| `src/Infrastructure/Console/PurgeCommand.php` | Retention and recheck | FR-RETENTION-001 |
+| `src/Infrastructure/Console/RecheckCommand.php` | Retention and recheck | FR-RETENTION-001 |
+| `src/Infrastructure/Console/RollupCommand.php` | Retention and recheck | FR-RETENTION-001 |
+| `src/Infrastructure/Doctrine/ClickTablesSchemaListener.php` | Statistics | FR-STATS-001 |
 | `src/Infrastructure/Doctrine/Entity/ShortLinkRecord.php` | Persistence | FR-DB-001, FR-DB-002, FR-EVENT-001 |
 | `src/Infrastructure/Doctrine/ShortLinkMetadataListener.php` | Persistence | FR-DB-001, FR-DB-002, FR-EVENT-001 |
 | `src/Infrastructure/Guard/OutboundUrlGuardBridge.php` | Target guard | FR-TARGET-001, FR-GUARD-001 |
@@ -99,8 +110,12 @@ Scope: every file under `src/`. Audit command: `find src -type f | wc -l` → **
 | `src/Infrastructure/Persistence/AfterCommitMiddleware.php` | Persistence | FR-DB-001, FR-DB-002, FR-EVENT-001 |
 | `src/Infrastructure/Persistence/AfterCommitQueue.php` | Persistence | FR-DB-001, FR-DB-002, FR-EVENT-001 |
 | `src/Infrastructure/Persistence/AfterCommitQueueResetListener.php` | Persistence | FR-DB-001, FR-DB-002, FR-EVENT-001 |
+| `src/Infrastructure/Persistence/ClickTables.php` | Statistics | FR-STATS-001 |
+| `src/Infrastructure/Persistence/DbalClickMaintenance.php` | Retention and recheck | FR-RETENTION-001 |
 | `src/Infrastructure/Persistence/DbalClickStore.php` | Redirect and click log | FR-REDIRECT-001, FR-CLICK-001 |
+| `src/Infrastructure/Persistence/DbalEraser.php` | GDPR | FR-GDPR-001 |
 | `src/Infrastructure/Persistence/DbalShortLinkStore.php` | Persistence | FR-DB-001, FR-DB-002, FR-EVENT-001 |
+| `src/Infrastructure/Persistence/DbalStatsReader.php` | Statistics | FR-STATS-001 |
 | `src/Infrastructure/Routing/ShortUrlBuilder.php` | Short URLs | FR-URL-001 |
 | `src/Infrastructure/Security/RoleBasedAccess.php` | Access and tenancy | FR-ACCESS-001 |
 | `src/Infrastructure/Uid/UuidV7IdGenerator.php` | Value objects | FR-VO-001 |
@@ -117,5 +132,5 @@ Scope: every file under `src/`. Audit command: `find src -type f | wc -l` → **
 | `src/Resources/translations/NowoShortLinkBundle.pt.yaml` | Translations | FR-I18N-001 |
 | `src/Resources/views/redirect/not_found.html.twig` | Redirect and click log | FR-REDIRECT-001, FR-CLICK-001 |
 
-| Total production sources | 108 |
+| Total production sources | 123 |
 | --- | --- |

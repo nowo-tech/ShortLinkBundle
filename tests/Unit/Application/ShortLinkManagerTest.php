@@ -141,6 +141,11 @@ class ScriptedStore implements ShortLinkStoreInterface
         return null;
     }
 
+    public function activeAfter(?ShortLinkId $after, int $limit): array
+    {
+        return [];
+    }
+
     public function find(TenantKey $tenant, ShortLinkId $id): ?StoredLink
     {
         return null;

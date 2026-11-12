@@ -72,6 +72,18 @@ registers no service, route, listener or table, whatever the configuration says;
   optional country and the machine flag; with `Sec-GPC: 1` only time, link and machine; HEAD is never logged; a broken
   click table or resolver never breaks the redirect.
 
+### US-07 — Statistics, retention and erasure (S3)
+
+- **Given** raw clicks, **when** the rollup runs twice, **then** the daily rows are the same, the last `lag_days` days
+  are recomputed, the referrer hosts beyond the top N are summed into `~other`, and the reader answers the same numbers
+  before and after.
+- **Given** the retention, **when** the purge runs, **then** only raw rows of rolled days older than the retention go,
+  rollups older than their retention go, and tombstones older than the quarantine free their codes.
+- **Given** a send, **when** the host erases or exports it, **then** its clicks and rollups go (links tombstoned) or are
+  listed; a tenant erasure leaves `~erased` blanked tombstones that still hold the codes and answer 404.
+- **Given** a target that now resolves to a private address, **when** the recheck runs, **then** the link is disabled
+  with `recheck_refused` and events.
+
 ## Functional requirements
 
 | ID | Requirement |
@@ -98,6 +110,9 @@ registers no service, route, listener or table, whatever the configuration says;
 | FR-WIRING-001 | Services wired by the extension; DoctrineBundle required; symfony/lock tenant lock when a lock factory exists. |
 | FR-REDIRECT-001 | Redirect step order §7.1, headers §7.2, neutral 404 / 429, limiters, stateless route, guard without DNS, refusal event. |
 | FR-CLICK-001 | Click payload without I/O, three write modes, store flags, GPC, country port after the response, failures contained, `ShortLinkClickedEvent`. |
+| FR-STATS-001 | Stats reader (daily, breakdown, totals, bySource) exact across the rollup / raw boundary, tenant-filtered. |
+| FR-RETENTION-001 | Rollup (idempotent, lag days, top N), purge (rolled raw rows, rollups, tombstones), recheck command. |
+| FR-GDPR-001 | Eraser: tenant (`~erased` tombstones), source, actor, export. |
 | FR-ERROR-001 | Every deliberate exception implements `ShortLinkExceptionInterface`. |
 
 ## Success criteria

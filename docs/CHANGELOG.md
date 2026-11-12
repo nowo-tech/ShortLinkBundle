@@ -9,6 +9,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- S3 statistics and retention (contract §5.3, §10): `ShortLinkStatsReaderInterface` (`daily`, `breakdown` by referrer
+  host / country / browser family, `totals`, `bySource` for the e-mail log) exact across the rollup / raw boundary;
+  commands `nowo:short-link:rollup` (idempotent, `lag_days`, referrer top N + `~other`), `nowo:short-link:purge` (raw
+  clicks of rolled days older than `click_log.retention`, rollups older than `rollup.retention`, tombstones older than
+  `code.quarantine`) and `nowo:short-link:recheck` (save guard with DNS over active links, refused ones disabled with
+  `recheck_refused` + events); `ShortLinkEraserInterface` (`eraseTenant` → blanked `~erased` tombstones,
+  `eraseSource`, `anonymiseActor`, `exportSource`).
+
 - S2 public redirect (contract §7): route `nowo_short_link_redirect` `GET|HEAD {redirect.path_prefix}/{code}` (import
   `@NowoShortLinkBundle/Resources/config/routes/redirect.php`), stateless, step order of §7.1, protective headers on every
   answer, one neutral 404 (byte-identical for unknown, disabled, expired, deleted and refused links) and a 429 variant
