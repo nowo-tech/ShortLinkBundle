@@ -22,6 +22,7 @@ nowo_short_link:
         rate_limit:
             enabled: true
             cache_pool: cache.app    # give a fast shared pool (Redis / APCu); Beacon: cache.rate_limiter
+            ipv6_prefix: 64          # 56..64: IPv6 clients are limited per network (IPv4 per address)
             misses: { limit: 20, interval: '1 minute' }   # unknown / disabled / expired / deleted codes, per IP
             hits:   { limit: 120, interval: '1 minute' }  # active links, per IP
             over_limit_hits: redirect_unlogged            # redirect_unlogged | block
@@ -34,7 +35,7 @@ nowo_short_link:
         quarantine: P365D            # ISO 8601 duration; null = deleted codes stay taken forever
     target:
         max_length: 2048             # 64..2048
-        guard: auto                  # auto (basic + OutboundUrlGuard) | basic | <TargetGuardInterface service id>
+        guard: auto                  # auto (basic + OutboundUrlGuard) | basic | <service id>: a service REPLACES the whole chain (self chain, OutboundUrlGuard, denylist)
         save_resolve_dns: true       # DNS check on create / update / enable / recheck, never on the redirect
         self_paths: ['/s/']          # targets on own_hosts under these paths are refused (no chains)
         own_hosts: []                # host names, lowercased
@@ -91,6 +92,8 @@ true}}` keeps `allow_custom_code: false` and `counted: false`). A kind is counte
   never match the custom-code pattern).
 - Durations (`code.quarantine`, `click_log.retention`, `click_log.rollup.retention`): ISO 8601 (`P90D`, `P1Y`, `PT12H`)
   or null.
+- `tenancy.context` needs `access.provider`: the default role-based access grants the same role in every tenant, so a
+  multi-tenant host must give an access port that checks the tenant (the container refuses to build otherwise).
 - `REQ-CFG-001` (profiles) does not apply: one instance-wide configuration; per-tenant variation goes through the ports.
 
 ## Container parameters

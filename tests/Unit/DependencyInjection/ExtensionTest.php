@@ -63,6 +63,13 @@ final class ExtensionTest extends TestCase
         self::assertNull($container->getDefinition(CodeGenerator::class)->getArgument(1));
     }
 
+    public function testATenantContextNeedsATenantAwareAccessPort(): void
+    {
+        $this->expectException(LogicException::class);
+        $this->expectExceptionMessage('access.provider');
+        (new NowoShortLinkExtension())->load([['tenancy' => ['context' => 'app.tenant']]], new ContainerBuilder());
+    }
+
     public function testMessengerClicksNeverCarryTheRawIpAndNeedABus(): void
     {
         try {

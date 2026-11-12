@@ -10,6 +10,7 @@ use Doctrine\DBAL\DriverManager;
 use Doctrine\Persistence\ManagerRegistry;
 use Doctrine\Persistence\ObjectManager;
 use LogicException;
+use Nowo\ShortLinkBundle\Application\Click\ClickPayload;
 use Nowo\ShortLinkBundle\Application\Click\ClickRecorder;
 use Nowo\ShortLinkBundle\Application\Click\RedirectResolver;
 use Nowo\ShortLinkBundle\Application\Default\BuiltInUserAgentClassifier;
@@ -17,13 +18,18 @@ use Nowo\ShortLinkBundle\Application\Default\ConfigDenylist;
 use Nowo\ShortLinkBundle\Application\Default\NullCountryResolver;
 use Nowo\ShortLinkBundle\Application\Guard\DenylistGuard;
 use Nowo\ShortLinkBundle\Application\Store\ClickStoreInterface;
-use Nowo\ShortLinkBundle\Application\Store\StoredLink;
+use Nowo\ShortLinkBundle\Domain\Event\ShortLinkTargetRefusedEvent;
 use Nowo\ShortLinkBundle\Domain\Model\ClickWriteMode;
+use Nowo\ShortLinkBundle\Domain\Model\GuardStage;
 use Nowo\ShortLinkBundle\Domain\Model\LinkKind;
+use Nowo\ShortLinkBundle\Domain\Model\ResolvedLink;
 use Nowo\ShortLinkBundle\Domain\Model\ShortCode;
 use Nowo\ShortLinkBundle\Domain\Model\ShortLinkId;
+use Nowo\ShortLinkBundle\Domain\Model\ShortLinkState;
+use Nowo\ShortLinkBundle\Domain\Model\TargetRefusal;
 use Nowo\ShortLinkBundle\Domain\Model\TargetUrl;
 use Nowo\ShortLinkBundle\Domain\Model\TenantKey;
+use Nowo\ShortLinkBundle\Domain\Model\UserAgentFamily;
 use Nowo\ShortLinkBundle\Infrastructure\Http\ClickTerminateListener;
 use Nowo\ShortLinkBundle\Infrastructure\Http\RedirectController;
 use Nowo\ShortLinkBundle\Infrastructure\Persistence\DbalClickStore;
@@ -31,8 +37,10 @@ use Nowo\ShortLinkBundle\Tests\Fixtures\MemoryLogger;
 use Nowo\ShortLinkBundle\Tests\Unit\Application\ScriptedStore;
 use PHPUnit\Framework\TestCase;
 use Psr\EventDispatcher\EventDispatcherInterface;
+use Psr\Log\AbstractLogger;
 use RuntimeException;
 use stdClass;
+use Stringable;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpKernel\Event\TerminateEvent;
@@ -77,11 +85,9 @@ final class ClickInfrastructureTest extends TestCase
     public function testAFailingMessengerBusNeverBreaksTheRedirect(): void
     {
         $store = new class extends ScriptedStore {
-            public function findByCode(string $code): StoredLink
+            public function findActiveByCode(string $code, DateTimeImmutable $now): ResolvedLink
             {
-                $now = new DateTimeImmutable();
-
-                return new StoredLink(ShortLinkId::fromString('0190a6d0-0000-7000-8000-000000000001'), TenantKey::default(), ShortCode::random($code), TargetUrl::fromString('https://example.com'), null, LinkKind::manual(), null, null, true, null, null, $now, $now, null, null, null);
+                return new ResolvedLink(ShortLinkId::fromString('0190a6d0-0000-7000-8000-000000000001'), TenantKey::default(), ShortCode::random($code), TargetUrl::fromString('https://example.com'), LinkKind::manual(), ShortLinkState::Active);
             }
         };
         $events = new class implements EventDispatcherInterface {
@@ -99,7 +105,7 @@ final class ClickInfrastructureTest extends TestCase
         $clicks     = $this->createStub(ClickStoreInterface::class);
         $logger     = new MemoryLogger();
         $controller = new RedirectController(
-            new RedirectResolver($store, new DenylistGuard(new ConfigDenylist()), $events),
+            new RedirectResolver($store, new DenylistGuard(new ConfigDenylist())),
             new BuiltInUserAgentClassifier(),
             new ClickRecorder($clicks, new NullCountryResolver(), $events),
             new Environment(new ArrayLoader(['@NowoShortLink/redirect/not_found.html.twig' => 'gone'])),
@@ -114,12 +120,39 @@ final class ClickInfrastructureTest extends TestCase
         self::assertSame(RuntimeException::class, $logger->records[0]['context']['class']);
     }
 
+    public function testThrowingLogHandlersAreSwallowedOnTheClickPath(): void
+    {
+        $logger = new class extends AbstractLogger {
+            public function log($level, string|Stringable $message, array $context = []): void
+            {
+                throw new RuntimeException('log handler down');
+            }
+        };
+        $events = new class implements EventDispatcherInterface {
+            public function dispatch(object $event): object
+            {
+                throw new RuntimeException('listener down');
+            }
+        };
+        $clicks = $this->createStub(ClickStoreInterface::class);
+        $clicks->method('insert')->willThrowException(new RuntimeException('table down'));
+        $recorder = new ClickRecorder($clicks, new NullCountryResolver(), $events, logger: $logger);
+        $listener = new ClickTerminateListener($recorder, $events, $logger);
+        $request  = Request::create('/');
+        $request->attributes->set(ClickTerminateListener::REFUSED_ATTRIBUTE, new ShortLinkTargetRefusedEvent(TenantKey::default(), GuardStage::Redirect, TargetRefusal::Denylisted, 'bad.example', null));
+        $request->attributes->set(ClickTerminateListener::ATTRIBUTE, [new ClickPayload(ShortLinkId::fromString('0190a6d0-0000-7000-8000-000000000001'), TenantKey::default(), LinkKind::manual(), null, new DateTimeImmutable(), null, UserAgentFamily::Unknown, null, false), null]);
+
+        $listener->onTerminate(new TerminateEvent($this->createStub(HttpKernelInterface::class), $request, new Response()));
+        self::assertFalse($request->attributes->has(ClickTerminateListener::REFUSED_ATTRIBUTE));
+        self::assertFalse($request->attributes->has(ClickTerminateListener::ATTRIBUTE));
+    }
+
     public function testTheTerminateListenerIgnoresRequestsWithoutAClick(): void
     {
         $clicks = $this->createMock(ClickStoreInterface::class);
         $clicks->expects(self::never())->method('insert');
         $events   = $this->createStub(EventDispatcherInterface::class);
-        $listener = new ClickTerminateListener(new ClickRecorder($clicks, new NullCountryResolver(), $events));
+        $listener = new ClickTerminateListener(new ClickRecorder($clicks, new NullCountryResolver(), $events), $events);
         $request  = Request::create('/');
         $request->attributes->set(ClickTerminateListener::ATTRIBUTE, ['not a payload']);
 

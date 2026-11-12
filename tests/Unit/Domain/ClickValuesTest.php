@@ -29,6 +29,9 @@ final class ClickValuesTest extends TestCase
         self::assertSame('2001:db8:1234::/48', ClientIpPrefix::fromIp('2001:db8:1234:5678::1')?->value);
         self::assertSame('2001:db8:1234:5600::/56', ClientIpPrefix::fromIp('2001:db8:1234:5678::1', 24, 56)?->value);
         self::assertSame('192.0.2.0/24', ClientIpPrefix::fromIp('::ffff:192.0.2.9')?->value, 'IPv4-mapped IPv6 is IPv4');
+        self::assertSame('192.0.2.0/24', ClientIpPrefix::fromIp('2002:c000:0209::1')?->value, '6to4 is its embedded IPv4');
+        self::assertSame('2001::/32', ClientIpPrefix::fromIp('2001:0:4136:e378:8000:63bf:3fff:fdd2')?->value, 'Teredo keeps /32');
+        self::assertSame('2001:db8:1234:5678::/64', ClientIpPrefix::fromIp('2001:db8:1234:5678:9::1', 32, 64)?->value);
         self::assertNull(ClientIpPrefix::fromIp(null));
         self::assertNull(ClientIpPrefix::fromIp('not-an-ip'));
     }

@@ -27,7 +27,9 @@ final readonly class ClientIpPrefix
     }
 
     /**
-     * Truncates a raw IP; null when the input is not an IP address. IPv4-mapped IPv6 addresses are treated as IPv4.
+     * Truncates a raw IP; null when the input is not an IP address. IPv4-mapped (`::ffff:0:0/96`) and 6to4
+     * (`2002::/16`) addresses are treated as their embedded IPv4 address; Teredo (`2001:0::/32`) keeps only its
+     * /32 prefix (the client part is the visitor's obfuscated IPv4).
      *
      * @param int $ipv4Bits 16 to 32
      * @param int $ipv6Bits 32 to 64
@@ -38,10 +40,15 @@ final readonly class ClientIpPrefix
             return null;
         }
         $binary = (string) inet_pton($ip);
+        $bits   = $ipv6Bits;
         if (strlen($binary) === 16 && substr($binary, 0, 12) === str_repeat("\0", 10) . "\xFF\xFF") {
             $binary = substr($binary, 12);
+        } elseif (strlen($binary) === 16 && substr($binary, 0, 2) === "\x20\x02") {
+            $binary = substr($binary, 2, 4);
+        } elseif (strlen($binary) === 16 && substr($binary, 0, 4) === "\x20\x01\x00\x00") {
+            $bits = 32;
         }
-        $bits   = strlen($binary) === 4 ? $ipv4Bits : $ipv6Bits;
+        $bits   = strlen($binary) === 4 ? $ipv4Bits : $bits;
         $masked = '';
         for ($i = 0; $i < strlen($binary); ++$i) {
             $keep = $bits - $i * 8;

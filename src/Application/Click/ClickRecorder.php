@@ -16,8 +16,8 @@ use Throwable;
 /**
  * Writes one click row and dispatches {@see ShortLinkClickedEvent} (contract §7.3). `Sec-GPC: 1` with `honour_gpc`
  * keeps the time, the link and the machine flag only; `click_log.store` switches columns off. The raw IP only reaches
- * the country resolver (never stored, never logged). A broken click table or resolver never breaks the redirect: the
- * failure is logged with its exception class only. Stateless (worker mode).
+ * the country resolver (never stored, never logged). A broken click table, resolver, event listener or log handler never breaks the
+ * redirect or the worker: the failure is logged with its exception class only. Stateless (worker mode).
  */
 final readonly class ClickRecorder
 {
@@ -54,11 +54,29 @@ final readonly class ClickRecorder
                 $click->isMachine(),
             );
         } catch (Throwable $exception) {
-            $this->logger?->warning('nowo_short_link: click of link {link} not recorded: {class}', ['link' => $click->linkId->value, 'class' => $exception::class]);
+            $this->warn('nowo_short_link: click of link {link} not recorded: {class}', ['link' => $click->linkId->value, 'class' => $exception::class]);
 
             return;
         }
-        $this->events->dispatch(new ShortLinkClickedEvent($click->linkId, $click->tenant, $click->kind, $click->sourceRef, $click->clickedAt, $click->isMachine(), $ua, $country));
+        try {
+            $this->events->dispatch(new ShortLinkClickedEvent($click->linkId, $click->tenant, $click->kind, $click->sourceRef, $click->clickedAt, $click->isMachine(), $ua, $country));
+        } catch (Throwable $exception) {
+            $this->warn('nowo_short_link: a listener of the click event failed: {class}', ['class' => $exception::class]);
+        }
+    }
+
+    /**
+     * Logs a warning; a failing log handler is swallowed (the redirect, or the worker, must survive it).
+     *
+     * @param array<string, string> $context
+     */
+    private function warn(string $message, array $context): void
+    {
+        try {
+            $this->logger?->warning($message, $context);
+        } catch (Throwable) {
+            // Nothing else to do: the click path never throws.
+        }
     }
 
     private function country(#[SensitiveParameter] string $clientIp): ?CountryCode
@@ -66,7 +84,7 @@ final readonly class ClickRecorder
         try {
             return $this->countries->countryFor($clientIp);
         } catch (Throwable $exception) {
-            $this->logger?->warning('nowo_short_link: country resolver failed: {class}', ['class' => $exception::class]);
+            $this->warn('nowo_short_link: country resolver failed: {class}', ['class' => $exception::class]);
 
             return null;
         }

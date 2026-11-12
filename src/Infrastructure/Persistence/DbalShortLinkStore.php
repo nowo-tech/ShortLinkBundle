@@ -24,6 +24,7 @@ use Nowo\ShortLinkBundle\Domain\Model\LinkKind;
 use Nowo\ShortLinkBundle\Domain\Model\LinkMetadata;
 use Nowo\ShortLinkBundle\Domain\Model\LinkSource;
 use Nowo\ShortLinkBundle\Domain\Model\LinkTitle;
+use Nowo\ShortLinkBundle\Domain\Model\ResolvedLink;
 use Nowo\ShortLinkBundle\Domain\Model\ShortCode;
 use Nowo\ShortLinkBundle\Domain\Model\ShortLinkId;
 use Nowo\ShortLinkBundle\Domain\Model\ShortLinkListQuery;
@@ -32,6 +33,7 @@ use Nowo\ShortLinkBundle\Domain\Model\TargetUrl;
 use Nowo\ShortLinkBundle\Domain\Model\TenantKey;
 use Nowo\ShortLinkBundle\Infrastructure\Doctrine\ShortLinkMetadataListener;
 use Psr\Log\LoggerInterface;
+use Throwable;
 
 use function array_map;
 use function implode;
@@ -132,11 +134,30 @@ final readonly class DbalShortLinkStore implements ShortLinkStoreInterface
     /**
      * {@inheritDoc}
      */
-    public function findByCode(string $code): ?StoredLink
+    public function findActiveByCode(string $code, DateTimeImmutable $now): ?ResolvedLink
     {
-        foreach ($this->select('code = ?', [$code]) as $link) {
-            if ($link->code->value === $code) {
-                return $link;
+        $sql  = sprintf('SELECT id, tenant_key, code, code_custom, target_url, kind, source_ref, active, expires_at, deleted_at FROM %s WHERE code = ?', $this->table);
+        $rows = $this->read(static fn (Connection $c): array => $c->fetchAllAssociative($sql, [$code]));
+        $at   = $this->utc($now);
+        foreach ($rows as $row) {
+            $expires = $row['expires_at'] === null ? null : $this->text($row['expires_at']);
+            if ($row['code'] !== $code || !$this->bool($row['active']) || $row['deleted_at'] !== null || ($expires !== null && $this->comparable($expires) <= $at)) {
+                continue;
+            }
+            try {
+                return new ResolvedLink(
+                    ShortLinkId::fromString($this->text($row['id'])),
+                    TenantKey::fromString($this->text($row['tenant_key'])),
+                    ShortCode::fromStored($code, $this->bool($row['code_custom'])),
+                    TargetUrl::fromString($this->text($row['target_url'])),
+                    LinkKind::fromString($this->text($row['kind'])),
+                    ShortLinkState::Active,
+                    $row['source_ref'] === null ? null : $this->text($row['source_ref']),
+                );
+            } catch (Throwable $exception) {
+                $this->logger?->warning('nowo_short_link: unreadable link row for a redirect: {class}', ['class' => $exception::class]);
+
+                return null;
             }
         }
 
@@ -370,6 +391,14 @@ final readonly class DbalShortLinkStore implements ShortLinkStoreInterface
         }
 
         return $manager->getConnection();
+    }
+
+    /**
+     * A stored date-time as `Y-m-d H:i:s` (PostgreSQL and MySQL may add fractions or a zone).
+     */
+    private function comparable(string $value): string
+    {
+        return (new DateTimeImmutable($value, new DateTimeZone('UTC')))->format('Y-m-d H:i:s');
     }
 
     private function utc(DateTimeImmutable $time): string

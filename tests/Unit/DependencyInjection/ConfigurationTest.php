@@ -25,6 +25,7 @@ final class ConfigurationTest extends TestCase
             'rate_limit'         => [
                 'enabled'         => true,
                 'cache_pool'      => 'cache.app',
+                'ipv6_prefix'     => 64,
                 'misses'          => ['limit' => 20, 'interval' => '1 minute'],
                 'hits'            => ['limit' => 120, 'interval' => '1 minute'],
                 'over_limit_hits' => 'redirect_unlogged',

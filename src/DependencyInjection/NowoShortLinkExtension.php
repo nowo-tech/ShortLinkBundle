@@ -129,7 +129,7 @@ final class NowoShortLinkExtension extends Extension implements PrependExtension
      */
     public function load(array $configs, ContainerBuilder $container): void
     {
-        /** @var array{public_base_url: string|null, redirect: array{path_prefix: string, status: int, not_found_template: string, rate_limit: array{enabled: bool, cache_pool: string, misses: array{limit: int, interval: string}, hits: array{limit: int, interval: string}, over_limit_hits: string}}, code: array{random_length: int, allow_custom: bool, reserved: list<string>, blocklist: bool, max_attempts: int}, target: array{max_length: int, guard: string, save_resolve_dns: bool, self_paths: list<string>, own_hosts: list<string>, denylist: array{hosts: list<string>, provider: string|null}}, tenancy: array{context: string|null}, access: array{provider: string|null, view_role: string, manage_role: string, enforce_in_manager: bool}, quota: array{provider: string|null, default_limit: int|null, counted_kinds: list<string>}, kinds: array<string, array{allow_custom_code: bool, show_in_ui: bool, counted: bool}>, ui: array{enabled: bool, path_prefix: string}, doctrine: array{entity_manager: string|null, connection: string|null, table_prefix: string}, click_log: array{enabled: bool, write: string, store: array{ip_prefix: bool, user_agent_family: bool, referrer_host: bool, country: bool}, ipv4_prefix: int, ipv6_prefix: int, honour_gpc: bool, country_resolver: string|null}} $config */
+        /** @var array{public_base_url: string|null, redirect: array{path_prefix: string, status: int, not_found_template: string, rate_limit: array{enabled: bool, cache_pool: string, ipv6_prefix: int, misses: array{limit: int, interval: string}, hits: array{limit: int, interval: string}, over_limit_hits: string}}, code: array{random_length: int, allow_custom: bool, reserved: list<string>, blocklist: bool, max_attempts: int}, target: array{max_length: int, guard: string, save_resolve_dns: bool, self_paths: list<string>, own_hosts: list<string>, denylist: array{hosts: list<string>, provider: string|null}}, tenancy: array{context: string|null}, access: array{provider: string|null, view_role: string, manage_role: string, enforce_in_manager: bool}, quota: array{provider: string|null, default_limit: int|null, counted_kinds: list<string>}, kinds: array<string, array{allow_custom_code: bool, show_in_ui: bool, counted: bool}>, ui: array{enabled: bool, path_prefix: string}, doctrine: array{entity_manager: string|null, connection: string|null, table_prefix: string}, click_log: array{enabled: bool, write: string, store: array{ip_prefix: bool, user_agent_family: bool, referrer_host: bool, country: bool}, ipv4_prefix: int, ipv6_prefix: int, honour_gpc: bool, country_resolver: string|null}} $config */
         $config = $this->processConfiguration(new Configuration(), $configs);
         $container->setParameter(self::ALIAS . '.redirect_path_prefix', $config['redirect']['path_prefix']);
         $container->setParameter(self::ALIAS . '.ui_enabled', $config['ui']['enabled']);
@@ -166,6 +166,10 @@ final class NowoShortLinkExtension extends Extension implements PrependExtension
         $container->register(DbalShortLinkStore::class, DbalShortLinkStore::class)
             ->setArguments([new Reference('doctrine'), new Reference(AfterCommitQueue::class), $config['doctrine']['entity_manager'], $prefix, $logger]);
         $container->setAlias(ShortLinkStoreInterface::class, DbalShortLinkStore::class);
+
+        if ($config['tenancy']['context'] !== null && $config['access']['provider'] === null) {
+            throw new LogicException('nowo_short_link.tenancy.context is set but access.provider is not: the default role-based access grants a role in every tenant. Set access.provider to an access port that checks the tenant.');
+        }
 
         // Ports (public aliases: hosts replace them through configuration or decorate them).
         $this->port($container, ShortLinkTenantContextInterface::class, $config['tenancy']['context'], new Definition(SingleTenantContext::class));
@@ -240,7 +244,7 @@ final class NowoShortLinkExtension extends Extension implements PrependExtension
     /**
      * S2: the public redirect, its limiters and the click log.
      *
-     * @param array{redirect: array{path_prefix: string, status: int, not_found_template: string, rate_limit: array{enabled: bool, cache_pool: string, misses: array{limit: int, interval: string}, hits: array{limit: int, interval: string}, over_limit_hits: string}}, click_log: array{enabled: bool, write: string, store: array{ip_prefix: bool, user_agent_family: bool, referrer_host: bool, country: bool}, ipv4_prefix: int, ipv6_prefix: int, honour_gpc: bool, country_resolver: string|null}, doctrine: array{entity_manager: string|null, connection: string|null, table_prefix: string}} $config
+     * @param array{redirect: array{path_prefix: string, status: int, not_found_template: string, rate_limit: array{enabled: bool, cache_pool: string, ipv6_prefix: int, misses: array{limit: int, interval: string}, hits: array{limit: int, interval: string}, over_limit_hits: string}}, click_log: array{enabled: bool, write: string, store: array{ip_prefix: bool, user_agent_family: bool, referrer_host: bool, country: bool}, ipv4_prefix: int, ipv6_prefix: int, honour_gpc: bool, country_resolver: string|null}, doctrine: array{entity_manager: string|null, connection: string|null, table_prefix: string}} $config
      */
     private function registerRedirect(ContainerBuilder $container, array $config, Reference $logger): void
     {
@@ -263,11 +267,9 @@ final class NowoShortLinkExtension extends Extension implements PrependExtension
             '$logger'    => $logger,
         ]);
         $container->register(RedirectResolver::class, RedirectResolver::class)->setArguments([
-            '$store'  => new Reference(ShortLinkStoreInterface::class),
-            '$guard'  => new Reference(TargetGuardInterface::class),
-            '$events' => $events,
-            '$clock'  => $clock,
-            '$logger' => $logger,
+            '$store' => new Reference(ShortLinkStoreInterface::class),
+            '$guard' => new Reference(TargetGuardInterface::class),
+            '$clock' => $clock,
         ]);
 
         $limiters = ['misses' => null, 'hits' => null];
@@ -290,27 +292,28 @@ final class NowoShortLinkExtension extends Extension implements PrependExtension
             ->setPublic(true)
             ->addTag('controller.service_arguments')
             ->setArguments([
-                '$resolver'         => new Reference(RedirectResolver::class),
-                '$classifier'       => new Reference(UserAgentClassifierInterface::class),
-                '$recorder'         => new Reference(ClickRecorder::class),
-                '$twig'             => new Reference('twig'),
-                '$misses'           => $limiters['misses'],
-                '$hits'             => $limiters['hits'],
-                '$blockOverHits'    => $redirect['rate_limit']['over_limit_hits'] === 'block',
-                '$writeMode'        => $mode,
-                '$bus'              => $mode === ClickWriteMode::Messenger ? new Reference('messenger.default_bus') : null,
-                '$status'           => $redirect['status'],
-                '$notFoundTemplate' => $redirect['not_found_template'],
-                '$ipv4Prefix'       => $clicks['ipv4_prefix'],
-                '$ipv6Prefix'       => $clicks['ipv6_prefix'],
-                '$clock'            => $clock,
-                '$logger'           => $logger,
+                '$resolver'          => new Reference(RedirectResolver::class),
+                '$classifier'        => new Reference(UserAgentClassifierInterface::class),
+                '$recorder'          => new Reference(ClickRecorder::class),
+                '$twig'              => new Reference('twig'),
+                '$misses'            => $limiters['misses'],
+                '$hits'              => $limiters['hits'],
+                '$blockOverHits'     => $redirect['rate_limit']['over_limit_hits'] === 'block',
+                '$writeMode'         => $mode,
+                '$bus'               => $mode === ClickWriteMode::Messenger ? new Reference('messenger.default_bus') : null,
+                '$status'            => $redirect['status'],
+                '$notFoundTemplate'  => $redirect['not_found_template'],
+                '$ipv4Prefix'        => $clicks['ipv4_prefix'],
+                '$ipv6Prefix'        => $clicks['ipv6_prefix'],
+                '$clock'             => $clock,
+                '$logger'            => $logger,
+                '$limiterIpv6Prefix' => $redirect['rate_limit']['ipv6_prefix'],
+                '$honourGpc'         => $clicks['honour_gpc'],
             ]);
-        if ($mode === ClickWriteMode::Terminate) {
-            $container->register(ClickTerminateListener::class, ClickTerminateListener::class)
-                ->setArguments([new Reference(ClickRecorder::class)])
-                ->addTag('kernel.event_listener', ['event' => 'kernel.terminate', 'method' => 'onTerminate']);
-        }
+        // Always registered: it also dispatches the deferred refused-target event after the response.
+        $container->register(ClickTerminateListener::class, ClickTerminateListener::class)
+            ->setArguments([new Reference(ClickRecorder::class), $events, $logger])
+            ->addTag('kernel.event_listener', ['event' => 'kernel.terminate', 'method' => 'onTerminate']);
         if ($mode === ClickWriteMode::Messenger) {
             $container->register(RecordShortLinkClickHandler::class, RecordShortLinkClickHandler::class)
                 ->setArguments([new Reference(ClickRecorder::class)])

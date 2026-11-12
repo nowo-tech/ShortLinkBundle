@@ -123,8 +123,16 @@ refused target, malformed code); 429 with `Retry-After` over the per-IP miss lim
 `X-Robots-Tag: noindex, nofollow` and `X-Content-Type-Options: nosniff`. Override the page with
 `@NowoShortLink/redirect/not_found.html.twig` (or `redirect.not_found_template`); it receives `status` (404 or 429).
 
-The limiters key on `Request::getClientIp()`: configure `framework.trusted_proxies` to your real proxies only, or a
-spoofed `X-Forwarded-For` defeats them. Give `redirect.rate_limit.cache_pool` a fast shared pool (Redis, APCu).
+The limiters key on `Request::getClientIp()`: an IPv4 address (IPv4-mapped and 6to4 addresses fold to it) or the IPv6
+network of `redirect.rate_limit.ipv6_prefix` bits (default /64, since one subscriber usually owns a whole /64).
+Trade-offs: people behind one NAT or carrier-grade NAT share an IPv4 budget (this is why a valid link over the hit limit
+still redirects by default, only unlogged); `framework.trusted_proxies` must list your real proxies only, or a spoofed
+`X-Forwarded-For` gives every request a fresh budget, and if it is left empty behind a proxy every visitor shares the
+proxy's budget. Give `redirect.rate_limit.cache_pool` a fast shared pool (Redis, APCu).
+
+A refused target's `ShortLinkTargetRefusedEvent` and its warning are handled on `kernel.terminate`, after the 404 is
+sent. Listener and log-handler failures on the redirect path (click event, refused event, recorder, Messenger bus) are
+caught and logged with their class only: they never change the answer or stop a FrankenPHP worker.
 
 Clicks are written after the response by default (`click_log.write: terminate`); `messenger` dispatches
 `Nowo\ShortLinkBundle\Infrastructure\Messenger\RecordShortLinkClick` (route it to a transport, or it is handled at once);

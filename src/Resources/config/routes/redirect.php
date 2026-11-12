@@ -20,6 +20,6 @@ return static function (RoutingConfigurator $routes): void {
     $routes->add('nowo_short_link_redirect', '%nowo_short_link.redirect_path_prefix%/{code}')
         ->controller(RedirectController::class)
         ->methods(['GET', 'HEAD'])
-        ->requirements(['code' => '[^/]{1,64}'])
+        ->requirements(['code' => '[^/]+'])
         ->stateless(true);
 };

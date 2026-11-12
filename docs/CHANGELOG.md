@@ -18,6 +18,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   scanners), referrer host, optional country (`click_log.country_resolver`, local lookups only), machine flag, `Sec-GPC`
   honoured (count only), written after the response (`terminate`), through Messenger (`RecordShortLinkClick`, never the
   raw IP) or synchronously; failures never break the redirect; `ShortLinkClickedEvent`.
+- Audit NW fixes on S2: limiter key per IPv4 address or IPv6 network (`redirect.rate_limit.ipv6_prefix`, default 64;
+  IPv4-mapped and 6to4 fold to IPv4); click / refused-event listeners and log handlers can no longer change the answer
+  or stop a worker (refused event deferred to `kernel.terminate`); the redirect lookup selects only the columns it needs
+  and decides the state from the raw row (unreadable rows answer 404 with a warning); 6to4 and Teredo IP prefixes; codes
+  of any length reach the neutral 404; `honour_gpc: false` keeps the configured columns; `tenancy.context` without
+  `access.provider` is refused at build.
 
 - S1 domain + persistence (contract §3, §5.1, §6, §8, §12): value objects (`ShortLinkId`, `TenantKey`, `ShortCode`,
   `TargetUrl`, `LinkKind`, `LinkSource`, `LinkMetadata`, `ActorRef`, `LinkTitle`, `Expiry`, read models), enums, ports

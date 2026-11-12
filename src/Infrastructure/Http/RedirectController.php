@@ -9,6 +9,7 @@ use DateTimeZone;
 use Nowo\ShortLinkBundle\Application\Click\ClickPayload;
 use Nowo\ShortLinkBundle\Application\Click\ClickRecorder;
 use Nowo\ShortLinkBundle\Application\Click\RedirectResolver;
+use Nowo\ShortLinkBundle\Domain\Event\ShortLinkTargetRefusedEvent;
 use Nowo\ShortLinkBundle\Domain\Model\ClickWriteMode;
 use Nowo\ShortLinkBundle\Domain\Model\ClientIpPrefix;
 use Nowo\ShortLinkBundle\Domain\Model\ReferrerHost;
@@ -33,9 +34,10 @@ use function preg_match;
  * Public redirect `GET|HEAD {redirect.path_prefix}/{code}` (contract §7). Stateless: no session, no cookie, no
  * security token needed. Order, first failure answers:
  *
- *  1. code outside `[A-Za-z0-9-]{3,32}` → neutral 404 (no database hit), a miss;
- *  2. miss limiter of the client IP exhausted → 429 with `Retry-After`;
- *  3–5. lookup + exact re-check, state, redirect guard (no DNS) → neutral 404, a miss;
+ *  1. code outside `[A-Za-z0-9-]{3,32}` (any length reaches the controller) → neutral 404 (no database hit), a miss;
+ *  2. miss limiter of the client (IPv4 address or IPv6 /64 by default) exhausted → 429 with `Retry-After`;
+ *  3–5. lookup + exact re-check, state, redirect guard (no DNS) → neutral 404, a miss (a refused target's event and
+ *     warning wait for `kernel.terminate`);
  *  6. hit limiter of the client IP → over the limit: redirect without logging (`redirect_unlogged`) or 429 (`block`);
  *  7. 302 / 307 to the stored target; the click is recorded after the response (HEAD is never logged).
  *
@@ -71,6 +73,8 @@ final readonly class RedirectController
         private int $ipv6Prefix = 48,
         private ?ClockInterface $clock = null,
         private ?LoggerInterface $logger = null,
+        private int $limiterIpv6Prefix = 64,
+        private bool $honourGpc = true,
     ) {
     }
 
@@ -79,7 +83,7 @@ final readonly class RedirectController
      */
     public function __invoke(Request $request, string $code): Response
     {
-        $ipKey = hash('sha256', $request->getClientIp() ?? 'unknown');
+        $ipKey = $this->limiterKey($request->getClientIp());
         if (preg_match(self::CODE_PATTERN, $code) !== 1) {
             $this->misses?->create($ipKey)->consume();
 
@@ -91,8 +95,12 @@ final readonly class RedirectController
             return $this->tooMany($peek->getRetryAfter());
         }
 
-        $link = $this->resolver->resolve($code);
+        $decision = $this->resolver->resolve($code);
+        $link     = $decision->link;
         if (!$link instanceof ResolvedLink) {
+            if ($decision->refused instanceof ShortLinkTargetRefusedEvent) {
+                $request->attributes->set(ClickTerminateListener::REFUSED_ATTRIBUTE, $decision->refused);
+            }
             $missLimiter?->consume();
 
             return $this->notFound();
@@ -117,6 +125,15 @@ final readonly class RedirectController
         return $this->answer('', $this->status, ['Location' => $link->target->toString()]);
     }
 
+    /**
+     * Limiter key of a client: the IPv4 address (IPv4-mapped and 6to4 folded to IPv4), or the IPv6 network of
+     * `redirect.rate_limit.ipv6_prefix` bits (one subscriber usually owns a whole /64), hashed.
+     */
+    private function limiterKey(?string $clientIp): string
+    {
+        return hash('sha256', ClientIpPrefix::fromIp($clientIp, 32, $this->limiterIpv6Prefix)->value ?? 'unknown');
+    }
+
     private function recordLater(Request $request, ResolvedLink $link): void
     {
         $gpc     = $request->headers->get('Sec-GPC') === '1';
@@ -126,9 +143,9 @@ final readonly class RedirectController
             $link->kind,
             $link->sourceRef,
             ($this->clock?->now() ?? new DateTimeImmutable())->setTimezone(new DateTimeZone('UTC')),
-            $gpc ? null : ClientIpPrefix::fromIp($request->getClientIp(), $this->ipv4Prefix, $this->ipv6Prefix),
+            $gpc && $this->honourGpc ? null : ClientIpPrefix::fromIp($request->getClientIp(), $this->ipv4Prefix, $this->ipv6Prefix),
             $this->classifier->classify($request->headers->get('User-Agent')),
-            $gpc ? null : ReferrerHost::fromReferer($request->headers->get('Referer')),
+            $gpc && $this->honourGpc ? null : ReferrerHost::fromReferer($request->headers->get('Referer')),
             $gpc,
         );
         if ($this->writeMode === ClickWriteMode::Sync) {

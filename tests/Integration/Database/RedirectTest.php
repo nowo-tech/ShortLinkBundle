@@ -13,13 +13,16 @@ use Nowo\ShortLinkBundle\Domain\Model\CreateShortLink;
 use Nowo\ShortLinkBundle\Domain\Model\GuardStage;
 use Nowo\ShortLinkBundle\Domain\Model\LinkKind;
 use Nowo\ShortLinkBundle\Domain\Model\LinkSource;
+use Nowo\ShortLinkBundle\Domain\Model\ShortLinkPermission;
 use Nowo\ShortLinkBundle\Domain\Model\ShortLinkView;
 use Nowo\ShortLinkBundle\Domain\Model\TargetUrl;
 use Nowo\ShortLinkBundle\Domain\Model\TenantKey;
 use Nowo\ShortLinkBundle\Domain\Model\UserAgentFamily;
 use Nowo\ShortLinkBundle\Domain\Service\ShortLinkManagerInterface;
+use Nowo\ShortLinkBundle\Tests\Fixtures\Ddd\TestAccess;
 use Nowo\ShortLinkBundle\Tests\Fixtures\RecordingCountryResolver;
 use Nowo\ShortLinkBundle\Tests\Fixtures\RecordingListener;
+use Nowo\ShortLinkBundle\Tests\Fixtures\ThrowingListener;
 use Nowo\ShortLinkBundle\Tests\Integration\Kernel\Host;
 use Nowo\ShortLinkBundle\Tests\Integration\Kernel\KernelTestCase;
 use Nowo\ShortLinkBundle\Tests\Integration\Kernel\TestKernel;
@@ -37,25 +40,32 @@ use Symfony\Component\Security\Core\User\InMemoryUser;
 
 use function array_replace_recursive;
 use function count;
+use function dechex;
 use function gc_collect_cycles;
 use function hrtime;
 use function memory_get_usage;
 use function sort;
+use function str_repeat;
 
 /**
  * The public redirect end to end (contract §7, §9) on the standard host: step order, neutral answers, headers, limits,
  * click rows per store flag and GPC, write modes, failures contained, worker mode.
  */
-final class RedirectTest extends KernelTestCase
+class RedirectTest extends KernelTestCase
 {
     private TestKernel $kernel;
+
+    protected function host(): Host
+    {
+        return Host::standard();
+    }
 
     /**
      * @param array<string, mixed> $config
      */
     private function boot(array $config = [], bool $messenger = false): void
     {
-        $host      = Host::standard();
+        $host      = $this->host();
         $configure = $host->configure();
         /** @var array<string, mixed> $override */
         $override     = array_replace_recursive(['click_log' => ['write' => 'sync', 'country_resolver' => RecordingCountryResolver::class]], $config);
@@ -65,16 +75,25 @@ final class RedirectTest extends KernelTestCase
             static function (ContainerConfigurator $container, string $url) use ($configure, $messenger): void {
                 $configure($container, $url);
                 $container->services()->set(RecordingCountryResolver::class)->public();
+                $container->services()->set(ThrowingListener::class)->public()
+                    ->tag('kernel.event_listener', ['event' => ShortLinkClickedEvent::class, 'method' => 'onEvent'])
+                    ->tag('kernel.event_listener', ['event' => ShortLinkTargetRefusedEvent::class, 'method' => 'onEvent']);
                 if ($messenger) {
                     $container->extension('framework', ['messenger' => ['default_bus' => 'messenger.bus.default', 'buses' => ['messenger.bus.default' => []]]]);
                 }
             },
-            true,
+            $host->kind === Host::STANDARD,
         );
         $host->resetSchema($this->kernel);
-        $tokens = $this->container()->get('security.token_storage');
-        self::assertInstanceOf(TokenStorageInterface::class, $tokens);
-        $tokens->setToken(new UsernamePasswordToken(new InMemoryUser('admin', null, ['ROLE_ADMIN']), 'main', ['ROLE_ADMIN']));
+        if ($host->kind === Host::STANDARD) {
+            $tokens = $this->container()->get('security.token_storage');
+            self::assertInstanceOf(TokenStorageInterface::class, $tokens);
+            $tokens->setToken(new UsernamePasswordToken(new InMemoryUser('admin', null, ['ROLE_ADMIN']), 'main', ['ROLE_ADMIN']));
+        } else {
+            $access = $this->container()->get(TestAccess::class);
+            self::assertInstanceOf(TestAccess::class, $access);
+            $access->granted = ['default' => [ShortLinkPermission::View, ShortLinkPermission::Manage]];
+        }
     }
 
     public function testAnActiveLinkRedirectsWithTheProtectiveHeadersAndNoSession(): void
@@ -233,7 +252,7 @@ final class RedirectTest extends KernelTestCase
         self::assertSame(302, $this->get('/s/' . $link->code->value)->getStatusCode());
         self::assertNull($this->clicks()[0]['country'], 'a failing resolver leaves the country empty');
 
-        $this->connection()->executeStatement('DROP TABLE nowo_short_link_click');
+        $this->connection()->executeStatement('DROP TABLE ' . $this->host()->tablePrefix() . 'nowo_short_link_click');
         self::assertSame(302, $this->get('/s/' . $link->code->value)->getStatusCode(), 'a broken click table never breaks the redirect');
     }
 
@@ -280,6 +299,76 @@ final class RedirectTest extends KernelTestCase
         $response = $this->get('/s/' . $link->code->value);
         self::assertSame(307, $response->getStatusCode());
         self::assertSame(0, $this->clickCount());
+    }
+
+    public function testIpv6ClientsAreLimitedPerNetworkAndMappedAddressesAsIpv4(): void
+    {
+        $this->boot(['redirect' => ['rate_limit' => ['misses' => ['limit' => 10]]]]);
+        $link = $this->create('https://example.com');
+
+        for ($i = 1; $i <= 10; ++$i) {
+            self::assertSame(404, $this->get('/s/nope' . $i . 'x', ['REMOTE_ADDR' => '2001:db8:aaaa:bbbb::' . dechex($i)])->getStatusCode());
+        }
+        self::assertSame(429, $this->get('/s/' . $link->code->value, ['REMOTE_ADDR' => '2001:db8:aaaa:bbbb:ffff::1'])->getStatusCode(), 'the whole /64 is one client');
+        self::assertSame(302, $this->get('/s/' . $link->code->value, ['REMOTE_ADDR' => '2001:db8:aaaa:bbbc::1'])->getStatusCode(), 'the next /64 is another client');
+
+        for ($i = 1; $i <= 10; ++$i) {
+            $this->get('/s/miss' . $i . 'xx', ['REMOTE_ADDR' => '::ffff:198.51.100.7']);
+        }
+        self::assertSame(429, $this->get('/s/' . $link->code->value, ['REMOTE_ADDR' => '198.51.100.7'])->getStatusCode(), 'IPv4-mapped misses count for the IPv4 address');
+        self::assertSame(302, $this->get('/s/' . $link->code->value, ['REMOTE_ADDR' => '198.51.100.8'])->getStatusCode(), 'IPv4 is limited per address');
+    }
+
+    public function testThrowingListenersNeverChangeTheAnswerInSyncMode(): void
+    {
+        $this->boot();
+        $link                      = $this->create('https://example.com');
+        $refused                   = $this->refusedLink();
+        $this->throwing()->failing = true;
+
+        self::assertSame(302, $this->get('/s/' . $link->code->value)->getStatusCode());
+        self::assertSame(1, $this->clickCount());
+        $unknown = $this->get('/s/Unknown1');
+        $answer  = $this->get('/s/' . $refused->code->value);
+        self::assertSame(404, $answer->getStatusCode());
+        self::assertSame($unknown->getContent(), $answer->getContent());
+        self::assertSame(2, $this->throwing()->calls, 'click + refused listeners ran and failed');
+    }
+
+    public function testTheRefusedEventWaitsForTerminateAndThrowingListenersCannotStopTheWorker(): void
+    {
+        $this->boot(['click_log' => ['write' => 'terminate']]);
+        $link                      = $this->create('https://example.com');
+        $refused                   = $this->refusedLink();
+        $this->throwing()->failing = true;
+        $http                      = $this->http();
+
+        $request  = Request::create('/s/' . $refused->code->value, server: ['REMOTE_ADDR' => '203.0.113.1']);
+        $response = $http->handle($request, HttpKernelInterface::MAIN_REQUEST, false);
+        self::assertSame(404, $response->getStatusCode());
+        self::assertSame([], $this->listener()->of(ShortLinkTargetRefusedEvent::class), 'nothing dispatched before the response');
+        $http->terminate($request, $response);
+        self::assertCount(1, $this->listener()->of(ShortLinkTargetRefusedEvent::class));
+
+        $request  = Request::create('/s/' . $link->code->value, server: ['REMOTE_ADDR' => '203.0.113.1']);
+        $response = $http->handle($request, HttpKernelInterface::MAIN_REQUEST, false);
+        $http->terminate($request, $response);
+        self::assertSame(1, $this->clickCount());
+        self::assertSame(2, $this->throwing()->calls);
+    }
+
+    public function testUnreadableRowsLongCodesAndGpcWithoutHonourAnswerSafely(): void
+    {
+        $this->boot(['click_log' => ['honour_gpc' => false]]);
+        $link = $this->create('https://example.com');
+        $this->connection()->update($this->host()->tablePrefix() . 'nowo_short_link', ['tenant_key' => '~erased'], ['id' => $link->id->value]);
+        self::assertSame(404, $this->get('/s/' . $link->code->value)->getStatusCode(), 'an unreadable row is not found');
+        self::assertSame(404, $this->get('/s/' . str_repeat('a', 80))->getStatusCode(), 'a long code reaches the neutral 404');
+
+        $other = $this->create('https://example.com/b');
+        $this->get('/s/' . $other->code->value, ['REMOTE_ADDR' => '203.0.113.77', 'HTTP_REFERER' => 'https://a.example/', 'HTTP_SEC_GPC' => '1']);
+        $rows = $this->clicks();
+        self::assertSame(['203.0.113.0/24', 'a.example'], [$rows[0]['ip_prefix'], $rows[0]['referrer_host']], 'honour_gpc: false keeps the configured columns');
     }
 
     public function testOneKeptAliveKernelServesThousandsOfRedirectsWithoutBleedOrGrowth(): void
@@ -331,6 +420,26 @@ final class RedirectTest extends KernelTestCase
         sort($durations);
         $p95 = $durations[(int) (count($durations) * 0.95)] / 1e6;
         self::assertLessThan(20.0, $p95, 'in-kernel p95 (SQLite, array cache) stays under 20 ms: regression guard, not the production number');
+    }
+
+    private function refusedLink(): ShortLinkView
+    {
+        $link  = $this->create('https://example.com/refused');
+        $store = $this->container()->get(ShortLinkStoreInterface::class);
+        self::assertInstanceOf(ShortLinkStoreInterface::class, $store);
+        $row = $store->find(TenantKey::default(), $link->id);
+        self::assertNotNull($row);
+        $store->update($row->withEdit(TargetUrl::fromString('https://later.bad.example/x'), null, null, new DateTimeImmutable(Host::NOW), null));
+
+        return $link;
+    }
+
+    private function throwing(): ThrowingListener
+    {
+        $listener = $this->container()->get(ThrowingListener::class);
+        self::assertInstanceOf(ThrowingListener::class, $listener);
+
+        return $listener;
     }
 
     private function create(string $target, ?DateTimeImmutable $expiresAt = null, ?LinkKind $kind = null, ?LinkSource $source = null): ShortLinkView
@@ -420,12 +529,12 @@ final class RedirectTest extends KernelTestCase
 
     private function connection(): Connection
     {
-        return Host::standard()->connection($this->kernel);
+        return $this->host()->connection($this->kernel);
     }
 
     private function clickCount(): int
     {
-        $count = $this->connection()->fetchOne('SELECT COUNT(*) FROM nowo_short_link_click');
+        $count = $this->connection()->fetchOne('SELECT COUNT(*) FROM ' . $this->host()->tablePrefix() . 'nowo_short_link_click');
         self::assertIsNumeric($count);
 
         return (int) $count;
@@ -436,6 +545,6 @@ final class RedirectTest extends KernelTestCase
      */
     private function clicks(): array
     {
-        return $this->connection()->fetchAllAssociative('SELECT * FROM nowo_short_link_click ORDER BY id');
+        return $this->connection()->fetchAllAssociative('SELECT * FROM ' . $this->host()->tablePrefix() . 'nowo_short_link_click ORDER BY id');
     }
 }

@@ -19,6 +19,7 @@ use Nowo\ShortLinkBundle\Application\Store\StoredLink;
 use Nowo\ShortLinkBundle\Domain\Model\ActorRef;
 use Nowo\ShortLinkBundle\Domain\Model\CreateShortLink;
 use Nowo\ShortLinkBundle\Domain\Model\LinkKind;
+use Nowo\ShortLinkBundle\Domain\Model\ResolvedLink;
 use Nowo\ShortLinkBundle\Domain\Model\ShortCode;
 use Nowo\ShortLinkBundle\Domain\Model\ShortLinkId;
 use Nowo\ShortLinkBundle\Domain\Model\ShortLinkListQuery;
@@ -135,7 +136,7 @@ class ScriptedStore implements ShortLinkStoreInterface
     {
     }
 
-    public function findByCode(string $code): ?StoredLink
+    public function findActiveByCode(string $code, DateTimeImmutable $now): ?ResolvedLink
     {
         return null;
     }
