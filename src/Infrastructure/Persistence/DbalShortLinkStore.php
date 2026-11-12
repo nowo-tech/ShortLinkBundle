@@ -358,8 +358,8 @@ final readonly class DbalShortLinkStore implements ShortLinkStoreInterface
             $this->date($row['created_at']),
             $this->date($row['updated_at']),
             $row['deleted_at'] === null ? null : $this->date($row['deleted_at']),
-            $row['created_by'] === null ? null : ActorRef::fromString($this->text($row['created_by'])),
-            $row['updated_by'] === null ? null : ActorRef::fromString($this->text($row['updated_by'])),
+            $row['created_by'] === null ? null : ActorRef::fromStored($this->text($row['created_by'])),
+            $row['updated_by'] === null ? null : ActorRef::fromStored($this->text($row['updated_by'])),
         );
     }
 

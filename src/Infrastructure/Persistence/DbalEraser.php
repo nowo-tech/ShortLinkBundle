@@ -15,6 +15,7 @@ use Nowo\ShortLinkBundle\Domain\Model\TenantKey;
 use Nowo\ShortLinkBundle\Domain\Service\ShortLinkEraserInterface;
 use Psr\Clock\ClockInterface;
 
+use function array_chunk;
 use function array_column;
 use function array_combine;
 use function array_filter;
@@ -138,10 +139,24 @@ final readonly class DbalEraser implements ShortLinkEraserInterface
      */
     public function anonymiseActor(ActorRef $actor): int
     {
+        // Candidates by SQL, then the exact PHP re-check: a PAD SPACE collation (utf8mb4_bin on MySQL 5.7, or a column
+        // not yet migrated to the NO PAD collation) would also match 'u1 ' for 'u1'. Updates go by primary key.
         $links = $this->tables->linkConnection();
-        $count = (int) $links->executeStatement(sprintf('UPDATE %s SET created_by = NULL WHERE created_by = ?', $this->tables->links), [$actor->value]);
+        $rows  = $links->fetchAllAssociative(sprintf('SELECT id, created_by, updated_by FROM %s WHERE created_by = ? OR updated_by = ?', $this->tables->links), [$actor->value, $actor->value]);
+        $count = 0;
+        foreach (['created_by', 'updated_by'] as $column) {
+            $ids = [];
+            foreach ($rows as $row) {
+                if ($row[$column] !== null && $this->text($row[$column]) === $actor->value) {
+                    $ids[] = $this->text($row['id']);
+                }
+            }
+            foreach (array_chunk($ids, 500) as $chunk) {
+                $count += (int) $links->executeStatement(sprintf('UPDATE %s SET %s = NULL WHERE id IN (?)', $this->tables->links, $column), [$chunk], [ArrayParameterType::STRING]);
+            }
+        }
 
-        return $count + (int) $links->executeStatement(sprintf('UPDATE %s SET updated_by = NULL WHERE updated_by = ?', $this->tables->links), [$actor->value]);
+        return $count;
     }
 
     /**

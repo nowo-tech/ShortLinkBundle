@@ -27,7 +27,13 @@ S4 (0.2.0) adds the management UI; nothing changes until you enable it.
    lookup of `create()` except `system` commands (per tenant + actor); catch `CodeAttemptsExceededException` if you
    call it from your own forms. Callers your access port does not identify share one window per tenant: give your own
    `CustomCodeLimiterInterface` (`limiter`) to key them by session or network.
-5. The recheck may now abort earlier in a run (per-link threshold); scripts that parse its output keep the same
+5. MySQL / MariaDB: the identifier columns move to a NO PAD binary collation (`utf8mb4_0900_bin` on MySQL 8.0.17+,
+   `utf8mb4_nopad_bin` on MariaDB). Run `doctrine:migrations:diff` and apply the `ALTER TABLE … MODIFY` it generates
+   for `nowo_short_link` and the click tables. MySQL 8.0.0–8.0.16 (no `utf8mb4_0900_bin`) is not supported.
+6. `ActorRef::fromString()` refuses leading / trailing whitespace and control or format characters. A host access
+   port that builds actors from such identifiers must normalise them; stored 0.1.0 rows still read back
+   (`ActorRef::fromStored()`).
+7. The recheck may now abort earlier in a run (per-link threshold); scripts that parse its output keep the same
    messages.
 
 ### Template contract

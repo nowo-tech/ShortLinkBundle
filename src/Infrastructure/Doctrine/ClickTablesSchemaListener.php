@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Nowo\ShortLinkBundle\Infrastructure\Doctrine;
 
-use Doctrine\DBAL\Platforms\AbstractMySQLPlatform;
 use Doctrine\DBAL\Schema\Column;
 use Doctrine\DBAL\Schema\Schema;
 use Doctrine\DBAL\Types\Types;
@@ -14,7 +13,8 @@ use Nowo\ShortLinkBundle\Infrastructure\Doctrine\Entity\ShortLinkRecord;
 /**
  * Doctrine `postGenerateSchema` listener: adds the DBAL click tables (contract §5.2, no ORM entity) to the schema of
  * the entity manager that maps {@see ShortLinkRecord}, so `doctrine:migrations:diff` creates them with the link table.
- * Names get `doctrine.table_prefix`; identifier columns get `utf8mb4_bin` on MySQL / MariaDB.
+ * Names get `doctrine.table_prefix`; identifier columns get a binary NO PAD collation on MySQL / MariaDB
+ * ({@see BinaryCollation}).
  *
  * @internal
  */
@@ -45,20 +45,20 @@ final readonly class ClickTablesSchemaListener
         if ($manager->getMetadataFactory()->isTransient(ShortLinkRecord::class)) {
             return;
         }
-        $this->addTables($args->getSchema(), $manager->getConnection()->getDatabasePlatform() instanceof AbstractMySQLPlatform);
+        $this->addTables($args->getSchema(), BinaryCollation::for($manager->getConnection()->getDatabasePlatform()));
     }
 
     /**
      * Adds the three click tables to a schema (also used by tests and hosts that build the schema themselves).
      */
-    public function addTables(Schema $schema, bool $mysql): void
+    public function addTables(Schema $schema, ?string $collation): void
     {
         $p = $this->tablePrefix;
 
         $click = $schema->createTable($p . self::CLICK_TABLE);
         $click->addColumn('id', Types::BIGINT, ['autoincrement' => true]);
-        $this->binary($click->addColumn('link_id', Types::STRING, ['length' => 36]), $mysql);
-        $this->binary($click->addColumn('tenant_key', Types::STRING, ['length' => 64]), $mysql);
+        $this->binary($click->addColumn('link_id', Types::STRING, ['length' => 36]), $collation);
+        $this->binary($click->addColumn('tenant_key', Types::STRING, ['length' => 64]), $collation);
         $click->addColumn('clicked_at', Types::DATETIME_IMMUTABLE);
         $click->addColumn('ip_prefix', Types::STRING, ['length' => 43, 'notnull' => false]);
         $click->addColumn('ua_family', Types::STRING, ['length' => 16, 'notnull' => false]);
@@ -71,11 +71,11 @@ final readonly class ClickTablesSchemaListener
         $click->addIndex(['clicked_at'], $p . 'idx_short_link_click_time');
 
         $daily = $schema->createTable($p . self::DAILY_TABLE);
-        $this->binary($daily->addColumn('link_id', Types::STRING, ['length' => 36]), $mysql);
-        $this->binary($daily->addColumn('tenant_key', Types::STRING, ['length' => 64]), $mysql);
+        $this->binary($daily->addColumn('link_id', Types::STRING, ['length' => 36]), $collation);
+        $this->binary($daily->addColumn('tenant_key', Types::STRING, ['length' => 64]), $collation);
         $daily->addColumn('day', Types::DATE_IMMUTABLE);
         $daily->addColumn('dimension', Types::STRING, ['length' => 16]);
-        $this->binary($daily->addColumn('value', Types::STRING, ['length' => 253, 'default' => '']), $mysql);
+        $this->binary($daily->addColumn('value', Types::STRING, ['length' => 253, 'default' => '']), $collation);
         $daily->addColumn('clicks', Types::INTEGER, ['default' => 0]);
         $daily->addColumn('machine_clicks', Types::INTEGER, ['default' => 0]);
         $daily->setPrimaryKey(['link_id', 'day', 'dimension', 'value']);
@@ -88,11 +88,11 @@ final readonly class ClickTablesSchemaListener
         $days->setPrimaryKey(['day']);
     }
 
-    private function binary(Column $column, bool $mysql): void
+    private function binary(Column $column, ?string $collation): void
     {
-        if ($mysql) {
+        if ($collation !== null) {
             $column->setPlatformOption('charset', 'utf8mb4');
-            $column->setPlatformOption('collation', 'utf8mb4_bin');
+            $column->setPlatformOption('collation', $collation);
         }
     }
 }

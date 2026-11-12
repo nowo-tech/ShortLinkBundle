@@ -7,6 +7,11 @@ namespace Nowo\ShortLinkBundle\Tests\Unit\Infrastructure;
 use Closure;
 use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\DriverManager;
+use Doctrine\DBAL\Platforms\MariaDBPlatform;
+use Doctrine\DBAL\Platforms\MySQL80Platform;
+use Doctrine\DBAL\Platforms\MySQL84Platform;
+use Doctrine\DBAL\Platforms\MySQLPlatform;
+use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
 use Doctrine\DBAL\Schema\Schema;
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\Event\LoadClassMetadataEventArgs;
@@ -19,6 +24,7 @@ use LogicException;
 use Nowo\ShortLinkBundle\Domain\Model\ShortCode;
 use Nowo\ShortLinkBundle\Domain\Model\ShortLinkPermission;
 use Nowo\ShortLinkBundle\Domain\Model\TenantKey;
+use Nowo\ShortLinkBundle\Infrastructure\Doctrine\BinaryCollation;
 use Nowo\ShortLinkBundle\Infrastructure\Doctrine\ClickTablesSchemaListener;
 use Nowo\ShortLinkBundle\Infrastructure\Doctrine\Entity\ShortLinkRecord;
 use Nowo\ShortLinkBundle\Infrastructure\Doctrine\ShortLinkMetadataListener;
@@ -45,6 +51,15 @@ use function str_repeat;
  */
 final class InfrastructureTest extends TestCase
 {
+    public function testIdentifierColumnsGetANoPadBinaryCollationWhereTheServerHasOne(): void
+    {
+        self::assertSame('utf8mb4_0900_bin', BinaryCollation::for(new MySQL80Platform()));
+        self::assertSame('utf8mb4_0900_bin', BinaryCollation::for(new MySQL84Platform()));
+        self::assertSame('utf8mb4_nopad_bin', BinaryCollation::for(new MariaDBPlatform()));
+        self::assertSame('utf8mb4_bin', BinaryCollation::for(new MySQLPlatform()), 'MySQL 5.7 has no NO PAD binary collation');
+        self::assertNull(BinaryCollation::for(new PostgreSQLPlatform()));
+    }
+
     public function testTheMetadataListenerPrefixesAndSetsBinaryCollationsOnMySql(): void
     {
         $connection = DriverManager::getConnection(['driver' => 'pdo_mysql', 'serverVersion' => '8.4.0']);
@@ -55,7 +70,7 @@ final class InfrastructureTest extends TestCase
         self::assertArrayHasKey('app_uniq_short_link_code', $metadata->table['uniqueConstraints'] ?? []);
         self::assertArrayHasKey('app_idx_short_link_tenant_list', $metadata->table['indexes'] ?? []);
         foreach (['id', 'tenantKey', 'code', 'sourceRef', 'createdBy', 'updatedBy'] as $field) {
-            self::assertSame(['charset' => 'utf8mb4', 'collation' => 'utf8mb4_bin'], $metadata->fieldMappings[$field]->options, $field);
+            self::assertSame(['charset' => 'utf8mb4', 'collation' => 'utf8mb4_0900_bin'], $metadata->fieldMappings[$field]->options, $field);
         }
         self::assertNull($metadata->fieldMappings['title']->options);
     }
@@ -74,7 +89,7 @@ final class InfrastructureTest extends TestCase
     public function testTheClickTablesGetBinaryCollationsOnMySqlAndOnlyOnTheBundleEntityManager(): void
     {
         $schema = new Schema();
-        (new ClickTablesSchemaListener('p_'))->addTables($schema, true);
+        (new ClickTablesSchemaListener('p_'))->addTables($schema, 'utf8mb4_bin');
         self::assertSame('utf8mb4_bin', $schema->getTable('p_nowo_short_link_click')->getColumn('link_id')->getPlatformOption('collation'));
         self::assertTrue($schema->getTable('p_nowo_short_link_click_daily')->hasIndex('p_idx_short_link_daily_tenant'));
         self::assertTrue($schema->hasTable('p_nowo_short_link_rollup_day'));

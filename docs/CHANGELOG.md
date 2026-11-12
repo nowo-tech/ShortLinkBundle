@@ -51,6 +51,14 @@ S4: the management UI (target 0.2.0).
 - Audit NY-S4 L1: links of kinds hidden from people (`show_in_ui: false`, e.g. `email`) answer 404 on every UI page
   and action by id (edit, statistics, CSV, disable, enable, delete); they could be opened and changed by id before.
 - Audit NY-S4 L4: `quota.default_limit: null` (or `~`) is accepted again and means unlimited.
+- PAD SPACE sweep (affects 0.1.0; no advisory: 0.x release, host-triggered eraser): `utf8mb4_bin` is PAD SPACE on
+  MySQL / MariaDB, so `anonymiseActor('u1 ')` also cleared the attribution of `u1`. `ActorRef` now refuses leading /
+  trailing whitespace, control and format characters and invalid UTF-8 (`ActorRef::fromStored()` keeps reading 0.1.0
+  rows); `anonymiseActor()` selects the candidates, re-checks them with `===` in PHP and updates by primary key; the
+  identifier columns (`id`, `tenant_key`, `code`, `source_ref`, `created_by`, `updated_by`, click `link_id` /
+  `tenant_key`) use a NO PAD binary collation: `utf8mb4_0900_bin` on MySQL 8 (8.0.17+), `utf8mb4_nopad_bin` on
+  MariaDB, `utf8mb4_bin` on older MySQL. The role-based access port records no actor for an identifier the rule
+  refuses.
 - The list search (code, title, target host) is case-insensitive on every database (it was case-sensitive on
   PostgreSQL, and for codes on MySQL / MariaDB). SQLite's `LOWER()` folds ASCII letters only.
 

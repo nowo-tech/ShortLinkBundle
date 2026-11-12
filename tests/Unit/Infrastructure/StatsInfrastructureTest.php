@@ -298,7 +298,7 @@ final class StatsInfrastructureTest extends TestCase
     {
         $connection = DriverManager::getConnection(['driver' => 'pdo_sqlite', 'memory' => true]);
         $schema     = new Schema();
-        (new ClickTablesSchemaListener())->addTables($schema, false);
+        (new ClickTablesSchemaListener())->addTables($schema, null);
         foreach ($schema->toSql($connection->getDatabasePlatform()) as $sql) {
             $connection->executeStatement($sql);
         }
@@ -352,7 +352,7 @@ final class StatsInfrastructureTest extends TestCase
         self::assertNotNull($links->fetchOne('SELECT deleted_at FROM nowo_short_link'));
 
         $schema = new Schema();
-        (new ClickTablesSchemaListener())->addTables($schema, false);
+        (new ClickTablesSchemaListener())->addTables($schema, null);
         foreach ($schema->toSql($clicks->getDatabasePlatform()) as $sql) {
             $clicks->executeStatement($sql);
         }

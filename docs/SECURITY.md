@@ -44,7 +44,7 @@ From contract §9. Each threat names the control and the slice that ships it.
 | Scheme abuse, header injection | VO: http/https only, no control characters, no userinfo | S1 |
 | Redirect chains | `self_paths` on `own_hosts` refused | S1 |
 | Enumeration | 62^7 space, miss limiter, identical 404, no timing branch, neutral `CodeTaken`, per-person custom-code limiter | S1, S2, S4 |
-| Code collision / takeover | Unique index, binary collation (`utf8mb4_bin`), PHP `===`, tombstone quarantine (365 days), immutable codes | S0 (test), S1 |
+| Code collision / takeover | Unique index, binary NO PAD collation (`utf8mb4_0900_bin` / `utf8mb4_nopad_bin`), PHP `===`, tombstone quarantine (365 days), immutable codes | S0 (test), S1 |
 | Cross-tenant access | Every query filters on the tenant; another tenant's id answers as missing | S1–S4 |
 | CSRF, XSS, CSV injection | FormKit CSRF forms, Twig escaping, CSV cell prefixing | S4 |
 | Session / cookie on the public path | `stateless: true`, no `Set-Cookie` | S2 |
@@ -93,6 +93,10 @@ From contract §9. Each threat names the control and the slice that ships it.
   Twig escaping everywhere (title, target, referrer hosts), target linked only when http(s) with
   `rel="noopener noreferrer nofollow"`; CSV formula neutralisation; no personal data logged by the UI; stateless
   controller and services (worker mode). Fixtures: XSS title / referrer, CSV `=HYPERLINK`, cross-tenant matrix.
+- **PAD SPACE sweep (2026-11-12, affects 0.1.0, no advisory):** `ActorRef` refuses padded ids and control / format
+  characters; `anonymiseActor()` re-checks candidates with `===` and updates by primary key; identifier columns use
+  NO PAD binary collations (`utf8mb4_0900_bin` / `utf8mb4_nopad_bin`; `utf8mb4_bin` only on MySQL 5.7). Test emulates a
+  PAD collation (MySQL `utf8mb4_bin`, SQLite `RTRIM`).
 - **S5:** see the contract.
 
 ## Release security checklist (12.4.1)
