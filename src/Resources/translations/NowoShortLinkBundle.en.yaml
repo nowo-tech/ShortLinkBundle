@@ -1,0 +1,7 @@
+# en: translation domain NowoShortLinkBundle (REQ-I18N-002: same keys in en, es, it, fr, pt, de, nl).
+bundle:
+    name: "Short links"
+redirect:
+    not_found:
+        title: "Link not available"
+        message: "This link does not exist or is no longer available."

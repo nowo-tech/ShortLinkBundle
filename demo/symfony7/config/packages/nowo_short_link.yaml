@@ -1,0 +1,6 @@
+# S0 scaffold: the bundle is installed; it registers nothing yet. Later slices turn the demo features on here
+# (redirect /s/{code}, UI under /short-links, click log, stats).
+nowo_short_link:
+    public_base_url: '%env(DEFAULT_URI)%'
+    target:
+        own_hosts: ['localhost', '127.0.0.1']

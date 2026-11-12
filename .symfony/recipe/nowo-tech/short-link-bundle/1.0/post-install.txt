@@ -1,0 +1,6 @@
+Nowo Short Link Bundle installed.
+
+The package is being built slice by slice; see docs/ROADMAP.md for what is available in your version
+(redirect /s/{code}, management UI, click log and statistics).
+
+Docs: https://github.com/nowo-tech/ShortLinkBundle/tree/main/docs

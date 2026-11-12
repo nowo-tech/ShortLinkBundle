@@ -1,0 +1,32 @@
+{% extends 'base.html.twig' %}
+
+{% block title %}Overview{% endblock %}
+
+{% block nowo_ui_page_header %}
+    {{ include(nowo_ui_partial('page_header'), {
+        title: 'Short Link Bundle',
+        intro: 'Per-tenant short links with a public stateless redirect, a target guard, a privacy-preserving click log and a UiKit + FormKit management UI.',
+    }) }}
+{% endblock %}
+
+{% block body %}
+    <section class="nowo-ui-card" data-testid="demo-status">
+        <div class="nowo-ui-card__body">
+            <p>
+                <span class="nowo-ui-badge nowo-ui-badge--info">S0 scaffold</span>
+                The package is built slice by slice from its design contract (<code class="nowo-ui-code">docs/CONTRACT.md</code>).
+                S0 ships the bundle class and its strict configuration tree; the redirect, the management pages and the
+                statistics arrive with the next slices (<code class="nowo-ui-code">docs/ROADMAP.md</code>).
+            </p>
+            <table class="nowo-ui-data-table">
+                <tbody>
+                    <tr><th scope="row">Bundle</th><td><code class="nowo-ui-code">Nowo\ShortLinkBundle\NowoShortLinkBundle</code> registered</td></tr>
+                    <tr><th scope="row">Redirect path</th><td><code class="nowo-ui-code">{{ redirect_prefix }}/{code}</code></td></tr>
+                    <tr><th scope="row">Management UI</th><td><code class="nowo-ui-code">{{ ui_prefix }}</code> ({{ ui_enabled ? 'enabled' : 'disabled until S4' }})</td></tr>
+                    <tr><th scope="row">Database</th><td>{{ database is null ? 'not reachable' : 'MySQL ' ~ database }}</td></tr>
+                    <tr><th scope="row">FrankenPHP</th><td>{{ worker ? 'worker mode (kernel kept alive, not reset)' : 'classic mode' }}</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </section>
+{% endblock %}

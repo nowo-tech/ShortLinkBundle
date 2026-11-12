@@ -1,0 +1,177 @@
+{
+    "name": "nowo-tech/short-link-bundle",
+    "description": "Short links for Symfony: per-tenant short codes behind a public stateless redirect, a target guard (OutboundUrlGuard + denylist), a privacy-preserving click log with daily rollups and retention, a PHP API for generated links and a UiKit + FormKit management UI.",
+    "type": "symfony-bundle",
+    "license": "MIT",
+    "keywords": [
+        "php",
+        "symfony",
+        "symfony-bundle",
+        "short-links",
+        "url-shortener",
+        "link-shortener",
+        "redirect",
+        "click-tracking",
+        "analytics",
+        "gdpr",
+        "multitenant",
+        "ddd",
+        "nowo",
+        "frankenphp"
+    ],
+    "homepage": "https://github.com/nowo-tech/ShortLinkBundle",
+    "support": {
+        "issues": "https://github.com/nowo-tech/ShortLinkBundle/issues",
+        "source": "https://github.com/nowo-tech/ShortLinkBundle",
+        "docs": "https://github.com/nowo-tech/ShortLinkBundle/tree/main/docs",
+        "changelog": "https://github.com/nowo-tech/ShortLinkBundle/blob/main/docs/CHANGELOG.md"
+    },
+    "authors": [
+        {
+            "name": "Héctor Franco Aceituno",
+            "email": "hectorfranco@nowo.tech",
+            "homepage": "https://github.com/HecFranco",
+            "role": "Developer"
+        },
+        {
+            "name": "Nowo.tech",
+            "homepage": "https://nowo.tech"
+        }
+    ],
+    "require": {
+        "php": ">=8.2 <8.6",
+        "doctrine/dbal": "^3.8.2 || ^4.0",
+        "doctrine/doctrine-bundle": "^2.8 || ^3.0",
+        "doctrine/orm": "^3.7",
+        "doctrine/persistence": "^3.4 || ^4.0",
+        "nowo-tech/form-kit-bundle": "^2.22",
+        "nowo-tech/outbound-url-guard-bundle": "^1.5",
+        "nowo-tech/ui-kit-bundle": "^2.49",
+        "psr/clock": "^1.0",
+        "psr/log": "^2.0 || ^3.0",
+        "symfony/clock": "^7.4 || ^8.0",
+        "symfony/config": "^7.4 || ^8.0",
+        "symfony/console": "^7.4 || ^8.0",
+        "symfony/dependency-injection": "^7.4 || ^8.0",
+        "symfony/event-dispatcher": "^7.4 || ^8.0",
+        "symfony/form": "^7.4 || ^8.0",
+        "symfony/framework-bundle": "^7.4 || ^8.0",
+        "symfony/http-kernel": "^7.4 || ^8.0",
+        "symfony/rate-limiter": "^7.4 || ^8.0",
+        "symfony/routing": "^7.4 || ^8.0",
+        "symfony/security-bundle": "^7.4 || ^8.0",
+        "symfony/translation": "^7.4 || ^8.0",
+        "symfony/twig-bundle": "^7.4 || ^8.0",
+        "symfony/uid": "^7.4 || ^8.0",
+        "symfony/validator": "^7.4 || ^8.0",
+        "twig/extra-bundle": "^3.12"
+    },
+    "require-dev": {
+        "friendsofphp/php-cs-fixer": "^3.0",
+        "igor-php/igor-php": "^0.10.1",
+        "nowo-tech/phpstan-frankenphp": "^1.3",
+        "phpstan/extension-installer": "^1.4",
+        "phpstan/phpstan": "^2.0",
+        "phpstan/phpstan-phpunit": "^2.0",
+        "phpstan/phpstan-symfony": "^2.0",
+        "phpunit/phpunit": "^11.5",
+        "rector/rector": "^2.0",
+        "symfony/filesystem": "^7.4 || ^8.0",
+        "symfony/lock": "^7.4 || ^8.0",
+        "symfony/messenger": "^7.4 || ^8.0",
+        "symfony/phpunit-bridge": "^7.4 || ^8.0",
+        "symfony/yaml": "^7.4 || ^8.0"
+    },
+    "suggest": {
+        "symfony/flex": "For automatic recipe installation",
+        "symfony/messenger": "Click write mode `messenger` (click_log.write)",
+        "symfony/lock": "Exact plan limits under concurrent creates (quota)"
+    },
+    "autoload": {
+        "psr-4": {
+            "Nowo\\ShortLinkBundle\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Nowo\\ShortLinkBundle\\Tests\\": "tests/"
+        }
+    },
+    "archive": {
+        "exclude": [
+            "/.coderabbit.yaml",
+            "/.cursor",
+            "/.cursorignore",
+            "/.githooks",
+            "/.github",
+            "/.php-cs-fixer.dist.php",
+            "/.scripts",
+            "/.scrutinizer.yml",
+            "/.specify",
+            "/.symfony",
+            "/Dockerfile",
+            "/Makefile",
+            "/demo",
+            "/docker-compose.yml",
+            "/docs/images",
+            "/igor.json",
+            "/phpstan.neon.dist",
+            "/phpunit.xml.dist",
+            "/rector.php",
+            "/specs",
+            "/tests"
+        ]
+    },
+    "extra": {
+        "symfony": {
+            "bundle": "Nowo\\ShortLinkBundle\\NowoShortLinkBundle"
+        }
+    },
+    "config": {
+        "sort-packages": true,
+        "allow-plugins": {
+            "phpstan/extension-installer": true
+        },
+        "platform": {
+            "php": "8.2.0"
+        }
+    },
+    "minimum-stability": "stable",
+    "prefer-stable": true,
+    "scripts": {
+        "test": "@php -d memory_limit=512M vendor/bin/phpunit --color=always",
+        "test-coverage": "@php -d memory_limit=512M vendor/bin/phpunit --color=always --coverage-html coverage --coverage-clover coverage.xml --coverage-text",
+        "test-coverage-100": [
+            "@test-coverage",
+            "php .scripts/check-coverage.php coverage.xml --min-percent=100"
+        ],
+        "validate-phpdoc": "php .scripts/complete-public-phpdoc.php",
+        "cs-check": "php-cs-fixer fix --dry-run --diff",
+        "cs-fix": "php-cs-fixer fix",
+        "rector": "rector process",
+        "rector-dry": "rector process --dry-run --no-progress-bar",
+        "phpstan": "phpstan analyse --memory-limit=512M",
+        "update": "composer update --no-interaction",
+        "validate": "composer validate --strict",
+        "qa": [
+            "@cs-check",
+            "@test"
+        ],
+        "igor": "igor-php --no-agent ."
+    },
+    "scripts-descriptions": {
+        "test": "Run PHPUnit tests",
+        "test-coverage": "Run PHPUnit tests with code coverage",
+        "test-coverage-100": "Run test-coverage and fail if statement or element coverage is below 100% (REQ-TEST-003)",
+        "validate-phpdoc": "Fail when a class or public method in src/ has no PHPDoc (REQ-CS-001)",
+        "cs-check": "Check code style with PHP-CS-Fixer",
+        "cs-fix": "Fix code style with PHP-CS-Fixer",
+        "rector": "Apply Rector refactoring",
+        "rector-dry": "Run Rector in dry-run mode",
+        "phpstan": "Run PHPStan static analysis",
+        "update": "Update composer.lock (composer update)",
+        "validate": "Validate composer.json (composer validate --strict)",
+        "qa": "Run all quality assurance checks",
+        "igor": "Run Igor FrankenPHP worker-state audit (REQ-CS-008)"
+    }
+}

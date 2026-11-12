@@ -1,0 +1,41 @@
+name: short-link-bundle
+services:
+  php:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: short-link-bundle-php
+    working_dir: /app
+    volumes:
+      - .:/app
+      - composer-cache:/root/.composer/cache
+      - coverage-data:/app/coverage
+    environment:
+      - COMPOSER_ALLOW_SUPERUSER=1
+    command: ["tail", "-f", "/dev/null"]
+    networks:
+      - short-link-bundle-network
+
+  # REQ-TEST-005: MySQL 8.4 for `make test-with-db` (profile "db": not started by `make up`). Passwordless root on the
+  # private network only, no port published (nothing credential-like in the repository).
+  database:
+    image: mysql:8.4
+    profiles: ["db"]
+    container_name: short-link-bundle-db
+    environment:
+      MYSQL_ALLOW_EMPTY_PASSWORD: 'yes'
+      MYSQL_DATABASE: app
+    tmpfs:
+      - /var/lib/mysql
+    networks:
+      - short-link-bundle-network
+
+volumes:
+  composer-cache:
+    driver: local
+  coverage-data:
+    driver: local
+
+networks:
+  short-link-bundle-network:
+    driver: bridge

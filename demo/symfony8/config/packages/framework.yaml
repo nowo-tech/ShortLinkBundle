@@ -1,0 +1,17 @@
+framework:
+  secret: '%env(APP_SECRET)%'
+  http_method_override: false
+  handle_all_throwables: true
+  csrf_protection: true
+  session: true
+  default_locale: en
+  translator:
+    default_path: '%kernel.project_dir%/translations'
+    fallbacks: ['en']
+  assets: ~
+  php_errors:
+    log: true
+
+when@test:
+  framework:
+    test: true
