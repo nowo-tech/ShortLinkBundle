@@ -48,7 +48,7 @@ use function preg_match;
 final readonly class RedirectController
 {
     /** Codes the route may carry (random and custom). */
-    public const CODE_PATTERN = '/^[A-Za-z0-9-]{3,32}$/';
+    public const CODE_PATTERN = '/^[A-Za-z0-9-]{3,32}$/D';
 
     /**
      * @param RateLimiterFactoryInterface|null $misses per-IP limiter of misses; null = `rate_limit.enabled: false`

@@ -37,11 +37,11 @@ final readonly class ReferrerHost
             return null;
         }
         $parts = parse_url(trim($referer));
-        if ($parts === false || !isset($parts['scheme'], $parts['host']) || preg_match('/^https?$/i', $parts['scheme']) !== 1) {
+        if ($parts === false || !isset($parts['scheme'], $parts['host']) || preg_match('/^https?$/iD', $parts['scheme']) !== 1) {
             return null;
         }
         $host = rtrim($parts['host'], '.');
-        if (preg_match('/^[\x21-\x7E]+$/', $host) !== 1) {
+        if (preg_match('/^[\x21-\x7E]+$/D', $host) !== 1) {
             $host = idn_to_ascii($host, IDNA_DEFAULT, INTL_IDNA_VARIANT_UTS46);
         }
         if (!is_string($host)) {
@@ -52,6 +52,6 @@ final readonly class ReferrerHost
             $host = substr($host, 1, -1);
         }
 
-        return preg_match('/^[a-z0-9.:_-]{1,253}$/', $host) === 1 ? new self($host) : null;
+        return preg_match('/^[a-z0-9.:_-]{1,253}$/D', $host) === 1 ? new self($host) : null;
     }
 }

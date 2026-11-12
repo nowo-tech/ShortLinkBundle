@@ -22,7 +22,7 @@ final readonly class CountryCode
      */
     public static function fromString(string $value): self
     {
-        if (preg_match('/^[A-Z]{2}$/', $value) !== 1) {
+        if (preg_match('/^[A-Z]{2}$/D', $value) !== 1) {
             throw new InvalidShortLinkArgumentException('A country code is two uppercase letters (ISO 3166-1 alpha-2).');
         }
 
