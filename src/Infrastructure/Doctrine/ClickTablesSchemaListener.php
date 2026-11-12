@@ -80,6 +80,7 @@ final readonly class ClickTablesSchemaListener
         $daily->addColumn('machine_clicks', Types::INTEGER, ['default' => 0]);
         $daily->setPrimaryKey(['link_id', 'day', 'dimension', 'value']);
         $daily->addIndex(['tenant_key', 'day'], $p . 'idx_short_link_daily_tenant');
+        $daily->addIndex(['day'], $p . 'idx_short_link_daily_day');
 
         $days = $schema->createTable($p . self::ROLLUP_DAY_TABLE);
         $days->addColumn('day', Types::DATE_IMMUTABLE);

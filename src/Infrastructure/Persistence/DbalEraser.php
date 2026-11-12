@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Nowo\ShortLinkBundle\Infrastructure\Persistence;
 
+use Closure;
 use DateTimeImmutable;
 use DateTimeZone;
 use Doctrine\DBAL\ArrayParameterType;
@@ -32,6 +33,9 @@ use function substr;
  */
 final readonly class DbalEraser implements ShortLinkEraserInterface
 {
+    /** Columns blanked on an erased tombstone (the code, kind, id and dates stay: the code stays taken). */
+    private const BLANK = "target_url = '', target_host = '', title = NULL, source_ref = NULL, source_label = NULL, source_position = NULL, metadata = NULL, active = ?, disabled_reason = NULL, created_by = NULL, updated_by = NULL, updated_at = ?";
+
     /** Tenant key of erased tombstones (outside the TenantKey pattern on purpose). */
     public const ERASED_TENANT = '~erased';
 
@@ -47,18 +51,20 @@ final readonly class DbalEraser implements ShortLinkEraserInterface
      */
     public function eraseTenant(TenantKey $tenant): int
     {
-        $clicks  = $this->tables->clickConnection();
-        $deleted = (int) $clicks->executeStatement(sprintf('DELETE FROM %s WHERE tenant_key = ?', $this->tables->clicks), [$tenant->value]);
-        $deleted += (int) $clicks->executeStatement(sprintf('DELETE FROM %s WHERE tenant_key = ?', $this->tables->daily), [$tenant->value]);
-        $now   = $this->now();
-        $links = $this->tables->linkConnection();
-        $links->executeStatement(sprintf('UPDATE %s SET deleted_at = ? WHERE tenant_key = ? AND deleted_at IS NULL', $this->tables->links), [$now, $tenant->value]);
+        return $this->atomically(function () use ($tenant): int {
+            $now   = $this->now();
+            $links = $this->tables->linkConnection();
+            $links->executeStatement(sprintf('UPDATE %s SET deleted_at = ? WHERE tenant_key = ? AND deleted_at IS NULL', $this->tables->links), [$now, $tenant->value]);
+            $count = (int) $links->executeStatement(
+                sprintf('UPDATE %s SET tenant_key = ?, %s WHERE tenant_key = ?', $this->tables->links, self::BLANK),
+                [self::ERASED_TENANT, false, $now, $tenant->value],
+                [1 => Types::BOOLEAN],
+            );
+            $clicks = $this->tables->clickConnection();
+            $count += (int) $clicks->executeStatement(sprintf('DELETE FROM %s WHERE tenant_key = ?', $this->tables->clicks), [$tenant->value]);
 
-        return $deleted + (int) $links->executeStatement(
-            sprintf("UPDATE %s SET tenant_key = ?, target_url = '', target_host = '', title = NULL, source_ref = NULL, source_label = NULL, source_position = NULL, metadata = NULL, active = ?, disabled_reason = NULL, created_by = NULL, updated_by = NULL, updated_at = ? WHERE tenant_key = ?", $this->tables->links),
-            [self::ERASED_TENANT, false, $now, $tenant->value],
-            [1 => Types::BOOLEAN],
-        );
+            return $count + (int) $clicks->executeStatement(sprintf('DELETE FROM %s WHERE tenant_key = ?', $this->tables->daily), [$tenant->value]);
+        });
     }
 
     /**
@@ -71,16 +77,36 @@ final readonly class DbalEraser implements ShortLinkEraserInterface
             return 0;
         }
         $linkIds = array_column($ids, 'id');
-        $clicks  = $this->tables->clickConnection();
-        $count   = (int) $clicks->executeStatement(sprintf('DELETE FROM %s WHERE tenant_key = ? AND link_id IN (?)', $this->tables->clicks), [$tenant->value, $linkIds], [1 => ArrayParameterType::STRING]);
-        $count += (int) $clicks->executeStatement(sprintf('DELETE FROM %s WHERE tenant_key = ? AND link_id IN (?)', $this->tables->daily), [$tenant->value, $linkIds], [1 => ArrayParameterType::STRING]);
-        $now = $this->now();
 
-        return $count + (int) $this->tables->linkConnection()->executeStatement(
-            sprintf('UPDATE %s SET deleted_at = COALESCE(deleted_at, ?), active = ?, source_label = NULL, metadata = NULL, updated_at = ? WHERE tenant_key = ? AND id IN (?)', $this->tables->links),
-            [$now, false, $now, $tenant->value, $linkIds],
-            [1 => Types::BOOLEAN, 4 => ArrayParameterType::STRING],
-        );
+        return $this->atomically(function () use ($tenant, $linkIds): int {
+            $now   = $this->now();
+            $links = $this->tables->linkConnection();
+            $links->executeStatement(
+                sprintf('UPDATE %s SET deleted_at = ? WHERE tenant_key = ? AND id IN (?) AND deleted_at IS NULL', $this->tables->links),
+                [$now, $tenant->value, $linkIds],
+                [2 => ArrayParameterType::STRING],
+            );
+            $count = (int) $links->executeStatement(
+                sprintf('UPDATE %s SET %s WHERE tenant_key = ? AND id IN (?)', $this->tables->links, self::BLANK),
+                [false, $now, $tenant->value, $linkIds],
+                [0 => Types::BOOLEAN, 3 => ArrayParameterType::STRING],
+            );
+            $clicks = $this->tables->clickConnection();
+            $count += (int) $clicks->executeStatement(sprintf('DELETE FROM %s WHERE tenant_key = ? AND link_id IN (?)', $this->tables->clicks), [$tenant->value, $linkIds], [1 => ArrayParameterType::STRING]);
+
+            return $count + (int) $clicks->executeStatement(sprintf('DELETE FROM %s WHERE tenant_key = ? AND link_id IN (?)', $this->tables->daily), [$tenant->value, $linkIds], [1 => ArrayParameterType::STRING]);
+        });
+    }
+
+    /**
+     * Runs the erasure in one transaction when the link and click tables share a connection; otherwise tombstones come
+     * first, so a click arriving in between is dropped by the recorder (the link is no longer live).
+     *
+     * @param Closure(): int $work
+     */
+    private function atomically(Closure $work): int
+    {
+        return $this->tables->sharesConnection() ? (int) $this->tables->linkConnection()->transactional($work) : $work();
     }
 
     /**
@@ -101,18 +127,25 @@ final readonly class DbalEraser implements ShortLinkEraserInterface
     {
         $links = $this->sourceLinks($tenant, $kind, $sourceRef);
         if ($links === []) {
-            return [];
+            return ['clicks' => [], 'daily' => []];
         }
-        $byId = array_combine(array_column($links, 'id'), $links);
-        $rows = $this->tables->clickConnection()->fetchAllAssociative(
+        $byId   = array_combine(array_column($links, 'id'), $links);
+        $clicks = $this->tables->clickConnection();
+        $mine   = fn (array $row): bool => isset($byId[$this->text($row['link_id'])]) && $this->text($row['tenant_key']) === $tenant->value;
+        $raw    = $clicks->fetchAllAssociative(
             sprintf('SELECT link_id, tenant_key, clicked_at, ip_prefix, ua_family, referrer_host, country, machine FROM %s WHERE tenant_key = ? AND link_id IN (?) ORDER BY id', $this->tables->clicks),
             [$tenant->value, array_keys($byId)],
             [1 => ArrayParameterType::STRING],
         );
-        $export = [];
-        foreach (array_filter($rows, fn (array $row): bool => isset($byId[$this->text($row['link_id'])]) && $this->text($row['tenant_key']) === $tenant->value) as $row) {
-            $link     = $byId[$this->text($row['link_id'])];
-            $export[] = [
+        $rollups = $clicks->fetchAllAssociative(
+            sprintf('SELECT link_id, tenant_key, day, dimension, value, clicks, machine_clicks FROM %s WHERE tenant_key = ? AND link_id IN (?) ORDER BY day, link_id, dimension, value', $this->tables->daily),
+            [$tenant->value, array_keys($byId)],
+            [1 => ArrayParameterType::STRING],
+        );
+        $export = ['clicks' => [], 'daily' => []];
+        foreach (array_filter($raw, $mine) as $row) {
+            $link               = $byId[$this->text($row['link_id'])];
+            $export['clicks'][] = [
                 'code'          => $link['code'],
                 'label'         => $link['label'],
                 'position'      => $link['position'],
@@ -122,6 +155,19 @@ final readonly class DbalEraser implements ShortLinkEraserInterface
                 'referrer_host' => $this->nullable($row['referrer_host']),
                 'country'       => $this->nullable($row['country']),
                 'machine'       => in_array($row['machine'], [true, 1, '1', 't', 'true'], true),
+            ];
+        }
+        foreach (array_filter($rollups, $mine) as $row) {
+            $link              = $byId[$this->text($row['link_id'])];
+            $export['daily'][] = [
+                'code'           => $link['code'],
+                'label'          => $link['label'],
+                'position'       => $link['position'],
+                'day'            => substr($this->text($row['day']), 0, 10),
+                'dimension'      => $this->text($row['dimension']),
+                'value'          => $this->text($row['value']),
+                'clicks'         => (int) $this->text($row['clicks']),
+                'machine_clicks' => (int) $this->text($row['machine_clicks']),
             ];
         }
 

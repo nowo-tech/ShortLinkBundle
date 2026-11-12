@@ -140,7 +140,7 @@ final class NowoShortLinkExtension extends Extension implements PrependExtension
      */
     public function load(array $configs, ContainerBuilder $container): void
     {
-        /** @var array{public_base_url: string|null, redirect: array{path_prefix: string, status: int, not_found_template: string, rate_limit: array{enabled: bool, cache_pool: string, ipv6_prefix: int, misses: array{limit: int, interval: string}, hits: array{limit: int, interval: string}, over_limit_hits: string}}, code: array{random_length: int, allow_custom: bool, reserved: list<string>, blocklist: bool, max_attempts: int, quarantine: string|null}, target: array{max_length: int, guard: string, save_resolve_dns: bool, self_paths: list<string>, own_hosts: list<string>, denylist: array{hosts: list<string>, provider: string|null}}, tenancy: array{context: string|null}, access: array{provider: string|null, view_role: string, manage_role: string, enforce_in_manager: bool}, quota: array{provider: string|null, default_limit: int|null, counted_kinds: list<string>}, kinds: array<string, array{allow_custom_code: bool, show_in_ui: bool, counted: bool}>, ui: array{enabled: bool, path_prefix: string}, doctrine: array{entity_manager: string|null, connection: string|null, table_prefix: string}, click_log: array{enabled: bool, write: string, store: array{ip_prefix: bool, user_agent_family: bool, referrer_host: bool, country: bool}, ipv4_prefix: int, ipv6_prefix: int, honour_gpc: bool, country_resolver: string|null, retention: string|null, rollup: array{lag_days: int, referrer_top_n: int, retention: string|null}}} $config */
+        /** @var array{public_base_url: string|null, redirect: array{path_prefix: string, status: int, not_found_template: string, rate_limit: array{enabled: bool, cache_pool: string, ipv6_prefix: int, misses: array{limit: int, interval: string}, hits: array{limit: int, interval: string}, over_limit_hits: string}}, code: array{random_length: int, allow_custom: bool, reserved: list<string>, blocklist: bool, max_attempts: int, quarantine: string|null}, target: array{max_length: int, guard: string, recheck_max_unresolvable_percent: int, save_resolve_dns: bool, self_paths: list<string>, own_hosts: list<string>, denylist: array{hosts: list<string>, provider: string|null}}, tenancy: array{context: string|null}, access: array{provider: string|null, view_role: string, manage_role: string, enforce_in_manager: bool}, quota: array{provider: string|null, default_limit: int|null, counted_kinds: list<string>}, kinds: array<string, array{allow_custom_code: bool, show_in_ui: bool, counted: bool}>, ui: array{enabled: bool, path_prefix: string}, doctrine: array{entity_manager: string|null, connection: string|null, table_prefix: string}, click_log: array{enabled: bool, write: string, store: array{ip_prefix: bool, user_agent_family: bool, referrer_host: bool, country: bool}, ipv4_prefix: int, ipv6_prefix: int, honour_gpc: bool, country_resolver: string|null, retention: string|null, rollup: array{lag_days: int, referrer_top_n: int, retention: string|null}}} $config */
         $config = $this->processConfiguration(new Configuration(), $configs);
         $container->setParameter(self::ALIAS . '.redirect_path_prefix', $config['redirect']['path_prefix']);
         $container->setParameter(self::ALIAS . '.ui_enabled', $config['ui']['enabled']);
@@ -256,25 +256,25 @@ final class NowoShortLinkExtension extends Extension implements PrependExtension
     /**
      * S3: statistics, retention commands, recheck and GDPR erasure.
      *
-     * @param array{code: array{quarantine: string|null}, click_log: array{retention: string|null, rollup: array{lag_days: int, referrer_top_n: int, retention: string|null}}, doctrine: array{entity_manager: string|null, connection: string|null, table_prefix: string}} $config
+     * @param array{code: array{quarantine: string|null}, target: array{recheck_max_unresolvable_percent: int}, click_log: array{retention: string|null, rollup: array{lag_days: int, referrer_top_n: int, retention: string|null}}, doctrine: array{entity_manager: string|null, connection: string|null, table_prefix: string}} $config
      */
     private function registerStats(ContainerBuilder $container, array $config): void
     {
         $clock = new Reference('clock', ContainerInterface::NULL_ON_INVALID_REFERENCE);
         $container->register(ClickTables::class, ClickTables::class)
             ->setArguments([new Reference('doctrine'), $config['doctrine']['connection'], $config['doctrine']['entity_manager'], $config['doctrine']['table_prefix']]);
-        $container->register(DbalClickMaintenance::class, DbalClickMaintenance::class)->setArguments([new Reference(ClickTables::class)]);
+        $container->register(DbalClickMaintenance::class, DbalClickMaintenance::class)->setArguments([new Reference(ClickTables::class), new Reference('logger', ContainerInterface::NULL_ON_INVALID_REFERENCE)]);
         $container->register(DbalStatsReader::class, DbalStatsReader::class)->setArguments([new Reference(ClickTables::class), new Reference(DbalClickMaintenance::class)]);
         $container->setAlias(ShortLinkStatsReaderInterface::class, DbalStatsReader::class)->setPublic(true);
         $container->register(DbalEraser::class, DbalEraser::class)->setArguments([new Reference(ClickTables::class), $clock]);
         $container->setAlias(ShortLinkEraserInterface::class, DbalEraser::class)->setPublic(true);
 
         $container->register(RollupCommand::class, RollupCommand::class)->setAutoconfigured(true)->setPublic(true)
-            ->setArguments([new Reference(DbalClickMaintenance::class), $config['click_log']['rollup']['lag_days'], $config['click_log']['rollup']['referrer_top_n'], $clock]);
+            ->setArguments([new Reference(DbalClickMaintenance::class), $config['click_log']['rollup']['lag_days'], $config['click_log']['rollup']['referrer_top_n'], $clock, $config['click_log']['retention'], new Reference('lock.factory', ContainerInterface::NULL_ON_INVALID_REFERENCE)]);
         $container->register(PurgeCommand::class, PurgeCommand::class)->setAutoconfigured(true)->setPublic(true)
             ->setArguments([new Reference(DbalClickMaintenance::class), $config['click_log']['retention'], $config['code']['quarantine'], $config['click_log']['rollup']['retention'], $clock]);
         $container->register(RecheckCommand::class, RecheckCommand::class)->setAutoconfigured(true)->setPublic(true)
-            ->setArguments([new Reference(ShortLinkStoreInterface::class), new Reference(TargetGuardInterface::class), new Reference('event_dispatcher'), $clock]);
+            ->setArguments([new Reference(ShortLinkStoreInterface::class), new Reference(TargetGuardInterface::class), new Reference('event_dispatcher'), $clock, $config['target']['recheck_max_unresolvable_percent'], new Reference('logger', ContainerInterface::NULL_ON_INVALID_REFERENCE)]);
     }
 
     /**
@@ -301,6 +301,7 @@ final class NowoShortLinkExtension extends Extension implements PrependExtension
             '$store'     => $clicks['store'],
             '$honourGpc' => $clicks['honour_gpc'],
             '$logger'    => $logger,
+            '$links'     => new Reference(ShortLinkStoreInterface::class),
         ]);
         $container->register(RedirectResolver::class, RedirectResolver::class)->setArguments([
             '$store' => new Reference(ShortLinkStoreInterface::class),

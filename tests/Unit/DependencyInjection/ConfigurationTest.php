@@ -33,12 +33,13 @@ final class ConfigurationTest extends TestCase
         ], $config['redirect']);
         self::assertSame(['random_length' => 7, 'allow_custom' => true, 'reserved' => [], 'blocklist' => true, 'max_attempts' => 5, 'quarantine' => 'P365D'], $config['code']);
         self::assertSame([
-            'max_length'       => 2048,
-            'guard'            => 'auto',
-            'save_resolve_dns' => true,
-            'self_paths'       => ['/s/'],
-            'own_hosts'        => [],
-            'denylist'         => ['hosts' => [], 'provider' => null],
+            'max_length'                       => 2048,
+            'guard'                            => 'auto',
+            'recheck_max_unresolvable_percent' => 20,
+            'save_resolve_dns'                 => true,
+            'self_paths'                       => ['/s/'],
+            'own_hosts'                        => [],
+            'denylist'                         => ['hosts' => [], 'provider' => null],
         ], $config['target']);
         self::assertSame([
             'enabled'          => true,
@@ -142,6 +143,10 @@ final class ConfigurationTest extends TestCase
         yield 'table prefix' => [['doctrine' => ['table_prefix' => 'App-']], 'table_prefix'];
         yield 'table prefix too long' => [['doctrine' => ['table_prefix' => 'a' . str_repeat('b', 30)]], 'table_prefix'];
         yield 'table prefix not a string' => [['doctrine' => ['table_prefix' => 1]], 'table_prefix'];
+        yield 'raw retention shorter than lag_days + 1' => [['click_log' => ['retention' => 'P2D', 'rollup' => ['lag_days' => 2]]], 'lag_days + 1'];
+        yield 'rollup retention shorter than raw retention' => [['click_log' => ['retention' => 'P90D', 'rollup' => ['retention' => 'P30D']]], 'rollup.retention'];
+        yield 'rollup retention with raw kept forever' => [['click_log' => ['retention' => null, 'rollup' => ['retention' => 'P1Y']]], 'rollup.retention'];
+        yield 'recheck percent' => [['target' => ['recheck_max_unresolvable_percent' => 101]], 'recheck_max_unresolvable_percent'];
         yield 'mapping' => [['doctrine' => ['mapping' => 'yaml']], 'mapping'];
         yield 'unknown key' => [['enabled' => true], 'enabled'];
     }

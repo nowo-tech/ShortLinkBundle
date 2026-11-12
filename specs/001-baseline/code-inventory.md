@@ -2,9 +2,9 @@
 
 **Baseline spec**: [`spec.md`](spec.md)  
 **Package**: `nowo-tech/short-link-bundle`  
-**Last audited**: 2026-11-12 (S3)
+**Last audited**: 2026-11-12 (S3 + audit NY)
 
-Scope: every file under `src/`. Audit command: `find src -type f | wc -l` → **123**.
+Scope: every file under `src/`. Audit command: `find src -type f | wc -l` → **124**.
 
 | Source file | Spec section | Requirement IDs |
 | --- | --- | --- |
@@ -26,6 +26,7 @@ Scope: every file under `src/`. Audit command: `find src -type f | wc -l` → **
 | `src/Application/ManagerSettings.php` | Manager | FR-MANAGE-001, FR-BULK-001, FR-ACCESS-001, FR-QUOTA-001 |
 | `src/Application/ShortLinkManager.php` | Manager | FR-MANAGE-001, FR-BULK-001, FR-ACCESS-001, FR-QUOTA-001 |
 | `src/Application/ShortUrlBuilderInterface.php` | Short URLs | FR-URL-001 |
+| `src/Application/Store/ActiveBatch.php` | Retention and recheck | FR-RETENTION-001 |
 | `src/Application/Store/ClickStoreInterface.php` | Redirect and click log | FR-REDIRECT-001, FR-CLICK-001 |
 | `src/Application/Store/ShortLinkStoreInterface.php` | Persistence | FR-DB-001, FR-DB-002, FR-EVENT-001 |
 | `src/Application/Store/StoredLink.php` | Persistence | FR-DB-001, FR-DB-002, FR-EVENT-001 |
@@ -132,5 +133,5 @@ Scope: every file under `src/`. Audit command: `find src -type f | wc -l` → **
 | `src/Resources/translations/NowoShortLinkBundle.pt.yaml` | Translations | FR-I18N-001 |
 | `src/Resources/views/redirect/not_found.html.twig` | Redirect and click log | FR-REDIRECT-001, FR-CLICK-001 |
 
-| Total production sources | 123 |
+| Total production sources | 124 |
 | --- | --- |

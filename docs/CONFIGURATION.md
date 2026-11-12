@@ -36,6 +36,7 @@ nowo_short_link:
     target:
         max_length: 2048             # 64..2048
         guard: auto                  # auto (basic + OutboundUrlGuard) | basic | <service id>: a service REPLACES the whole chain (self chain, OutboundUrlGuard, denylist)
+        recheck_max_unresolvable_percent: 20  # 0..100: the recheck aborts when more of a batch cannot be resolved
         save_resolve_dns: true       # DNS check on create / update / enable / recheck, never on the redirect
         self_paths: ['/s/']          # targets on own_hosts under these paths are refused (no chains)
         own_hosts: []                # host names, lowercased
@@ -92,6 +93,8 @@ true}}` keeps `allow_custom_code: false` and `counted: false`). A kind is counte
   never match the custom-code pattern).
 - Durations (`code.quarantine`, `click_log.retention`, `click_log.rollup.retention`): ISO 8601 (`P90D`, `P1Y`, `PT12H`)
   or null.
+- `click_log.retention` must be at least `click_log.rollup.lag_days` + 1 days (the rollup recomputes those days from
+  raw rows), and `click_log.rollup.retention`, when set, at least `click_log.retention`.
 - `tenancy.context` needs `access.provider`: the default role-based access grants the same role in every tenant, so a
   multi-tenant host must give an access port that checks the tenant (the container refuses to build otherwise).
 - `REQ-CFG-001` (profiles) does not apply: one instance-wide configuration; per-tenant variation goes through the ports.

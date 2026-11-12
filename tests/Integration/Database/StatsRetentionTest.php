@@ -7,6 +7,8 @@ namespace Nowo\ShortLinkBundle\Tests\Integration\Database;
 use DateTimeImmutable;
 use DateTimeZone;
 use Doctrine\DBAL\Connection;
+use Nowo\ShortLinkBundle\Application\Click\ClickPayload;
+use Nowo\ShortLinkBundle\Application\Click\ClickRecorder;
 use Nowo\ShortLinkBundle\Application\Store\ClickStoreInterface;
 use Nowo\ShortLinkBundle\Application\Store\ShortLinkStoreInterface;
 use Nowo\ShortLinkBundle\Domain\Event\ShortLinkStateChangedEvent;
@@ -21,14 +23,18 @@ use Nowo\ShortLinkBundle\Domain\Model\GuardStage;
 use Nowo\ShortLinkBundle\Domain\Model\LinkClickTotals;
 use Nowo\ShortLinkBundle\Domain\Model\LinkKind;
 use Nowo\ShortLinkBundle\Domain\Model\LinkSource;
+use Nowo\ShortLinkBundle\Domain\Model\ShortLinkId;
 use Nowo\ShortLinkBundle\Domain\Model\ShortLinkPermission;
 use Nowo\ShortLinkBundle\Domain\Model\ShortLinkState;
 use Nowo\ShortLinkBundle\Domain\Model\ShortLinkView;
 use Nowo\ShortLinkBundle\Domain\Model\TargetUrl;
 use Nowo\ShortLinkBundle\Domain\Model\TenantKey;
+use Nowo\ShortLinkBundle\Domain\Model\UpdateShortLink;
+use Nowo\ShortLinkBundle\Domain\Model\UserAgentFamily;
 use Nowo\ShortLinkBundle\Domain\Service\ShortLinkEraserInterface;
 use Nowo\ShortLinkBundle\Domain\Service\ShortLinkManagerInterface;
 use Nowo\ShortLinkBundle\Domain\Service\ShortLinkStatsReaderInterface;
+use Nowo\ShortLinkBundle\Infrastructure\Persistence\DbalClickMaintenance;
 use Nowo\ShortLinkBundle\Tests\Fixtures\Ddd\TestAccess;
 use Nowo\ShortLinkBundle\Tests\Fixtures\RecordingListener;
 use Nowo\ShortLinkBundle\Tests\Integration\Kernel\Host;
@@ -143,11 +149,11 @@ class StatsRetentionTest extends KernelTestCase
         $this->runCommand('nowo:short-link:purge');
         self::assertFalse($this->store()->codeExists('flyer'), 'the code is free after the quarantine');
 
-        $this->boot(['click_log' => ['rollup' => ['retention' => 'P30D']], 'code' => ['quarantine' => null]]);
+        $this->boot(['click_log' => ['retention' => 'P10D', 'rollup' => ['retention' => 'P30D']], 'code' => ['quarantine' => null]]);
         $other = $this->create('https://example.com/other');
         $this->click($other, '2026-09-01 10:00:00');
         $this->runCommand('nowo:short-link:rollup');
-        self::assertSame('Purged 0 click(s), 4 rollup row(s), 0 tombstone(s).', $this->runCommand('nowo:short-link:purge'), 'rollups older than rollup.retention go');
+        self::assertSame('Purged 1 click(s), 4 rollup row(s), 0 tombstone(s).', $this->runCommand('nowo:short-link:purge'), 'rollups older than rollup.retention go');
     }
 
     public function testTheEmailLogListsTheLinksOfOneSend(): void
@@ -177,13 +183,19 @@ class StatsRetentionTest extends KernelTestCase
         $this->click($views[0], '2026-11-12 09:00:00');
 
         $export = $this->eraser()->exportSource($this->tenant, LinkKind::email(), 'send-9');
-        self::assertCount(2, $export);
-        self::assertSame(['code' => $views[0]->code->value, 'label' => 'Logo', 'position' => 0, 'clicked_at' => '2026-11-11 09:00:00', 'ip_prefix' => '203.0.113.0/24', 'ua_family' => 'firefox', 'referrer_host' => 'mail.example', 'country' => null, 'machine' => false], $export[0]);
-        self::assertSame([], $this->eraser()->exportSource($this->tenant, LinkKind::email(), 'nothing'));
+        self::assertCount(2, $export['clicks']);
+        self::assertSame(['code' => $views[0]->code->value, 'label' => 'Logo', 'position' => 0, 'clicked_at' => '2026-11-11 09:00:00', 'ip_prefix' => '203.0.113.0/24', 'ua_family' => 'firefox', 'referrer_host' => 'mail.example', 'country' => null, 'machine' => false], $export['clicks'][0]);
+        self::assertCount(4, $export['daily'], 'the rollup rows of the send are personal data too');
+        self::assertContains(['code' => $views[0]->code->value, 'label' => 'Logo', 'position' => 0, 'day' => '2026-11-11', 'dimension' => 'referrer', 'value' => 'mail.example', 'clicks' => 1, 'machine_clicks' => 0], $export['daily']);
+        self::assertSame(['clicks' => [], 'daily' => []], $this->eraser()->exportSource($this->tenant, LinkKind::email(), 'nothing'));
         self::assertSame(0, $this->eraser()->eraseSource($this->tenant, LinkKind::email(), 'nothing'));
 
         self::assertGreaterThanOrEqual(3, $this->eraser()->eraseSource($this->tenant, LinkKind::email(), 'send-9'));
-        self::assertSame([], $this->eraser()->exportSource($this->tenant, LinkKind::email(), 'send-9'));
+        self::assertSame(['clicks' => [], 'daily' => []], $this->eraser()->exportSource($this->tenant, LinkKind::email(), 'send-9'));
+        $tombstone = $this->connection()->fetchAssociative('SELECT target_url, target_host, title, source_ref, created_by, updated_by, deleted_at FROM ' . $this->host()->tablePrefix() . 'nowo_short_link WHERE id = ?', [$views[0]->id->value]);
+        self::assertIsArray($tombstone);
+        self::assertSame(['', '', null, null, null, null], [$tombstone['target_url'], $tombstone['target_host'], $tombstone['title'], $tombstone['source_ref'], $tombstone['created_by'], $tombstone['updated_by']], 'eraseSource blanks the tombstone');
+        self::assertNotNull($tombstone['deleted_at']);
         self::assertNull($this->manager()->find($this->tenant, $views[0]->id));
         self::assertTrue($this->store()->codeExists($views[0]->code->value));
         self::assertSame(0, $this->stats()->totals($this->tenant, [$views[0]->id])[$views[0]->id->value]->clicks);
@@ -200,7 +212,7 @@ class StatsRetentionTest extends KernelTestCase
         $http = $this->kernel->getContainer()->get('http_kernel');
         self::assertInstanceOf(HttpKernelInterface::class, $http);
         self::assertSame(404, $http->handle(Request::create('/s/live-link'), HttpKernelInterface::MAIN_REQUEST, false)->getStatusCode(), 'an erased tombstone answers the neutral 404');
-        self::assertSame('Checked 0 link(s), disabled 0.', $this->runCommand('nowo:short-link:recheck'));
+        self::assertSame('Checked 0 link(s), disabled 0, skipped 0 unresolvable.', $this->runCommand('nowo:short-link:recheck'));
     }
 
     public function testRecheckDisablesLinksWhoseTargetIsNowRefused(): void
@@ -212,7 +224,7 @@ class StatsRetentionTest extends KernelTestCase
         $this->store()->update($row->withEdit(TargetUrl::fromString('https://now.bad.example/x'), null, null, new DateTimeImmutable(Host::NOW), null));
         $this->listener()->clear();
 
-        self::assertSame('Checked 2 link(s), disabled 1.', $this->runCommand('nowo:short-link:recheck', ['--batch' => '1']));
+        self::assertSame('Checked 2 link(s), disabled 1, skipped 0 unresolvable.', $this->runCommand('nowo:short-link:recheck', ['--batch' => '1']));
         self::assertSame(ShortLinkState::Active, $this->manager()->find($this->tenant, $good->id)?->state);
         $disabled = $this->manager()->find($this->tenant, $bad->id);
         self::assertSame(ShortLinkState::Disabled, $disabled?->state);
@@ -222,7 +234,76 @@ class StatsRetentionTest extends KernelTestCase
         self::assertSame(ShortLinkStateChangedEvent::REASON_RECHECK_REFUSED, $changes[0]->reason);
         self::assertSame(GuardStage::Recheck, $this->listener()->of(ShortLinkTargetRefusedEvent::class)[0]->stage);
         $this->connection()->update($this->host()->tablePrefix() . 'nowo_short_link', ['tenant_key' => '~damaged'], ['id' => $good->id->value]);
-        self::assertSame('Checked 0 link(s), disabled 0.', $this->runCommand('nowo:short-link:recheck', ['--batch' => 'x']), 'unreadable rows are skipped');
+        self::assertSame('Checked 0 link(s), disabled 0, skipped 0 unresolvable.', $this->runCommand('nowo:short-link:recheck', ['--batch' => 'x']), 'unreadable rows are skipped');
+    }
+
+    public function testTheRecheckCursorSurvivesUnreadableRowsAtTheBatchEdge(): void
+    {
+        $ids = [];
+        foreach (['a', 'b', 'c'] as $name) {
+            $ids[] = $this->create('https://example.com/' . $name)->id->value;
+        }
+        sort($ids);
+        $last = $this->store()->find($this->tenant, ShortLinkId::fromString($ids[2]));
+        self::assertNotNull($last);
+        $this->store()->update($last->withEdit(TargetUrl::fromString('https://now.bad.example/x'), null, null, new DateTimeImmutable(Host::NOW), null));
+        $this->connection()->update($this->host()->tablePrefix() . 'nowo_short_link', ['tenant_key' => '~damaged'], ['id' => $ids[0]]);
+
+        self::assertSame('Checked 2 link(s), disabled 1, skipped 0 unresolvable.', $this->runCommand('nowo:short-link:recheck', ['--batch' => '1']));
+        self::assertSame(ShortLinkState::Disabled, $this->manager()->find($this->tenant, ShortLinkId::fromString($ids[2]))?->state, 'the link behind the unreadable row is checked');
+    }
+
+    public function testTheRecheckNeverResurrectsADeletedLinkNorRevertsAnEdit(): void
+    {
+        $deleted = $this->create('https://example.com/ok', 'flyer2');
+        $edited  = $this->create('https://example.com/ok2');
+        foreach ([$deleted, $edited] as $view) {
+            $row = $this->store()->find($this->tenant, $view->id);
+            self::assertNotNull($row);
+            $this->store()->update($row->withEdit(TargetUrl::fromString('https://now.bad.example/x'), null, null, new DateTimeImmutable(Host::NOW), null));
+        }
+        $stale = $this->store()->activeAfter(null, 10)->links;
+        self::assertCount(2, $stale);
+        $this->manager()->delete($this->tenant, $deleted->id);
+        $this->manager()->update($this->tenant, $edited->id, new UpdateShortLink('https://example.com/fixed'));
+        $now = new DateTimeImmutable(Host::NOW);
+
+        foreach ($stale as $snapshot) {
+            self::assertFalse($this->store()->disableIfUnchanged($snapshot, ShortLinkStateChangedEvent::REASON_RECHECK_REFUSED, $now));
+        }
+        self::assertNull($this->manager()->find($this->tenant, $deleted->id), 'the deleted link stays deleted');
+        $after = $this->manager()->find($this->tenant, $edited->id);
+        self::assertSame(['https://example.com/fixed', ShortLinkState::Active], [$after?->target->toString(), $after?->state], 'the edit wins');
+    }
+
+    public function testARolledDayAtOrBeforeTheRetentionCutoffIsNeverRecomputed(): void
+    {
+        $link = $this->create('https://example.com');
+        $this->click($link, '2026-11-11 08:00:00');
+        $this->click($link, '2026-11-11 20:00:00');
+        $maintenance = $this->container()->get(DbalClickMaintenance::class);
+        self::assertInstanceOf(DbalClickMaintenance::class, $maintenance);
+        $now = new DateTimeImmutable('2026-11-12 10:00:00', new DateTimeZone('UTC'));
+        self::assertSame(['2026-11-11'], $maintenance->rollup($now, 2, 50, 400, 'P1D'));
+        $maintenance->purge($now, 'P1D', null, null);
+        self::assertSame([], $maintenance->rollup($now, 2, 50, 400, 'P1D'), 'within lag_days but at or before the cutoff: kept as rolled');
+        $range = DateRange::of(new DateTimeImmutable('2026-11-11'), new DateTimeImmutable('2026-11-11'));
+        self::assertSame(2, $this->stats()->daily($this->tenant, $link->id, $range)[0]->clicks);
+    }
+
+    public function testLateClicksOfErasedOrForeignLinksAreDropped(): void
+    {
+        $link     = $this->create('https://example.com/z', 'zz-late');
+        $other    = $this->create('https://example.com/y');
+        $recorder = $this->container()->get(ClickRecorder::class);
+        self::assertInstanceOf(ClickRecorder::class, $recorder);
+        $payload = static fn (ShortLinkView $view, TenantKey $tenant): ClickPayload => new ClickPayload($view->id, $tenant, LinkKind::manual(), null, new DateTimeImmutable(Host::NOW), null, UserAgentFamily::Firefox, null, false);
+
+        $recorder->record($payload($other, TenantKey::fromString('intruder')));
+        self::assertSame(0, $this->clickCount(), 'a click whose tenant differs from the link is dropped');
+        $this->eraser()->eraseTenant($this->tenant);
+        $recorder->record($payload($link, $this->tenant));
+        self::assertSame(0, $this->clickCount(), 'a queued click handled after the erasure is dropped');
     }
 
     /**
@@ -251,6 +332,14 @@ class StatsRetentionTest extends KernelTestCase
         sort($out);
 
         return $out;
+    }
+
+    private function clickCount(): int
+    {
+        $count = $this->connection()->fetchOne('SELECT COUNT(*) FROM ' . $this->host()->tablePrefix() . 'nowo_short_link_click');
+        self::assertIsNumeric($count);
+
+        return (int) $count;
     }
 
     /**

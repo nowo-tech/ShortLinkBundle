@@ -64,12 +64,21 @@ interface ShortLinkStoreInterface
     public function findActiveByCode(string $code, DateTimeImmutable $now): ?ResolvedLink;
 
     /**
-     * Active (enabled, not deleted) rows of every tenant after this id, by id (the recheck command's keyset).
-     * Unreadable rows are skipped.
-     *
-     * @return list<StoredLink>
+     * Active (enabled, not deleted) rows of every tenant after this raw id, by id (the recheck command's keyset).
+     * Unreadable rows are skipped but still move the cursor.
      */
-    public function activeAfter(?ShortLinkId $after, int $limit): array;
+    public function activeAfter(?string $afterId, int $limit): ActiveBatch;
+
+    /**
+     * Disables a link only if it is still exactly as it was checked: same tenant, still active, not deleted and the
+     * same target (a narrow UPDATE, never a snapshot write). True when exactly one row changed.
+     */
+    public function disableIfUnchanged(StoredLink $checked, string $reason, DateTimeImmutable $now): bool;
+
+    /**
+     * Whether a live (not deleted) link with this id belongs to this tenant (late clicks of erased links are dropped).
+     */
+    public function isLive(ShortLinkId $id, TenantKey $tenant): bool;
 
     /**
      * The live row of the tenant with this id, or null.

@@ -48,6 +48,14 @@ final readonly class ClickTables
     }
 
     /**
+     * Whether the click tables live on the link table's connection (one transaction can cover both).
+     */
+    public function sharesConnection(): bool
+    {
+        return $this->connection === null;
+    }
+
+    /**
      * Connection of the click tables.
      */
     public function clickConnection(): Connection

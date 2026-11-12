@@ -7,6 +7,26 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Fixed (audit NY)
+
+- M1: the recheck disables a link with a narrow update (still active, not deleted, same target and tenant) and
+  dispatches its events only when that row changed: it can no longer resurrect a deleted or erased link nor revert an
+  edit made during the run.
+- M2: DNS failures never disable links on recheck: unresolvable targets are skipped with a warning, a batch with more
+  than `target.recheck_max_unresolvable_percent` (default 20) unresolvable targets aborts the run, and `--dry-run`
+  reports without writing.
+- M3: the rollup never recomputes an already rolled day at or before the raw retention cutoff; the configuration
+  refuses a `click_log.retention` shorter than `rollup.lag_days` + 1 days and a `rollup.retention` shorter than
+  `click_log.retention`.
+- M4: erasures tombstone first and delete clicks after, in one transaction when both tables share a connection; the
+  recorder (and so the Messenger handler) drops a click whose link is missing, deleted, erased or in another tenant.
+- L1: the recheck cursor moves past unreadable rows, so it never stops early.
+- L2: concurrent rollups are serialised with symfony/lock (or a concurrently written day is skipped); new index
+  `idx_short_link_daily_day` on the daily table.
+- L3: `eraseSource()` blanks the tombstones (target, title, source, metadata, actors) like `eraseTenant()`.
+- L4: `exportSource()` returns `['clicks' => …, 'daily' => …]`, the rollup rows included.
+- The self-chain guard collapses empty path segments (`//s/abc` behind slash-merging proxies).
+
 ### Changed
 
 - Audit NW follow-ups on S1: the self-chain guard percent-decodes the whole path (as the router does, `%2F` included) and removes dot segments

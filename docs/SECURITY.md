@@ -75,6 +75,11 @@ From contract §9. Each threat names the control and the slice that ships it.
 - **Audit NW (S2):** M1 limiter key per IPv6 /64 (configurable /56–/64), IPv4-mapped / 6to4 folded; M2 every event
   dispatch and log call on the redirect path guarded, refused event deferred to `kernel.terminate`; L3 minimal
   hot-path query, state decided before hydration; L4 unreadable rows → 404 + warning; L6 6to4 / Teredo prefixes.
+- **Audit NY (S3):** M1 recheck narrow update + events only on a changed row; M2 DNS failures skipped, circuit breaker
+  (`target.recheck_max_unresolvable_percent`), `--dry-run`; M3 rolled days at or before the retention cutoff are never
+  recomputed, retention / lag / rollup-retention checked at build; M4 erasure tombstones first (one transaction when
+  possible), late clicks of erased / deleted / foreign links dropped; L1 recheck cursor; L2 rollup lock + day index;
+  L3 / L4 blanked source tombstones and rollups in the export; self-chain guard collapses `//`.
 - **S3–S5:** see the table above and the contract.
 
 ## Release security checklist (12.4.1)
