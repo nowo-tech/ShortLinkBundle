@@ -48,7 +48,7 @@ use Symfony\Component\DependencyInjection\ContainerInterface;
 use function array_map;
 use function gc_collect_cycles;
 use function memory_get_usage;
-use function str_contains;
+use function preg_match;
 use function strlen;
 
 /**
@@ -500,7 +500,7 @@ abstract class ShortLinkFunctionalTestCase extends KernelTestCase
         }
         $pending = [];
         foreach ($this->host()->updateSchemaSql($this->kernel) as $sql) {
-            if (str_contains($sql, $prefix . 'nowo_short_link') || str_contains($sql, 'short_link_')) {
+            if (preg_match('/(?<![A-Za-z0-9_])' . $prefix . 'nowo_short_link/', $sql) === 1) {
                 $pending[] = $sql;
             }
         }
