@@ -81,6 +81,7 @@
         "symfony/lock": "^7.4 || ^8.0",
         "symfony/messenger": "^7.4 || ^8.0",
         "symfony/phpunit-bridge": "^7.4 || ^8.0",
+        "symfony/process": "^7.4 || ^8.0",
         "symfony/yaml": "^7.4 || ^8.0"
     },
     "suggest": {

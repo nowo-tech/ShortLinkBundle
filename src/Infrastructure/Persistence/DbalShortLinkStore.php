@@ -102,6 +102,14 @@ final readonly class DbalShortLinkStore implements ShortLinkStoreInterface
     /**
      * {@inheritDoc}
      */
+    public function inTransaction(): bool
+    {
+        return $this->connection()->isTransactionActive();
+    }
+
+    /**
+     * {@inheritDoc}
+     */
     public function codeExists(string $code): bool
     {
         $rows = $this->read(fn (Connection $c): array => $c->fetchFirstColumn(sprintf('SELECT code FROM %s WHERE code = ?', $this->table), [$code]));
@@ -212,12 +220,8 @@ final readonly class DbalShortLinkStore implements ShortLinkStoreInterface
      */
     public function list(TenantKey $tenant, ShortLinkListQuery $query, array $kinds, DateTimeImmutable $now): array
     {
-        $where  = ['tenant_key = ?', 'deleted_at IS NULL'];
-        $params = [$tenant->value];
-        $kinds  = $query->kind instanceof LinkKind ? [$query->kind->value] : $kinds;
-        if ($kinds === []) {
-            return [];
-        }
+        $where   = ['tenant_key = ?', 'deleted_at IS NULL'];
+        $params  = [$tenant->value];
         $where[] = 'kind IN (' . implode(', ', array_map(static fn (): string => '?', $kinds)) . ')';
         $params  = [...$params, ...$kinds];
         $nowText = $this->utc($now);

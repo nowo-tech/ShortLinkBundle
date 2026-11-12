@@ -27,7 +27,7 @@ final readonly class LinkSource
      */
     public function __construct(public string $ref, ?string $label = null, public ?int $position = null)
     {
-        if (preg_match('/^[A-Za-z0-9._:-]{1,64}$/', $ref) !== 1) {
+        if (preg_match('/^[A-Za-z0-9._:-]{1,64}$/D', $ref) !== 1) {
             throw new InvalidShortLinkArgumentException('A source ref has 1 to 64 characters [A-Za-z0-9._:-].');
         }
         if ($position !== null && ($position < 0 || $position > 999)) {

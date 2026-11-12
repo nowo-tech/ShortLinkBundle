@@ -35,6 +35,11 @@ interface ShortLinkStoreInterface
     public function transactional(Closure $work, ?Closure $afterCommit = null): mixed;
 
     /**
+     * Whether a transaction is open on the store's connection (a host transaction the store would join).
+     */
+    public function inTransaction(): bool;
+
+    /**
      * Whether any row (live or tombstone) holds exactly this code.
      */
     public function codeExists(string $code): bool;
@@ -76,7 +81,7 @@ interface ShortLinkStoreInterface
     /**
      * Live rows of a list page, newest first (`limit` + 1 rows at most so the caller knows about a next page).
      *
-     * @param list<string> $kinds kinds to list when the query names none
+     * @param non-empty-list<string> $kinds kinds to list (the manager resolves the query kind against the listed kinds)
      *
      * @return list<StoredLink>
      */

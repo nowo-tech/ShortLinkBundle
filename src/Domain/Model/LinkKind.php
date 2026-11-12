@@ -28,7 +28,7 @@ final readonly class LinkKind
      */
     public static function fromString(string $value): self
     {
-        if (preg_match('/^[a-z][a-z0-9_]{0,31}$/', $value) !== 1) {
+        if (preg_match('/^[a-z][a-z0-9_]{0,31}$/D', $value) !== 1) {
             throw new InvalidShortLinkArgumentException('A link kind matches ^[a-z][a-z0-9_]{0,31}$.');
         }
 

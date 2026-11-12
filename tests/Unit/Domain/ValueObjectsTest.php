@@ -42,7 +42,8 @@ final class ValueObjectsTest extends TestCase
         yield 'http default port' => ['http://example.com:80', 'http://example.com', 'example.com'];
         yield 'other port kept' => ['https://example.com:8443/x', 'https://example.com:8443/x', 'example.com'];
         yield 'trailing dot' => ['https://example.com./', 'https://example.com/', 'example.com'];
-        yield 'IDN to punycode' => ['https://bücher.example/ü', 'https://xn--bcher-kva.example/ü', 'xn--bcher-kva.example'];
+        yield 'IDN to punycode, non-ASCII percent-encoded' => ['https://bücher.example/ü?q=ñ#é', 'https://xn--bcher-kva.example/%C3%BC?q=%C3%B1#%C3%A9', 'xn--bcher-kva.example'];
+        yield 'already encoded kept' => ['https://example.com/%C3%BC', 'https://example.com/%C3%BC', 'example.com'];
         yield 'IPv6 literal' => ['http://[2001:DB8::1]/', 'http://[2001:db8::1]/', '2001:db8::1'];
         yield 'surrounding whitespace trimmed' => ["  https://example.com/  \n", 'https://example.com/', 'example.com'];
     }
@@ -76,6 +77,10 @@ final class ValueObjectsTest extends TestCase
         yield 'newline inside (header injection)' => ["https://example.com/\r\nSet-Cookie: x=1", TargetRefusal::Scheme];
         yield 'space inside' => ['https://example.com/a b', TargetRefusal::Scheme];
         yield 'no-break space inside' => ["https://example.com/a\u{00A0}b", TargetRefusal::Scheme];
+        yield 'right-to-left override' => ["https://example.com/\u{202E}gpj.exe", TargetRefusal::Scheme];
+        yield 'left-to-right isolate' => ["https://example.com/a\u{2066}b", TargetRefusal::Scheme];
+        yield 'zero-width non-joiner' => ["https://example.com/a\u{200C}b", TargetRefusal::Scheme];
+        yield 'right-to-left mark' => ["https://example.com/a\u{200F}b", TargetRefusal::Scheme];
         yield 'no host' => ['https:///path', TargetRefusal::Scheme];
         yield 'bad port' => ['https://example.com:99999/', TargetRefusal::Scheme];
         yield 'bad host characters' => ['https://exa"mple.com/', TargetRefusal::Scheme];
@@ -131,6 +136,21 @@ final class ValueObjectsTest extends TestCase
             $this->assertInvalid(static fn (): ShortCode => ShortCode::random($random), $random);
         }
         $this->assertInvalid(static fn (): ShortCode => ShortCode::fromStored('Bad--Code', true), 'stored custom');
+    }
+
+    public function testATrailingNewlineNeverPassesAnAnchoredPattern(): void
+    {
+        foreach ([
+            static fn (): ShortCode => ShortCode::custom("admin\n"),
+            static fn (): ShortCode => ShortCode::random("aB3xY9k\n"),
+            static fn (): ShortLinkId => ShortLinkId::fromString("0190a6d0-0000-7000-8000-000000000001\n"),
+            static fn (): TenantKey => TenantKey::fromString("org\n"),
+            static fn (): LinkKind => LinkKind::fromString("manual\n"),
+            static fn (): LinkSource => new LinkSource("send-1\n"),
+            static fn (): LinkMetadata => LinkMetadata::fromArray(["key\n" => 1]),
+        ] as $i => $build) {
+            $this->assertInvalid($build, 'newline ' . $i);
+        }
     }
 
     public function testIdentifiers(): void

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Nowo\ShortLinkBundle\Application;
 
+use Closure;
 use DateTimeImmutable;
 use DateTimeInterface;
 use DateTimeZone;
@@ -50,6 +51,7 @@ use Psr\Log\LoggerInterface;
 use function array_key_last;
 use function array_slice;
 use function count;
+use function in_array;
 use function ksort;
 
 /**
@@ -127,7 +129,7 @@ final readonly class ShortLinkManager implements ShortLinkManagerInterface
         };
 
         $link = $this->settings->isCounted($kind->value)
-            ? $this->lock->synchronized($tenant, fn (): StoredLink => $this->store->transactional($insert, $created))
+            ? $this->countedOutsideTransaction($tenant, fn (): StoredLink => $this->store->transactional($insert, $created))
             : $this->store->transactional($insert, $created);
 
         return $this->view($link, $now);
@@ -218,7 +220,7 @@ final readonly class ShortLinkManager implements ShortLinkManagerInterface
 
         /** @var array<int, array{StoredLink, bool, bool}> $results */
         $results = $counted
-            ? $this->lock->synchronized($tenant, fn (): array => $this->store->transactional($insert, $created))
+            ? $this->countedOutsideTransaction($tenant, fn (): array => $this->store->transactional($insert, $created))
             : $this->store->transactional($insert, $created);
 
         $views = [];
@@ -321,12 +323,14 @@ final readonly class ShortLinkManager implements ShortLinkManagerInterface
      */
     public function list(TenantKey $tenant, ShortLinkListQuery $query): ShortLinkPage
     {
-        $this->assertGranted(ShortLinkPermission::View, $tenant, false);
-        $now   = $this->now();
-        $rows  = $this->store->list($tenant, $query, $this->settings->listedKinds(), $now);
-        $more  = count($rows) > $query->limit;
-        $rows  = array_slice($rows, 0, $query->limit);
-        $items = [];
+        $this->assertGranted(ShortLinkPermission::View, $tenant, $query->system);
+        $now    = $this->now();
+        $listed = $this->settings->listedKinds();
+        $kinds  = $query->kind instanceof LinkKind ? $query->system || in_array($query->kind->value, $listed, true) ? [$query->kind->value] : [] : ($listed);
+        $rows   = $kinds === [] ? [] : $this->store->list($tenant, $query, $kinds, $now);
+        $more   = count($rows) > $query->limit;
+        $rows   = array_slice($rows, 0, $query->limit);
+        $items  = [];
         foreach ($rows as $row) {
             $items[] = $this->view($row, $now);
         }
@@ -485,6 +489,28 @@ final readonly class ShortLinkManager implements ShortLinkManagerInterface
                 ]);
             }
         }
+    }
+
+    /**
+     * Runs a counted create under the tenant lock. The lock is released when the work returns, so the work must commit
+     * there: counted creates inside an open host transaction are refused (the lock would be released before the host
+     * commits and another process could pass the same limit check).
+     *
+     * @template T
+     *
+     * @param Closure(): T $work
+     *
+     * @throws InvalidShortLinkArgumentException inside an open transaction
+     *
+     * @return T
+     */
+    private function countedOutsideTransaction(TenantKey $tenant, Closure $work): mixed
+    {
+        if ($this->store->inTransaction()) {
+            throw new InvalidShortLinkArgumentException('Links counted by the plan limit cannot be created inside an open database transaction; create them after your commit.');
+        }
+
+        return $this->lock->synchronized($tenant, $work);
     }
 
     /**

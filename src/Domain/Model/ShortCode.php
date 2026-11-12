@@ -16,10 +16,10 @@ use function strtolower;
 final readonly class ShortCode
 {
     /** Pattern of random codes. */
-    public const RANDOM_PATTERN = '/^[A-Za-z0-9]{6,16}$/';
+    public const RANDOM_PATTERN = '/^[A-Za-z0-9]{6,16}$/D';
 
     /** Pattern of custom codes (after lowercasing). */
-    public const CUSTOM_PATTERN = '/^[a-z0-9](?:[a-z0-9]|-(?!-)){1,30}[a-z0-9]$/';
+    public const CUSTOM_PATTERN = '/^[a-z0-9](?:[a-z0-9]|-(?!-)){1,30}[a-z0-9]$/D';
 
     private function __construct(public string $value, private bool $custom)
     {

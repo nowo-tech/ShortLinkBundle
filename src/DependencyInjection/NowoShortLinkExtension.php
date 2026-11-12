@@ -61,6 +61,8 @@ use Symfony\Component\DependencyInjection\Reference;
 use Symfony\Component\RateLimiter\RateLimiterFactory;
 use Symfony\Component\RateLimiter\Storage\CacheStorage;
 
+use function array_unique;
+use function array_values;
 use function is_array;
 use function is_string;
 
@@ -192,7 +194,7 @@ final class NowoShortLinkExtension extends Extension implements PrependExtension
         if ($guard === 'auto' || $guard === 'basic') {
             $container->register(self::ALIAS . '.outbound_url_guard', OutboundUrlGuard::class)->setArguments([false, true]);
             $container->register(ChainTargetGuard::class, ChainTargetGuard::class)->setArguments([[
-                (new Definition(SelfLoopGuard::class))->setArguments([$config['target']['own_hosts'], $config['target']['self_paths']]),
+                (new Definition(SelfLoopGuard::class))->setArguments([$config['target']['own_hosts'], array_values(array_unique([...$config['target']['self_paths'], $config['redirect']['path_prefix'] . '/'])), $config['public_base_url']]),
                 (new Definition(OutboundUrlGuardBridge::class))->setArguments([new Reference(self::ALIAS . '.outbound_url_guard'), $guard === 'auto' && $config['target']['save_resolve_dns']]),
                 (new Definition(DenylistGuard::class))->setArguments([new Reference(TargetDenylistInterface::class)]),
             ]]);

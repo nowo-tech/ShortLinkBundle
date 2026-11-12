@@ -102,6 +102,9 @@ final class ConfigurationTest extends TestCase
         yield 'base url without host' => [['public_base_url' => 'http://:80'], 'public_base_url'];
         yield 'base url not a string' => [['public_base_url' => 5], 'public_base_url'];
         yield 'redirect prefix root' => [['redirect' => ['path_prefix' => '/']], 'path_prefix'];
+        yield 'redirect prefix trailing newline' => [['redirect' => ['path_prefix' => "/s\n"]], 'path_prefix'];
+        yield 'reserved code trailing newline' => [['code' => ['reserved' => ["admin\n"]]], 'reserved'];
+        yield 'base url trailing newline' => [['public_base_url' => "https://x.example\n"], 'public_base_url'];
         yield 'redirect prefix relative' => [['redirect' => ['path_prefix' => 's']], 'path_prefix'];
         yield 'redirect prefix trailing slash' => [['redirect' => ['path_prefix' => '/s/']], 'path_prefix'];
         yield 'redirect prefix not a string' => [['redirect' => ['path_prefix' => 1]], 'path_prefix'];

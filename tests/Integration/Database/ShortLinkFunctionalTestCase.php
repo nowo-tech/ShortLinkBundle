@@ -253,12 +253,13 @@ abstract class ShortLinkFunctionalTestCase extends KernelTestCase
         }
         $this->manager()->create($this->tenant, new CreateShortLink('https://example.com/manual'));
 
-        $first = $this->manager()->list($this->tenant, new ShortLinkListQuery(kind: LinkKind::email(), limit: 2));
+        self::assertSame([], $this->manager()->list($this->tenant, new ShortLinkListQuery(kind: LinkKind::email()))->items, 'people never list hidden kinds');
+        $first = $this->manager()->list($this->tenant, new ShortLinkListQuery(kind: LinkKind::email(), limit: 2, system: true));
         self::assertSame([$ids[4], $ids[3]], array_map(static fn (ShortLinkView $v): string => $v->id->value, $first->items));
         self::assertSame($ids[3], $first->next?->value);
-        $second = $this->manager()->list($this->tenant, new ShortLinkListQuery(kind: LinkKind::email(), limit: 2, after: $first->next));
+        $second = $this->manager()->list($this->tenant, new ShortLinkListQuery(kind: LinkKind::email(), limit: 2, after: $first->next, system: true));
         self::assertSame([$ids[2], $ids[1]], array_map(static fn (ShortLinkView $v): string => $v->id->value, $second->items));
-        $last = $this->manager()->list($this->tenant, new ShortLinkListQuery(kind: LinkKind::email(), limit: 2, after: $second->next));
+        $last = $this->manager()->list($this->tenant, new ShortLinkListQuery(kind: LinkKind::email(), limit: 2, after: $second->next, system: true));
         self::assertSame([$ids[0]], array_map(static fn (ShortLinkView $v): string => $v->id->value, $last->items));
         self::assertNull($last->next);
 
@@ -407,14 +408,19 @@ abstract class ShortLinkFunctionalTestCase extends KernelTestCase
         $connection = $this->host()->connection($this->kernel);
 
         $connection->beginTransaction();
-        $this->manager()->create($this->tenant, new CreateShortLink('https://example.com/rolled-back'));
+        try {
+            $this->manager()->create($this->tenant, new CreateShortLink('https://example.com/counted'));
+            self::fail('A counted create inside a host transaction is refused (the quota lock would end before the commit).');
+        } catch (InvalidShortLinkArgumentException) {
+        }
+        $this->manager()->create($this->tenant, new CreateShortLink('https://example.com/rolled-back', kind: LinkKind::email()));
         self::assertSame([], $this->listener()->events, 'nothing is dispatched inside the host transaction');
         $connection->rollBack();
         self::assertSame([], $this->listener()->events);
-        self::assertSame([], $this->manager()->list($this->tenant, new ShortLinkListQuery())->items);
+        self::assertSame([], $this->manager()->list($this->tenant, new ShortLinkListQuery(kind: LinkKind::email(), system: true))->items);
 
         $connection->beginTransaction();
-        $this->manager()->create($this->tenant, new CreateShortLink('https://example.com/committed'));
+        $this->manager()->create($this->tenant, new CreateShortLink('https://example.com/committed', kind: LinkKind::email()));
         self::assertSame([], $this->listener()->events);
         $connection->commit();
         self::assertCount(1, $this->listener()->of(ShortLinkCreatedEvent::class));
@@ -464,7 +470,6 @@ abstract class ShortLinkFunctionalTestCase extends KernelTestCase
         self::assertNull($this->store()->findBySource($this->otherTenant, LinkKind::email(), 'send-9', null));
         self::assertSame(1, $this->store()->countLive($this->tenant, LinkKind::email()));
         self::assertSame(42, $this->store()->transactional(static fn (): int => 42));
-        self::assertSame([], $this->store()->list($this->tenant, new ShortLinkListQuery(), [], $now));
     }
 
     public function testOneKeptAliveKernelServesManyCallsWithoutBleedOrGrowth(): void

@@ -108,7 +108,7 @@ final class Configuration implements ConfigurationInterface
      */
     public static function isBaseUrl(mixed $value): bool
     {
-        if (!is_string($value) || preg_match('#^https?://[^\s/?\#@]+(/[^\s?\#]*)?$#i', $value) !== 1) {
+        if (!is_string($value) || preg_match('#^https?://[^\s/?\#@]+(/[^\s?\#]*)?$#iD', $value) !== 1) {
             return false;
         }
 
@@ -199,7 +199,7 @@ final class Configuration implements ConfigurationInterface
                             ->then(static fn (string $value): string => strtolower($value))
                         ->end()
                         ->validate()
-                            ->ifTrue(static fn (mixed $value): bool => !is_string($value) || preg_match('/^[a-z0-9-]{1,32}$/', $value) !== 1)
+                            ->ifTrue(static fn (mixed $value): bool => !is_string($value) || preg_match('/^[a-z0-9-]{1,32}$/D', $value) !== 1)
                             ->thenInvalid('Expected a reserved code of 1 to 32 characters [a-z0-9-], got %s.')
                         ->end()
                     ->end()
@@ -328,7 +328,7 @@ final class Configuration implements ConfigurationInterface
                 ->scalarNode('tenant_route_parameter')->defaultNull()
                     ->info('Route parameter of the host prefix kept when the UI builds its links (Beacon: "uuid" in /organizations/{uuid}/short-links)')
                     ->validate()
-                        ->ifTrue(static fn (mixed $value): bool => $value !== null && (!is_string($value) || preg_match('/^[A-Za-z_][A-Za-z0-9_]{0,63}$/', $value) !== 1))
+                        ->ifTrue(static fn (mixed $value): bool => $value !== null && (!is_string($value) || preg_match('/^[A-Za-z_][A-Za-z0-9_]{0,63}$/D', $value) !== 1))
                         ->thenInvalid('Expected a route parameter name such as "uuid", got %s.')
                     ->end()
                 ->end()
@@ -350,7 +350,7 @@ final class Configuration implements ConfigurationInterface
                 ->scalarNode('table_prefix')->defaultValue('')
                     ->info('Prefix of the bundle tables and indexes (REQ-ORM-002), at most 30 characters')
                     ->validate()
-                        ->ifTrue(static fn (mixed $value): bool => !is_string($value) || preg_match('/^(?:[a-z][a-z0-9_]{0,29})?$/', $value) !== 1)
+                        ->ifTrue(static fn (mixed $value): bool => !is_string($value) || preg_match('/^(?:[a-z][a-z0-9_]{0,29})?$/D', $value) !== 1)
                         ->thenInvalid('Expected "" or up to 30 characters [a-z0-9_] starting with a letter, got %s.')
                     ->end()
                 ->end()

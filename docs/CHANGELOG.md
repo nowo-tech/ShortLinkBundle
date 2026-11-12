@@ -7,6 +7,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Changed
+
+- Audit NW follow-ups on S1: the self-chain guard percent-decodes the whole path (as the router does, `%2F` included) and removes dot segments
+  before comparing, counts the `public_base_url` host as own and always includes `redirect.path_prefix` + `/`; every
+  anchored pattern uses the `D` modifier (a trailing newline never passes); counted creates (plan limit) inside an open
+  database transaction are refused, so the tenant lock always covers the commit; `list()` only returns kinds shown in the
+  UI unless the query is `system`; targets refuse invisible / bidirectional format characters and percent-encode
+  non-ASCII bytes (the stored URL and `Location` are pure ASCII).
+
 ### Added
 
 - S2 public redirect (contract §7): route `nowo_short_link_redirect` `GET|HEAD {redirect.path_prefix}/{code}` (import

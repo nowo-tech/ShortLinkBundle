@@ -94,6 +94,27 @@ final class DefaultsAndGuardsTest extends TestCase
         }
     }
 
+    public function testTheSelfLoopGuardNormalisesPathsAndKnowsThePublicHost(): void
+    {
+        $guard = new SelfLoopGuard([], ['/s/'], 'https://Beacon.Example./');
+        foreach ([
+            'https://beacon.example/%73/abc'     => false,
+            'https://beacon.example/%2F/abc'     => true,
+            'https://beacon.example/x/../s/abc'  => false,
+            'https://beacon.example/./s/abc'     => false,
+            'https://beacon.example/../../s/abc' => false,
+            'https://beacon.example/s/./abc/..'  => false,
+            'https://beacon.example/docs/./x/.'  => true,
+            'https://beacon.example/x/..'        => true,
+            'https://other.example/%73/abc'      => true,
+        ] as $url => $allowed) {
+            self::assertSame($allowed, $guard->check(TargetUrl::fromString($url), GuardStage::Save)->allowed, $url);
+        }
+        self::assertSame('/s/', SelfLoopGuard::normalise('s/x/..'));
+        self::assertTrue((new SelfLoopGuard(['a.example'], ['/s/']))->check(TargetUrl::fromString('https://a.example/docs'), GuardStage::Save)->allowed);
+        self::assertTrue((new SelfLoopGuard([], ['/s/'], 'not a url'))->check(TargetUrl::fromString('https://a.example/s/x'), GuardStage::Save)->allowed);
+    }
+
     public function testTheChainStopsAtTheFirstRefusal(): void
     {
         $chain = new ChainTargetGuard([

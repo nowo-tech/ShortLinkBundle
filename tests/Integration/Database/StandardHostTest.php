@@ -5,14 +5,21 @@ declare(strict_types=1);
 namespace Nowo\ShortLinkBundle\Tests\Integration\Database;
 
 use Nowo\ShortLinkBundle\Domain\Exception\AccessDeniedException;
+use Nowo\ShortLinkBundle\Domain\Model\LinkKind;
 use Nowo\ShortLinkBundle\Domain\Model\ShortLinkListQuery;
 use Nowo\ShortLinkBundle\Domain\Model\TenantKey;
 use Nowo\ShortLinkBundle\Domain\Port\TenantLockInterface;
 use Nowo\ShortLinkBundle\Infrastructure\Lock\SymfonyTenantLock;
 use Nowo\ShortLinkBundle\Tests\Integration\Kernel\Host;
+use Nowo\ShortLinkBundle\Tests\Integration\Kernel\TestKernel;
+use Symfony\Component\Process\Process;
 use Symfony\Component\Security\Core\Authentication\Token\Storage\TokenStorageInterface;
 use Symfony\Component\Security\Core\Authentication\Token\UsernamePasswordToken;
 use Symfony\Component\Security\Core\User\InMemoryUser;
+
+use function dirname;
+
+use const PHP_BINARY;
 
 /**
  * Standard Symfony host: attribute mapping, default entity manager, single tenant `default`, ROLE_ADMIN through
@@ -30,6 +37,32 @@ final class StandardHostTest extends ShortLinkFunctionalTestCase
     public function testTheQuotaLockUsesSymfonyLock(): void
     {
         self::assertInstanceOf(SymfonyTenantLock::class, $this->container()->get(TenantLockInterface::class));
+    }
+
+    public function testTheQuotaIsExactUnderParallelCreates(): void
+    {
+        $url = TestKernel::defaultDatabaseUrl();
+        if (str_starts_with($url, 'sqlite')) {
+            self::markTestSkipped('Parallel writers need a server database (MySQL / MariaDB / PostgreSQL job).');
+        }
+        $start = TestKernel::baseDir() . '/parallel-start';
+        @unlink($start);
+        $children = [];
+        for ($i = 0; $i < 10; ++$i) {
+            $process = new Process([PHP_BINARY, dirname(__DIR__, 2) . '/Fixtures/bin/concurrent-create.php', $url, 'parallel_' . $i, $start], timeout: 120);
+            $process->start();
+            $children[] = $process;
+        }
+        touch($start);
+        $results = [];
+        foreach ($children as $process) {
+            $process->wait();
+            $results[] = $process->getOutput() . $process->getErrorOutput();
+        }
+        sort($results);
+
+        self::assertSame(['created', 'created', 'created', 'quota', 'quota', 'quota', 'quota', 'quota', 'quota', 'quota'], $results);
+        self::assertSame(3, $this->store()->countLive($this->tenant, LinkKind::manual()));
     }
 
     public function testAUserWithoutTheRoleIsDenied(): void

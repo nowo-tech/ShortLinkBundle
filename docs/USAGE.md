@@ -42,7 +42,10 @@ $page = $this->links->list($tenant, new ShortLinkListQuery(search: 'flyer', limi
 $next = $this->links->list($tenant, new ShortLinkListQuery(limit: 25, after: $page->next));
 ```
 
-Every method takes the tenant explicitly; another tenant's id answers as missing. Codes are immutable (a new code is a
+Every method takes the tenant explicitly; another tenant's id answers as missing. Links of a kind counted by the plan
+limit (`manual` by default) must be created outside an open database transaction (the tenant lock has to cover the
+commit); `email` links are not counted and may be created inside one. `list()` returns only the kinds shown in the UI;
+programmatic callers pass `new ShortLinkListQuery(kind: LinkKind::email(), system: true)`. Codes are immutable (a new code is a
 new link). Custom codes are lowercased; random codes are case-sensitive (`aB3xY9k` and `AB3XY9K` are two links).
 
 ## Generated links (e-mail sends)

@@ -123,6 +123,11 @@ class ScriptedStore implements ShortLinkStoreInterface
         return $result;
     }
 
+    public function inTransaction(): bool
+    {
+        return false;
+    }
+
     public function codeExists(string $code): bool
     {
         return ++$this->probes <= $this->collisions;

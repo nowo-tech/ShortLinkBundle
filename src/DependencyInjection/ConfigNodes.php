@@ -18,10 +18,10 @@ use function strtolower;
 final class ConfigNodes
 {
     /** Kind names and dimension keys: `^[a-z][a-z0-9_]{0,31}$` (contract §3.1 `LinkKind`). */
-    public const KIND_PATTERN = '/^[a-z][a-z0-9_]{0,31}$/';
+    public const KIND_PATTERN = '/^[a-z][a-z0-9_]{0,31}$/D';
 
     /** URL path prefix: absolute, no trailing slash, not `/` alone, e.g. `/s` or `/admin/short-links`. */
-    public const PATH_PATTERN = '#^(/[A-Za-z0-9._~-]+)+$#';
+    public const PATH_PATTERN = '#^(/[A-Za-z0-9._~-]+)+$#D';
 
     /**
      * An absolute URL path without a trailing slash (never `/` alone).
@@ -79,7 +79,7 @@ final class ConfigNodes
                 ->integerNode('limit')->defaultValue($limit)->min(1)->max(100000)->end()
                 ->scalarNode('interval')->defaultValue($interval)->cannotBeEmpty()
                     ->validate()
-                        ->ifTrue(static fn (mixed $value): bool => !is_string($value) || preg_match('/^\d+ (second|minute|hour|day)s?$/', $value) !== 1)
+                        ->ifTrue(static fn (mixed $value): bool => !is_string($value) || preg_match('/^\d+ (second|minute|hour|day)s?$/D', $value) !== 1)
                         ->thenInvalid('Expected an interval such as "1 minute" or "15 minutes", got %s.')
                     ->end()
                 ->end()
@@ -97,7 +97,7 @@ final class ConfigNodes
         $node->info($info)
             ->scalarPrototype()
                 ->validate()
-                    ->ifTrue(static fn (mixed $value): bool => !is_string($value) || preg_match('/^\.?[A-Za-z0-9](?:[A-Za-z0-9.-]{0,251}[A-Za-z0-9])?$/', $value) !== 1)
+                    ->ifTrue(static fn (mixed $value): bool => !is_string($value) || preg_match('/^\.?[A-Za-z0-9](?:[A-Za-z0-9.-]{0,251}[A-Za-z0-9])?$/D', $value) !== 1)
                     ->thenInvalid('Expected a host name ("example.com") or a suffix (".example.com"), got %s.')
                 ->end()
                 ->beforeNormalization()
@@ -114,6 +114,6 @@ final class ConfigNodes
      */
     public static function isDuration(mixed $value): bool
     {
-        return is_string($value) && preg_match('/^P(?!$)(\d+Y)?(\d+M)?(\d+W)?(\d+D)?(T(?=\d)(\d+H)?(\d+M)?(\d+S)?)?$/', $value) === 1;
+        return is_string($value) && preg_match('/^P(?!$)(\d+Y)?(\d+M)?(\d+W)?(\d+D)?(T(?=\d)(\d+H)?(\d+M)?(\d+S)?)?$/D', $value) === 1;
     }
 }
