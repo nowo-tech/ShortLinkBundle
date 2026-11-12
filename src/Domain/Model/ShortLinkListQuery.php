@@ -22,6 +22,8 @@ final readonly class ShortLinkListQuery
      * @param string|null $search substring of the code, title or target host (≤ 100 characters)
      * @param int $limit 1 to 100
      * @param ShortLinkId|null $after keyset cursor
+     * @param bool $system programmatic caller: no access check, and any configured kind may be asked for (people only
+     *                     see the kinds with `show_in_ui`)
      *
      * @throws InvalidShortLinkArgumentException when the limit or the search breaks its rule
      */
@@ -31,6 +33,7 @@ final readonly class ShortLinkListQuery
         ?string $search = null,
         public int $limit = 25,
         public ?ShortLinkId $after = null,
+        public bool $system = false,
     ) {
         if ($limit < 1 || $limit > 100) {
             throw new InvalidShortLinkArgumentException('A page has 1 to 100 links.');

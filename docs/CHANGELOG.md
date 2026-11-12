@@ -7,6 +7,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Changed
+
+- Audit NW follow-ups on S1: the self-chain guard decodes percent-encoded unreserved characters and removes dot segments
+  before comparing, counts the `public_base_url` host as own and always includes `redirect.path_prefix` + `/`; every
+  anchored pattern uses the `D` modifier (a trailing newline never passes); counted creates (plan limit) inside an open
+  database transaction are refused, so the tenant lock always covers the commit; `list()` only returns kinds shown in the
+  UI unless the query is `system`; targets refuse invisible / bidirectional format characters and percent-encode
+  non-ASCII bytes (the stored URL and `Location` are pure ASCII).
+
 ### Added
 
 - S1 domain + persistence (contract §3, §5.1, §6, §8, §12): value objects (`ShortLinkId`, `TenantKey`, `ShortCode`,

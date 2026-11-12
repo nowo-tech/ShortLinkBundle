@@ -43,7 +43,7 @@ final readonly class LinkMetadata
         }
         $clean = [];
         foreach ($values as $key => $value) {
-            if (is_int($key) || preg_match('/^[a-z][a-z0-9_]{0,31}$/', $key) !== 1) {
+            if (is_int($key) || preg_match('/^[a-z][a-z0-9_]{0,31}$/D', $key) !== 1) {
                 throw new InvalidShortLinkArgumentException('Link metadata keys match ^[a-z][a-z0-9_]{0,31}$.');
             }
             if ($value !== null && !is_scalar($value)) {

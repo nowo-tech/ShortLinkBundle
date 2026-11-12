@@ -25,7 +25,7 @@ final readonly class TenantKey
      */
     public static function fromString(string $value): self
     {
-        if (preg_match('/^[A-Za-z0-9._:-]{1,64}$/', $value) !== 1) {
+        if (preg_match('/^[A-Za-z0-9._:-]{1,64}$/D', $value) !== 1) {
             throw new InvalidShortLinkArgumentException('A tenant key has 1 to 64 characters [A-Za-z0-9._:-].');
         }
 

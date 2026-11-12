@@ -9,6 +9,7 @@ parameters:
     excludePaths:
         - demo/*
         - vendor/*
+        - tests/Fixtures/bin/*
     reportUnmatchedIgnoredErrors: false
     treatPhpDocTypesAsCertain: false
     ignoreErrors: []

@@ -6,16 +6,19 @@ namespace Nowo\ShortLinkBundle\Domain\Model;
 
 use Nowo\ShortLinkBundle\Domain\Exception\TargetRefusedException;
 
+use function bin2hex;
 use function idn_to_ascii;
 use function is_array;
 use function is_string;
 use function parse_url;
 use function preg_match;
+use function preg_replace_callback;
 use function str_contains;
 use function str_ends_with;
 use function str_starts_with;
 use function strlen;
 use function strtolower;
+use function strtoupper;
 use function substr;
 use function trim;
 
@@ -26,8 +29,9 @@ use const PHP_URL_PATH;
 /**
  * Target of a link (contract §3.1): an absolute `http` / `https` URL of at most 2 048 bytes after normalisation. The
  * scheme and host are lowercased, an IDN host becomes punycode (UTS #46), a trailing dot and the default port are
- * dropped; userinfo, control characters, whitespace and backslashes are refused (so a `Location` header can never be
- * split). Path, query and fragment are kept as given.
+ * dropped; userinfo, control characters, whitespace, backslashes and invisible / bidirectional format characters are
+ * refused (so a `Location` header can never be split or spoofed). Path, query and fragment are kept, with non-ASCII
+ * bytes percent-encoded: the URL is pure ASCII.
  */
 final readonly class TargetUrl
 {
@@ -48,7 +52,7 @@ final readonly class TargetUrl
     public static function fromString(string $url, int $maxLength = self::MAX_LENGTH): self
     {
         $url = trim($url, " \t\n\r\0\x0B");
-        if ($url === '' || preg_match('/[\x00-\x20\x7F\\\\]|\x{00A0}|\x{1680}|[\x{2000}-\x{200B}]|\x{2028}|\x{2029}|\x{202F}|\x{205F}|\x{3000}|\x{FEFF}/u', $url) !== 0) {
+        if ($url === '' || preg_match('/[\x00-\x20\x7F\\\\]|\x{00A0}|\x{1680}|[\x{2000}-\x{200F}]|[\x{2028}-\x{202F}]|[\x{205F}-\x{206F}]|\x{3000}|\x{FEFF}/u', $url) !== 0) {
             throw new TargetRefusedException(TargetRefusal::Scheme);
         }
         if (preg_match('#^https?://#i', $url) !== 1) {
@@ -70,9 +74,9 @@ final readonly class TargetUrl
         }
 
         $normalised = $scheme . '://' . $host . ($port === null ? '' : ':' . $port)
-            . ($parts['path'] ?? '')
-            . (isset($parts['query']) ? '?' . $parts['query'] : '')
-            . (isset($parts['fragment']) ? '#' . $parts['fragment'] : '');
+            . self::ascii($parts['path'] ?? '')
+            . (isset($parts['query']) ? '?' . self::ascii($parts['query']) : '')
+            . (isset($parts['fragment']) ? '#' . self::ascii($parts['fragment']) : '');
         if (strlen($normalised) > ($maxLength < self::MAX_LENGTH ? $maxLength : self::MAX_LENGTH)) {
             throw new TargetRefusedException(TargetRefusal::Length);
         }
@@ -107,6 +111,15 @@ final readonly class TargetUrl
     }
 
     /**
+     * Percent-encodes every non-ASCII byte (UTF-8 as RFC 3986 / 3987 map it), so the stored URL and the `Location`
+     * header are pure ASCII.
+     */
+    private static function ascii(string $part): string
+    {
+        return (string) preg_replace_callback('/[\x80-\xFF]/', static fn (array $byte): string => '%' . strtoupper(bin2hex($byte[0])), $part);
+    }
+
+    /**
      * The authority part (between `//` and the first `/`, `?` or `#`).
      */
     private static function authority(string $url): string
@@ -129,7 +142,7 @@ final readonly class TargetUrl
         if (str_ends_with($host, '.')) {
             $host = substr($host, 0, -1);
         }
-        if (preg_match('/^[\x21-\x7E]+$/', $host) !== 1) {
+        if (preg_match('/^[\x21-\x7E]+$/D', $host) !== 1) {
             $ascii = idn_to_ascii($host, IDNA_DEFAULT, INTL_IDNA_VARIANT_UTS46);
             if (!is_string($ascii) || $ascii === '') {
                 throw new TargetRefusedException(TargetRefusal::Scheme);
@@ -137,7 +150,7 @@ final readonly class TargetUrl
             $host = $ascii;
         }
         $host = strtolower($host);
-        if (preg_match('/^[a-z0-9._~%!$&\'()*+,;=-]+$/', $host) !== 1) {
+        if (preg_match('/^[a-z0-9._~%!$&\'()*+,;=-]+$/D', $host) !== 1) {
             throw new TargetRefusedException(TargetRefusal::Scheme);
         }
 
