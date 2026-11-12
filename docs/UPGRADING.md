@@ -3,9 +3,19 @@
 ## Table of contents
 
 - [Unreleased](#unreleased)
+- [To 0.2.0](#to-020)
+  - [Template contract](#template-contract)
 - [To 0.1.0](#to-010)
 
 ## Unreleased
+
+## To 0.2.0
+
+From **0.1.0**:
+
+```bash
+composer update nowo-tech/short-link-bundle
+```
 
 S4 (0.2.0) adds the management UI; nothing changes until you enable it.
 

@@ -7,6 +7,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-11-12
+
 S4: the management UI (target 0.2.0).
 
 ### Added
@@ -76,6 +78,8 @@ S4: the management UI (target 0.2.0).
 - CSV cells starting with `=`, `+`, `-`, `@`, a tab or a carriage return (also after leading spaces) are prefixed with `'`; target URLs are printed
   escaped and linked only when http(s), with `rel="noopener noreferrer nofollow"`. The forms never map `system` or
   `kind` (extra fields are refused); people only create `manual` links.
+
+[0.2.0]: https://github.com/nowo-tech/ShortLinkBundle/releases/tag/v0.2.0
 
 ## [0.1.0] - 2026-11-12
 
@@ -174,5 +178,5 @@ First release: slices S1 (domain + persistence), S2 (public redirect) and S3 (st
 - Docs set, Spec Kit baseline, Flex recipe, demos `symfony7` (Symfony 7.4) and `symfony8` (Symfony 8.1) on FrankenPHP
   worker mode with MySQL, UiKit's admin layout and default theme (REQ-DEMO-014) and FormKit (REQ-DEMO-015).
 
-[Unreleased]: https://github.com/nowo-tech/ShortLinkBundle/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/nowo-tech/ShortLinkBundle/compare/v0.2.0...HEAD
 [0.1.0]: https://github.com/nowo-tech/ShortLinkBundle/releases/tag/v0.1.0
