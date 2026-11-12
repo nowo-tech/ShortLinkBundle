@@ -1,0 +1,3 @@
+# Public short-link redirect (/s/{code}), outside any locale prefix and stateless (contract §3.5).
+nowo_short_link_redirect:
+    resource: '@NowoShortLinkBundle/Resources/config/routes/redirect.php'

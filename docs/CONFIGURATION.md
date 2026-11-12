@@ -47,6 +47,7 @@ nowo_short_link:
         store: { ip_prefix: true, user_agent_family: true, referrer_host: true, country: true }
         ipv4_prefix: 24              # 16..32
         ipv6_prefix: 48              # 32..64
+        country_resolver: null       # ClickCountryResolverInterface service (local lookup only); refused with write: messenger
         honour_gpc: true             # Sec-GPC: 1 → count only
         retention: P90D              # raw rows; null = keep
         rollup: { lag_days: 2, referrer_top_n: 50, retention: null }

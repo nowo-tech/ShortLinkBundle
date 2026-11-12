@@ -4,8 +4,10 @@ declare(strict_types=1);
 
 namespace Nowo\ShortLinkBundle\Tests\Unit\DependencyInjection;
 
+use LogicException;
 use Nowo\ShortLinkBundle\Application\CodeGenerator;
 use Nowo\ShortLinkBundle\Application\Guard\ChainTargetGuard;
+use Nowo\ShortLinkBundle\DependencyInjection\Compiler\ShortLinkCompilerPass;
 use Nowo\ShortLinkBundle\DependencyInjection\NowoShortLinkExtension;
 use Nowo\ShortLinkBundle\Domain\Port\ShortLinkAccessInterface;
 use Nowo\ShortLinkBundle\Domain\Port\ShortLinkQuotaInterface;
@@ -13,7 +15,9 @@ use Nowo\ShortLinkBundle\Domain\Port\TargetDenylistInterface;
 use Nowo\ShortLinkBundle\Domain\Port\TargetGuardInterface;
 use Nowo\ShortLinkBundle\Domain\Service\ShortLinkManagerInterface;
 use Nowo\ShortLinkBundle\Infrastructure\Doctrine\ClickTablesSchemaListener;
+use Nowo\ShortLinkBundle\Infrastructure\Messenger\RecordShortLinkClickHandler;
 use PHPUnit\Framework\TestCase;
+use stdClass;
 use Symfony\Component\DependencyInjection\ContainerBuilder;
 use Symfony\Component\DependencyInjection\Definition;
 
@@ -57,6 +61,24 @@ final class ExtensionTest extends TestCase
         self::assertFalse($container->hasDefinition(ClickTablesSchemaListener::class), 'a separate click connection: the host creates those tables');
         self::assertFalse($this->bridge($container)->getArgument(1), 'basic guard never resolves DNS');
         self::assertNull($container->getDefinition(CodeGenerator::class)->getArgument(1));
+    }
+
+    public function testMessengerClicksNeverCarryTheRawIpAndNeedABus(): void
+    {
+        try {
+            (new NowoShortLinkExtension())->load([['click_log' => ['write' => 'messenger', 'country_resolver' => 'app.geo']]], new ContainerBuilder());
+            self::fail('A country resolver cannot work in messenger mode.');
+        } catch (LogicException $exception) {
+            self::assertStringContainsString('raw IP', $exception->getMessage());
+        }
+
+        $container = new ContainerBuilder();
+        (new NowoShortLinkExtension())->load([['click_log' => ['write' => 'messenger']]], $container);
+        $container->register('doctrine', stdClass::class);
+        self::assertTrue($container->hasDefinition(RecordShortLinkClickHandler::class));
+        $this->expectException(LogicException::class);
+        $this->expectExceptionMessage('no Messenger bus');
+        (new ShortLinkCompilerPass())->process($container);
     }
 
     public function testPrependRegistersTheMappingOnlyForOrmHosts(): void

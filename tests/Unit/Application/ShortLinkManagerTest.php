@@ -104,7 +104,7 @@ final class ShortLinkManagerTest extends TestCase
 /**
  * Store whose first N code probes collide.
  */
-final class ScriptedStore implements ShortLinkStoreInterface
+class ScriptedStore implements ShortLinkStoreInterface
 {
     public int $probes = 0;
 
@@ -133,6 +133,11 @@ final class ScriptedStore implements ShortLinkStoreInterface
 
     public function update(StoredLink $link): void
     {
+    }
+
+    public function findByCode(string $code): ?StoredLink
+    {
+        return null;
     }
 
     public function find(TenantKey $tenant, ShortLinkId $id): ?StoredLink

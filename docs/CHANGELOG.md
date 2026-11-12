@@ -9,6 +9,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- S2 public redirect (contract §7): route `nowo_short_link_redirect` `GET|HEAD {redirect.path_prefix}/{code}` (import
+  `@NowoShortLinkBundle/Resources/config/routes/redirect.php`), stateless, step order of §7.1, protective headers on every
+  answer, one neutral 404 (byte-identical for unknown, disabled, expired, deleted and refused links) and a 429 variant
+  with `Retry-After`, per-IP miss / hit limiters on a configurable cache pool (`redirect_unlogged` or `block` over the hit
+  limit), redirect guard without DNS.
+- Click log: truncated IP (/24, /48), browser family (built-in classifier: browsers, bots, link previews, e-mail
+  scanners), referrer host, optional country (`click_log.country_resolver`, local lookups only), machine flag, `Sec-GPC`
+  honoured (count only), written after the response (`terminate`), through Messenger (`RecordShortLinkClick`, never the
+  raw IP) or synchronously; failures never break the redirect; `ShortLinkClickedEvent`.
+
 - S1 domain + persistence (contract §3, §5.1, §6, §8, §12): value objects (`ShortLinkId`, `TenantKey`, `ShortCode`,
   `TargetUrl`, `LinkKind`, `LinkSource`, `LinkMetadata`, `ActorRef`, `LinkTitle`, `Expiry`, read models), enums, ports
   with defaults (tenant context, access, quota, target guard, denylist, reserved codes, blocklist, id generator, tenant

@@ -5,3 +5,6 @@ redirect:
     not_found:
         title: "Link niet beschikbaar"
         message: "Deze link bestaat niet of is niet meer beschikbaar."
+    too_many:
+        title: "Te veel verzoeken"
+        message: "Wacht even en probeer het opnieuw."

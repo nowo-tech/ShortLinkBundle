@@ -12,7 +12,8 @@
 
 ## Status
 
-S1: the PHP API (manager, ports, persistence). The redirect (S2), statistics (S3) and UI (S4) follow
+S1–S2: the PHP API (manager, ports, persistence) and the public redirect with its click log. Statistics (S3) and the
+UI (S4) follow
 ([ROADMAP.md](ROADMAP.md)); the full design is [CONTRACT.md](CONTRACT.md) §3.
 
 ## Creating and managing links
@@ -96,9 +97,16 @@ their request state on every call (FrankenPHP worker mode).
 
 ## Redirect path and firewalls
 
-The redirect (S2) answers `GET|HEAD {redirect.path_prefix}/{code}` (default `/s/{code}`). It is a public, unversioned
-protocol path (a link printed on paper), stateless: put it outside any locale prefix and under a stateless firewall so
-no session starts, e.g.
+Import the route (outside any locale prefix):
+
+```yaml
+# config/routes/nowo_short_link.yaml
+nowo_short_link_redirect:
+    resource: '@NowoShortLinkBundle/Resources/config/routes/redirect.php'
+```
+
+`GET|HEAD {redirect.path_prefix}/{code}` (default `/s/{code}`) is a public, unversioned protocol path (a link printed on
+paper). It is stateless (no session, no cookie): keep it out of stateful firewalls, e.g.
 
 ```yaml
 security:
@@ -108,3 +116,16 @@ security:
             stateless: true
             security: false
 ```
+
+Answers: 302 (or 307) to the stored target; one neutral 404 for every other case (unknown, disabled, expired, deleted,
+refused target, malformed code); 429 with `Retry-After` over the per-IP miss limit (and over the hit limit with
+`over_limit_hits: block`). Every answer sends `Cache-Control: no-store, private`, `Referrer-Policy: no-referrer`,
+`X-Robots-Tag: noindex, nofollow` and `X-Content-Type-Options: nosniff`. Override the page with
+`@NowoShortLink/redirect/not_found.html.twig` (or `redirect.not_found_template`); it receives `status` (404 or 429).
+
+The limiters key on `Request::getClientIp()`: configure `framework.trusted_proxies` to your real proxies only, or a
+spoofed `X-Forwarded-For` defeats them. Give `redirect.rate_limit.cache_pool` a fast shared pool (Redis, APCu).
+
+Clicks are written after the response by default (`click_log.write: terminate`); `messenger` dispatches
+`Nowo\ShortLinkBundle\Infrastructure\Messenger\RecordShortLinkClick` (route it to a transport, or it is handled at once);
+`sync` writes before answering. HEAD requests are never logged.

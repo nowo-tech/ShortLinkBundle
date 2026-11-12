@@ -12,6 +12,7 @@ use Psr\Log\NullLogger;
 use Symfony\Bundle\FrameworkBundle\FrameworkBundle;
 use Symfony\Bundle\FrameworkBundle\Kernel\MicroKernelTrait;
 use Symfony\Bundle\SecurityBundle\SecurityBundle;
+use Symfony\Bundle\TwigBundle\TwigBundle;
 use Symfony\Component\DependencyInjection\Loader\Configurator\ContainerConfigurator;
 use Symfony\Component\Filesystem\Filesystem;
 use Symfony\Component\HttpKernel\Kernel;
@@ -63,6 +64,7 @@ final class TestKernel extends Kernel
     {
         yield new FrameworkBundle();
         yield new DoctrineBundle();
+        yield new TwigBundle();
         if ($this->security) {
             yield new SecurityBundle();
         }
@@ -98,7 +100,10 @@ final class TestKernel extends Kernel
             'handle_all_throwables' => true,
             'php_errors'            => ['log' => true],
             'router'                => ['utf8' => true, 'default_uri' => 'https://links.example'],
+            'translator'            => ['default_path' => '%kernel.project_dir%/tests/Fixtures/translations', 'fallbacks' => ['en']],
+            'cache'                 => ['app' => 'cache.adapter.array'],
         ]);
+        $container->extension('twig', ['strict_variables' => true]);
         $url = $this->databaseUrl ?? self::defaultDatabaseUrl();
         if ($this->configure instanceof Closure) {
             ($this->configure)($container, $url);
@@ -117,5 +122,6 @@ final class TestKernel extends Kernel
     protected function configureRoutes(RoutingConfigurator $routes): void
     {
         $routes->add('echo', '/echo')->controller(EchoController::class)->methods(['GET']);
+        $routes->import(dirname(__DIR__, 3) . '/src/Resources/config/routes/redirect.php');
     }
 }

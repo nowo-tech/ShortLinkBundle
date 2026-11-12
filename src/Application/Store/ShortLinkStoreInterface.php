@@ -51,6 +51,11 @@ interface ShortLinkStoreInterface
     public function update(StoredLink $link): void;
 
     /**
+     * The row (live or tombstone) holding exactly this code, or null (redirect hot path: one indexed row).
+     */
+    public function findByCode(string $code): ?StoredLink;
+
+    /**
      * The live row of the tenant with this id, or null.
      */
     public function find(TenantKey $tenant, ShortLinkId $id): ?StoredLink;

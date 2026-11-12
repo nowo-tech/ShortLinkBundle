@@ -262,6 +262,7 @@ final class Configuration implements ConfigurationInterface
                 ->end()
                 ->integerNode('ipv4_prefix')->defaultValue(24)->min(16)->max(32)->end()
                 ->integerNode('ipv6_prefix')->defaultValue(48)->min(32)->max(64)->end()
+                ->append(ConfigNodes::service('country_resolver', 'ClickCountryResolverInterface service (local lookup only); null = no country'))
                 ->booleanNode('honour_gpc')->defaultTrue()->info('Sec-GPC: 1 → the click is counted, nothing else stored (Q-O10)')->end()
                 ->append(ConfigNodes::duration('retention', 'P90D', 'Raw click rows; null = keep (not recommended)'))
                 ->arrayNode('rollup')

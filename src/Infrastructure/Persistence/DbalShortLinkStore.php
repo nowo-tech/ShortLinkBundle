@@ -132,6 +132,20 @@ final readonly class DbalShortLinkStore implements ShortLinkStoreInterface
     /**
      * {@inheritDoc}
      */
+    public function findByCode(string $code): ?StoredLink
+    {
+        foreach ($this->select('code = ?', [$code]) as $link) {
+            if ($link->code->value === $code) {
+                return $link;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * {@inheritDoc}
+     */
     public function find(TenantKey $tenant, ShortLinkId $id): ?StoredLink
     {
         foreach ($this->select('tenant_key = ? AND id = ? AND deleted_at IS NULL', [$tenant->value, $id->value]) as $link) {
