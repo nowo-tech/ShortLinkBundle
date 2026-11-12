@@ -553,8 +553,9 @@ Out of scope v1 (spec 230): custom domains per tenant, QR codes, UTM builder, A/
 ## 10. GDPR
 
 - Personal data in raw clicks: truncated IP, UA family, referrer host, country, time. Pseudonymous; legal basis is the
-  host's (Beacon: legitimate interest + opt-out for e-mail kind). Raw retention P90D (purge command), rollups hold no
-  personal data and are kept.
+  host's (Beacon: legitimate interest + opt-out for e-mail kind). Raw retention P90D (purge command); rollups hold no
+  personal data and are kept while the link exists, then deleted with the link when its tombstone is purged after
+  `code.quarantine`.
 - No raw IP, full UA, cookie, fingerprint or user id is ever stored. GPC honoured (Q-O10).
 - `created_by` / `updated_by` are personal data of the host's users: `anonymiseActor()`.
 - E-mail kind: the recipient is identified only through the host's `source_ref` (send); `exportSource()` /

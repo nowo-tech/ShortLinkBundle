@@ -16,9 +16,11 @@ use Symfony\Component\DependencyInjection\Reference;
 use Symfony\Component\Lock\LockFactory;
 
 use function class_exists;
+use function sprintf;
 
 /**
- * Checks the Messenger click mode (a bus exists), checks DoctrineBundle (the links are stored through Doctrine DBAL) and switches the tenant lock to symfony/lock
+ * Checks the Messenger click mode (a bus exists), the UI dependencies (UiKit, FormKit, forms, translator, Twig) when
+ * `ui.enabled`, checks DoctrineBundle (the links are stored through Doctrine DBAL) and switches the tenant lock to symfony/lock
  * when the host has a lock factory (`lock.factory`), so plan limits stay exact under concurrent creates.
  */
 final class ShortLinkCompilerPass implements CompilerPassInterface
@@ -33,6 +35,18 @@ final class ShortLinkCompilerPass implements CompilerPassInterface
         }
         if ($container->getParameter(NowoShortLinkExtension::ALIAS . '.click_write_mode') === ClickWriteMode::Messenger->value && !$container->has('messenger.default_bus')) {
             throw new LogicException('nowo_short_link.click_log.write is "messenger" but no Messenger bus exists: install symfony/messenger and configure framework.messenger.');
+        }
+        if ($container->getParameter(NowoShortLinkExtension::ALIAS . '.ui_enabled') === true) {
+            foreach (['nowo_ui_kit' => 'nowo-tech/ui-kit-bundle (NowoUiKitBundle)', 'nowo_form_kit' => 'nowo-tech/form-kit-bundle (NowoFormKitBundle)'] as $extension => $package) {
+                if (!$container->hasExtension($extension)) {
+                    throw new LogicException(sprintf('nowo_short_link.ui.enabled needs %s: register the bundle in config/bundles.php.', $package));
+                }
+            }
+            foreach (['form.factory' => 'framework.form', 'translator' => 'framework.translator', 'twig' => 'TwigBundle'] as $service => $feature) {
+                if (!$container->has($service)) {
+                    throw new LogicException(sprintf('nowo_short_link.ui.enabled needs %s (service "%s").', $feature, $service));
+                }
+            }
         }
         if ((string) $container->getAlias(TenantLockInterface::class) !== NoTenantLock::class || !$container->has('lock.factory') || !class_exists(LockFactory::class)) {
             return;

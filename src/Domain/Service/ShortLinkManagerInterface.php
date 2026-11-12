@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Nowo\ShortLinkBundle\Domain\Service;
 
 use Nowo\ShortLinkBundle\Domain\Exception\AccessDeniedException;
+use Nowo\ShortLinkBundle\Domain\Exception\CodeAttemptsExceededException;
 use Nowo\ShortLinkBundle\Domain\Exception\CodeTakenException;
 use Nowo\ShortLinkBundle\Domain\Exception\InvalidShortLinkArgumentException;
 use Nowo\ShortLinkBundle\Domain\Exception\QuotaExceededException;
@@ -26,9 +27,10 @@ use Nowo\ShortLinkBundle\Domain\Model\UpdateShortLink;
 interface ShortLinkManagerInterface
 {
     /**
-     * Creates one link.
+     * Creates one link. A custom code that is not available counts against the caller's `code.taken_rate_limit`
+     * (people only, not `system` callers); over the limit no code is looked up.
      *
-     * @throws AccessDeniedException|CodeTakenException|InvalidShortLinkArgumentException|QuotaExceededException|TargetRefusedException
+     * @throws AccessDeniedException|CodeAttemptsExceededException|CodeTakenException|InvalidShortLinkArgumentException|QuotaExceededException|TargetRefusedException
      */
     public function create(TenantKey $tenant, CreateShortLink $command): ShortLinkView;
 

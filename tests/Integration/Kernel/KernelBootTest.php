@@ -66,7 +66,7 @@ final class KernelBootTest extends KernelTestCase
             $container->services()->set(TestTenantContext::class);
             $container->services()->set(TestAccess::class);
             $container->services()->set('app.guard', ChainTargetGuard::class)->args([[]]);
-        });
+        }, false, true);
         $container = $kernel->getContainer();
 
         self::assertSame('/go', $container->getParameter('nowo_short_link.redirect_path_prefix'));

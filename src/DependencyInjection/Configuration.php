@@ -252,6 +252,20 @@ final class Configuration implements ConfigurationInterface
                 ->booleanNode('blocklist')->defaultTrue()->info('Generated codes skip offensive substrings (Q-O9)')->end()
                 ->integerNode('max_attempts')->defaultValue(5)->min(1)->max(20)->info('Collisions before the length grows by one')->end()
                 ->append(ConfigNodes::duration('quarantine', 'P365D', 'Deleted codes stay taken for this long (Q-O7); null = forever'))
+                ->arrayNode('taken_rate_limit')
+                    ->info('Per-person limit on "code not available" answers of custom codes (audit L7: no enumeration through the form), stored in redirect.rate_limit.cache_pool')
+                    ->addDefaultsIfNotSet()
+                    ->children()
+                        ->booleanNode('enabled')->defaultTrue()->end()
+                        ->integerNode('limit')->defaultValue(10)->min(1)->max(100000)->end()
+                        ->scalarNode('interval')->defaultValue('1 minute')->cannotBeEmpty()
+                            ->validate()
+                                ->ifTrue(static fn (mixed $value): bool => !is_string($value) || preg_match('/^\d+ (second|minute|hour|day)s?$/D', $value) !== 1)
+                                ->thenInvalid('Expected an interval such as "1 minute" or "15 minutes", got %s.')
+                            ->end()
+                        ->end()
+                    ->end()
+                ->end()
             ->end();
 
         return $node;
@@ -267,7 +281,7 @@ final class Configuration implements ConfigurationInterface
                     ->info('auto (basic + OutboundUrlGuard), basic (literal checks only, warned) or a TargetGuardInterface service id')
                 ->end()
                 ->integerNode('recheck_max_unresolvable_percent')->defaultValue(20)->min(0)->max(100)
-                    ->info('The recheck aborts when more than this share of the checked targets cannot be resolved (DNS outage); 0 = abort on any')
+                    ->info('The recheck aborts when more than this share of the checked targets cannot be resolved (DNS outage); 0 = abort on any unresolvable target, but only once recheck_min_sample links have been checked')
                 ->end()
                 ->integerNode('recheck_min_sample')->defaultValue(20)->min(0)->max(100000)
                     ->info('The recheck abort threshold applies once at least this many links were checked')
@@ -386,6 +400,9 @@ final class Configuration implements ConfigurationInterface
                 ->integerNode('page_size')->defaultValue(25)->min(10)->max(100)->end()
                 ->integerNode('stats_default_days')->defaultValue(30)->min(1)->max(366)->end()
                 ->integerNode('csv_max_days')->defaultValue(366)->min(1)->max(366)->end()
+                ->scalarNode('layout_template')->defaultNull()
+                    ->info('Layout of the UI pages (REQ-UI-003); null = the UiKit admin layout (nowo_ui_kit.layouts.admin)')
+                ->end()
             ->end();
 
         return $node;

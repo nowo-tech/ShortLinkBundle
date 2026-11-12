@@ -6,8 +6,10 @@ namespace Nowo\ShortLinkBundle\Tests\Integration\Kernel;
 
 use Closure;
 use Doctrine\Bundle\DoctrineBundle\DoctrineBundle;
+use Nowo\FormKitBundle\NowoFormKitBundle;
 use Nowo\ShortLinkBundle\NowoShortLinkBundle;
 use Nowo\ShortLinkBundle\Tests\Fixtures\EchoController;
+use Nowo\UiKitBundle\NowoUiKitBundle;
 use Psr\Log\NullLogger;
 use Symfony\Bundle\FrameworkBundle\FrameworkBundle;
 use Symfony\Bundle\FrameworkBundle\Kernel\MicroKernelTrait;
@@ -17,6 +19,7 @@ use Symfony\Component\DependencyInjection\Loader\Configurator\ContainerConfigura
 use Symfony\Component\Filesystem\Filesystem;
 use Symfony\Component\HttpKernel\Kernel;
 use Symfony\Component\Routing\Loader\Configurator\RoutingConfigurator;
+use Twig\Extra\TwigExtraBundle\TwigExtraBundle;
 
 use function dirname;
 use function getenv;
@@ -42,6 +45,7 @@ final class TestKernel extends Kernel
         private readonly ?string $databaseUrl = null,
         private readonly ?Closure $configure = null,
         private readonly bool $security = false,
+        private readonly bool $ui = false,
     ) {
         parent::__construct('test', false);
     }
@@ -67,6 +71,11 @@ final class TestKernel extends Kernel
         yield new TwigBundle();
         if ($this->security) {
             yield new SecurityBundle();
+        }
+        if ($this->ui) {
+            yield new TwigExtraBundle();
+            yield new NowoUiKitBundle();
+            yield new NowoFormKitBundle();
         }
         yield new NowoShortLinkBundle();
     }
@@ -104,6 +113,14 @@ final class TestKernel extends Kernel
             'cache'                 => ['app' => 'cache.adapter.array'],
         ]);
         $container->extension('twig', ['strict_variables' => true]);
+        if ($this->ui) {
+            $container->extension('framework', [
+                'csrf_protection' => true,
+                'form'            => ['enabled' => true],
+                'session'         => ['storage_factory_id' => 'session.storage.factory.mock_file'],
+                'assets'          => ['enabled' => true],
+            ]);
+        }
         $url = $this->databaseUrl ?? self::defaultDatabaseUrl();
         if ($this->configure instanceof Closure) {
             ($this->configure)($container, $url);
@@ -123,5 +140,6 @@ final class TestKernel extends Kernel
     {
         $routes->add('echo', '/echo')->controller(EchoController::class)->methods(['GET']);
         $routes->import(dirname(__DIR__, 3) . '/src/Resources/config/routes/redirect.php');
+        $routes->import(dirname(__DIR__, 3) . '/src/Resources/config/routes/ui.php')->prefix('/t/{workspace}');
     }
 }

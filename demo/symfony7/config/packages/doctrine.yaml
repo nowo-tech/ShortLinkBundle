@@ -1,3 +1,5 @@
 doctrine:
   dbal:
     url: '%env(resolve:DATABASE_URL)%'
+  # The bundle maps its own entity (XML mapping, prepended by the bundle); the demo has no entity of its own.
+  orm: {}

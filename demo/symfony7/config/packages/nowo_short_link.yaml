@@ -1,6 +1,12 @@
-# S0 scaffold: the bundle is installed; it registers nothing yet. Later slices turn the demo features on here
-# (redirect /s/{code}, UI under /short-links, click log, stats).
+# Demo configuration: the public redirect /s/{code}, the click log written after the response, and the management UI
+# under /short-links (UiKit pages + FormKit forms). The demo has no login: App\ShortLink\DemoAccess grants the single
+# tenant "default" to every visitor (a real host plugs its own permission check in through access.provider).
 nowo_short_link:
     public_base_url: '%env(DEFAULT_URI)%'
     target:
         own_hosts: ['localhost', '127.0.0.1']
+    access:
+        provider: App\ShortLink\DemoAccess
+    ui:
+        enabled: true
+        layout_template: base.html.twig   # the demo shell (masthead + navigation) around the UiKit page scaffolds

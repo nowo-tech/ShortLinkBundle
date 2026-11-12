@@ -7,6 +7,48 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+S4: the management UI (target 0.2.0).
+
+### Added
+
+- Management pages on UiKit scaffolds + FormKit forms (`ui.enabled: true`; routes
+  `@NowoShortLinkBundle/Resources/config/routes/ui.php`, loader type `nowo_short_link_ui`, empty while the UI is
+  disabled): list (search, state filter, keyset pages of `ui.page_size`, clicks of the last 30 days, copy button),
+  create / edit (target, optional custom code on create, title, expiry; quota "12 of 50 links", form replaced by a
+  message when the plan is full), disable / enable / delete (POST, one CSRF token per action, delete behind the UiKit
+  confirm dialog), statistics (people / machine totals, server-side SVG daily chart with its table as the accessible
+  fallback, top referrer hosts, countries, browser families, 7 / 30 / 90-day presets and a custom range) and the CSV
+  export (`ui.csv_max_days`, `?dimension=`, `?excel=1` BOM).
+- Every page resolves the tenant through the tenant-context port (none → 404) and checks the access port (View for the
+  pages, Manage for every change); ids of another tenant answer 404. `ui.tenant_route_parameter` keeps the host prefix
+  parameter (Beacon: `uuid`) in every UI link. New `ui.layout_template` (null = the UiKit admin layout).
+- FormKit profile `short_link` prepended by the bundle (translation domain `NowoShortLinkBundle`); a host profile of
+  the same name wins.
+- Translations of the UI in en, es, fr, it, pt, de and nl; Twig blocks for overrides (`docs/TEMPLATES.md`); UiKit page
+  contract test.
+- Audit L7: per-actor limiter on "code not available" answers of custom codes (`code.taken_rate_limit`, default
+  10 per minute, stored in `redirect.rate_limit.cache_pool`; port `CodeTakenLimiterInterface`, new
+  `CodeAttemptsExceededException`). Over the limit no custom code is looked up until the window ends; `system`
+  callers and random codes are never limited.
+- `twig/string-extra` is now a requirement (REQ-TWIG-004 baseline; the bundle ships Twig pages).
+- Demo: the UI under `/short-links` (demo access port, demo shell as `ui.layout_template`); Playwright e2e
+  (`make test-e2e`, workflow `e2e.yml` on every pull request) and README screenshots (`make demo-screenshots`).
+
+### Changed
+
+- The recheck evaluates its abort threshold after every link once `target.recheck_min_sample` is reached (not only at
+  the end of a batch), so a resolver outage stops the run at once; the non-DNS refusals found before the abort are
+  still disabled first. The description of `target.recheck_max_unresolvable_percent` says that `0` aborts on any
+  unresolvable target only once the minimum sample was checked (audit NY Info).
+- Contract §10: rollups are kept while the link exists and deleted with it when its tombstone is purged after
+  `code.quarantine`.
+
+### Security
+
+- CSV cells starting with `=`, `+`, `-`, `@`, a tab or a carriage return are prefixed with `'`; target URLs are printed
+  escaped and linked only when http(s), with `rel="noopener noreferrer nofollow"`. The forms never map `system` or
+  `kind` (extra fields are refused); people only create `manual` links.
+
 ## [0.1.0] - 2026-11-12
 
 First release: slices S1 (domain + persistence), S2 (public redirect) and S3 (statistics, retention, recheck, GDPR), audited (NY, NY re-verification). The admin UI (S4) follows in 0.2.0.

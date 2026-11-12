@@ -4,6 +4,7 @@
 
 - [Full reference](#full-reference)
 - [Validation](#validation)
+- [FormKit profile](#formkit-profile)
 - [Container parameters](#container-parameters)
 - [Symfony Beacon example](#symfony-beacon-example)
 
@@ -33,10 +34,14 @@ nowo_short_link:
         blocklist: true              # generated codes skip offensive substrings
         max_attempts: 5              # 1..20 collisions, then length + 1
         quarantine: P365D            # ISO 8601 duration; null = deleted codes stay taken forever
+        taken_rate_limit:            # per-person limit on "code not available" answers (audit L7), in redirect.rate_limit.cache_pool
+            enabled: true
+            limit: 10                # 1..100000 answers
+            interval: '1 minute'     # then no custom code is looked up until the window ends
     target:
         max_length: 2048             # 64..2048
         guard: auto                  # auto (basic + OutboundUrlGuard) | basic | <service id>: a service REPLACES the whole chain (self chain, OutboundUrlGuard, denylist)
-        recheck_max_unresolvable_percent: 20  # 0..100 of all checked targets unresolvable → the recheck aborts (0 = on any)
+        recheck_max_unresolvable_percent: 20  # 0..100 of all checked targets unresolvable → the recheck aborts, checked after every link (0 = on any, once recheck_min_sample links were checked)
         recheck_min_sample: 20       # the threshold applies once this many links were checked
         save_resolve_dns: true       # DNS check on create / update / enable / recheck, never on the redirect
         self_paths: ['/s/']          # targets on own_hosts under these paths are refused (no chains)
@@ -73,7 +78,8 @@ nowo_short_link:
         tenant_route_parameter: null # route parameter of the host prefix kept in UI links (Beacon: uuid)
         page_size: 25                # 10..100
         stats_default_days: 30       # 1..366
-        csv_max_days: 366            # 1..366
+        csv_max_days: 366            # 1..366: a longer CSV range keeps its last days
+        layout_template: null        # layout of the UI pages; null = the UiKit admin layout (nowo_ui_kit.layouts.admin)
     doctrine:
         entity_manager: null         # null = default EntityManager; dedicated one recommended for DDD hosts
         connection: null             # DBAL connection of the click tables; null = the EntityManager's
@@ -99,6 +105,11 @@ true}}` keeps `allow_custom_code: false` and `counted: false`). A kind is counte
 - `tenancy.context` needs `access.provider`: the default role-based access grants the same role in every tenant, so a
   multi-tenant host must give an access port that checks the tenant (the container refuses to build otherwise).
 - `REQ-CFG-001` (profiles) does not apply: one instance-wide configuration; per-tenant variation goes through the ports.
+
+## FormKit profile
+
+The UI forms use the FormKit profile `short_link`, prepended by the bundle (`translation_domain: NowoShortLinkBundle`,
+`attr.class: nowo-ui-input`). Define `nowo_form_kit.profiles.short_link` yourself to replace it (yours wins).
 
 ## Container parameters
 

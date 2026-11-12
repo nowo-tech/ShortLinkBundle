@@ -12,8 +12,8 @@
 
 ## Status and scope
 
-S1–S2: the manager, the ports, the target guard, the DBAL store and the public redirect `GET|HEAD /s/{code}` with its
-click log (the only HTTP surface until the S4 UI).
+S1–S4: the manager, the ports, the target guard, the DBAL store, the public redirect `GET|HEAD /s/{code}` with its
+click log, and the opt-in management UI (S4, behind the host's firewall and the access port).
 
 **Covers (from S1):** how short codes are generated and reserved, how targets are validated at save and at redirect
 time, how the public redirect answers, what each click stores and for how long, and how tenants are isolated.
@@ -28,6 +28,8 @@ security (HTTPS is the host's job) and the content of the target sites.
 | `{code}` of the public redirect | `GET|HEAD /s/{code}` (S2) | Route requirement `[A-Za-z0-9-]{3,32}` before any I/O; one indexed lookup + PHP `===` re-check; identical neutral 404 for every failure |
 | Target URL | Manager / UI form (S1, S4) | `TargetUrl` VO (http/https, absolute, no userinfo, no control characters, ≤ 2 048 bytes, IDN → punycode); guard with DNS at save, literal checks + denylist on every redirect |
 | Request headers | Redirect (S2) | `User-Agent` (first 512 bytes, bounded regex list), `Referer` (host only), `Sec-GPC`, client IP (truncated, never stored raw) |
+| UI forms and actions | Management UI (S4) | FormKit Form Types (no `system` / `kind` field, extra fields refused), CSRF per action, POST only for changes, View / Manage per page, tenant-scoped lookups (another tenant's id → 404) |
+| CSV export | Statistics (S4) | Cells starting with `=`, `+`, `-`, `@`, tab or CR prefixed with `'`; range bounded by `ui.csv_max_days` |
 | Host ports | Tenant context, access, quota, denylist, country | Host code; the bundle fails closed (no tenant → 404, denied access → 404 / 403) |
 
 ## Threat model
@@ -64,9 +66,7 @@ From contract §9. Each threat names the control and the slice that ships it.
   every anchored pattern; L5 counted creates refused inside a host transaction + a 10-process parallel test that
   creates exactly the limit (MySQL / MariaDB / PostgreSQL CI); L8 hidden kinds never listed for people; L9 no
   invisible / bidi characters, ASCII-only targets.
-- **Known gaps tracked for later slices:** the per-actor limiter on `CodeTakenException` answers (contract §6.2) lands
-  with the S4 form, where enumeration through the UI happens; without symfony/lock, concurrent creates may overshoot a
-  plan limit by a few links.
+- **Known gaps:** without symfony/lock, concurrent creates may overshoot a plan limit by a few links.
 - **S2:** the redirect takes only `{code}` (query ignored, `Location` from the database, no CRLF possible); one
   neutral 404 for every reason after the same single query; miss limiter peeked before the lookup; hit limiter with
   redirect-unlogged / block; HEAD never logged; stateless route, no cookie; redirect guard on every answer (literals +
@@ -83,7 +83,14 @@ From contract §9. Each threat names the control and the slice that ships it.
 - **Audit NY re-verification:** N1 cumulative recheck breaker with a minimum sample, non-DNS refusals applied before
   an abort; N2 retry-safe erasure order; N3 second click-delete pass; I1 liveness check only for Messenger clicks;
   I2 links in the export, tombstone rollups purged; I3 rollup deadlocks skipped.
-- **S3–S5:** see the table above and the contract.
+- **S4 (UI):** tenant from the context port on every page (none → 404), access port per action (View for pages,
+  Manage for changes; denial → 403), lookups by id scoped by tenant (another tenant's id → 404, never 403); POST + one
+  CSRF token per state change (missing / wrong → 403, nothing changed); forms never map `system` / `kind` (extra fields
+  refused); audit L7 per-actor limiter on "code not available" answers (`code.taken_rate_limit`, hashed actor key);
+  Twig escaping everywhere (title, target, referrer hosts), target linked only when http(s) with
+  `rel="noopener noreferrer nofollow"`; CSV formula neutralisation; no personal data logged by the UI; stateless
+  controller and services (worker mode). Fixtures: XSS title / referrer, CSV `=HYPERLINK`, cross-tenant matrix.
+- **S5:** see the contract.
 
 ## Release security checklist (12.4.1)
 

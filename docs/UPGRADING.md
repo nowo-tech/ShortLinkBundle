@@ -7,7 +7,31 @@
 
 ## Unreleased
 
-Nothing yet.
+S4 (0.2.0) adds the management UI; nothing changes until you enable it.
+
+1. Register `NowoUiKitBundle` and `NowoFormKitBundle` (already Composer requirements) when you turn the UI on; the
+   container refuses `ui.enabled: true` without them, without `framework.form`, the translator or Twig.
+2. Set `nowo_short_link.ui.enabled: true` and import the routes under your prefix:
+
+   ```yaml
+   nowo_short_link_ui:
+       resource: '@NowoShortLinkBundle/Resources/config/routes/ui.php'
+       prefix: /organizations/{uuid}        # optional host prefix
+   ```
+
+   With a prefix parameter, set `ui.tenant_route_parameter` (Beacon: `uuid`) so the UI keeps it in its links.
+3. The pages need sessions (CSRF tokens) and your firewall in front of them; access is the access port (`View` /
+   `Manage`), the tenant the tenant-context port.
+4. New configuration keys with defaults: `code.taken_rate_limit` (`enabled: true`, `limit: 10`, `interval: 1 minute`)
+   and `ui.layout_template` (null). The limiter applies to every caller of `create()` with a custom code except
+   `system` commands; catch `CodeAttemptsExceededException` if you call it from your own forms.
+5. The recheck may now abort earlier in a run (per-link threshold); scripts that parse its output keep the same
+   messages.
+
+### Template contract
+
+New pages `@NowoShortLink/ui/list.html.twig`, `ui/form.html.twig`, `ui/stats.html.twig` (UiKit list / form / show
+scaffolds) with the data blocks listed in [TEMPLATES.md](TEMPLATES.md).
 
 ## To 0.1.0
 

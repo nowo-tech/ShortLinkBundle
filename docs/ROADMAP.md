@@ -17,7 +17,7 @@ The bundle is built slice by slice from [CONTRACT.md](CONTRACT.md) §13 (contrac
 | **S1** domain + persistence | Value objects, enums, ports + defaults, code generator, reserved words / blocklist, `TargetUrl` normalisation, guard chain + OutboundUrlGuard bridge, denylist, entity (XML + attribute mapping), DBAL click tables, table prefix, `ShortLinkManager` (create, createMany with dedupe by send ref + position, update, disable, enable, delete tombstone, list, find, shortUrl), quota (+ Lock), access, events after commit | Released (0.1.0) |
 | **S2** redirect | Route, controller, step order §7.1, headers §7.2, neutral 404 / 429, limiters, click recorder (terminate / messenger / sync), UA classifier, referrer, GPC, country port, `ShortLinkClickedEvent`, worker test, benchmark | Released (0.1.0) |
 | **S3** stats + retention | Rollup, purge, recheck commands; stats reader; eraser (tenant, source, actor, export); Messenger message + handler (`RecordShortLinkClick`, S2) | Released (0.1.0) |
-| **S4** UI | List, create / edit, disable / enable / delete, stats with chart + breakdowns, CSV; translations; Twig blocks; access + tenant context; quota display; Playwright e2e + screenshots | |
+| **S4** UI | List, create / edit, disable / enable / delete, stats with chart + breakdowns, CSV; translations; Twig blocks; access + tenant context; quota display; Playwright e2e + screenshots | In review (PR, target 0.2.0) |
 | **S5** docs + hardening | USAGE, CONFIGURATION, ARCHITECTURE, SECURITY, PRIVACY, PERFORMANCE, UPGRADING, worker audit, demo docs, README screenshots, Spec Kit deep baseline | |
 | **Audit** | REQ-SEC-004 (public unauthenticated endpoint + permission port), `bundle-req-audit` | 1.0.0 |
 
