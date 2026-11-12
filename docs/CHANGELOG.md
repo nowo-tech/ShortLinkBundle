@@ -7,6 +7,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-11-12
+
+First release: slices S1 (domain + persistence), S2 (public redirect) and S3 (statistics, retention, recheck, GDPR), audited (NY, NY re-verification). The admin UI (S4) follows in 0.2.0.
+
 ### Fixed (audit NY re-verification)
 
 - N1: the recheck abort threshold is evaluated over the whole run, only once `target.recheck_min_sample` (default 20)
@@ -99,3 +103,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   case-sensitive code test (contract F3), a worker test (one kernel kept alive, 2,000 requests) and the demo smoke test.
 - Docs set, Spec Kit baseline, Flex recipe, demos `symfony7` (Symfony 7.4) and `symfony8` (Symfony 8.1) on FrankenPHP
   worker mode with MySQL, UiKit's admin layout and default theme (REQ-DEMO-014) and FormKit (REQ-DEMO-015).
+
+[Unreleased]: https://github.com/nowo-tech/ShortLinkBundle/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/nowo-tech/ShortLinkBundle/releases/tag/v0.1.0
