@@ -60,7 +60,7 @@ From contract §9. Each threat names the control and the slice that ships it.
   codes (binary collation + PHP `===`); tenant filter + PHP re-check on every read; access checked per action (anonymous
   denied by default; `system` only for programmatic callers); quota serialised per tenant with symfony/lock; events after
   commit with the target host only; logs carry the tenant and counts, never codes, targets or IPs.
-- **Audit NW follow-ups (S1):** L1 self-chain normalisation (`%73`, dot segments, public host); L2 `D` modifier on
+- **Audit NW follow-ups (S1):** L1 self-chain normalisation (full percent-decoding as the router does, `%73%2F`, dot segments, public host); L2 `D` modifier on
   every anchored pattern; L5 counted creates refused inside a host transaction + a 10-process parallel test that
   creates exactly the limit (MySQL / MariaDB / PostgreSQL CI); L8 hidden kinds never listed for people; L9 no
   invisible / bidi characters, ASCII-only targets.
