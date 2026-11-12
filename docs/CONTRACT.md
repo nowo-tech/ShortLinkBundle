@@ -426,7 +426,8 @@ prefix, checked in the container).
 - Unique per instance (one `/s/` namespace for every tenant). Taken → `CodeTaken` with a neutral message ("This code is
   not available"), the same for taken, reserved and quarantined codes, so the form does not reveal which other tenant
   owns it. The form is rate-limited by the host's normal UI limits; the manager adds a per-actor limiter on
-  `CodeTaken` answers (10 / minute) against enumeration through the form.
+  custom-code lookups (10 / minute per tenant + actor, consumed before the lookup; audit NY-S4) against enumeration
+  through the form.
 - Codes are immutable after creation (a new code = a new link; old printed links keep working).
 
 ### 6.3 Reserved words (built in, case-insensitive, plus `code.reserved` and the host provider)

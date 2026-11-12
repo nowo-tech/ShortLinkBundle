@@ -81,7 +81,7 @@ ui:
         deleted: "Short link deleted."
         enable_refused: "The short link stays disabled: %reason%"
     error:
-        code_attempts: "Too many unavailable codes were tried. Wait a minute and try again."
+        code_attempts: "Too many custom codes were tried. Wait a minute and try again."
         code_unavailable: "This code is not available."
         quota: "The short-link limit of your plan is reached."
         invalid: "The short link could not be saved. Check the fields and try again."

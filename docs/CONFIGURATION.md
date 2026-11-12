@@ -34,10 +34,11 @@ nowo_short_link:
         blocklist: true              # generated codes skip offensive substrings
         max_attempts: 5              # 1..20 collisions, then length + 1
         quarantine: P365D            # ISO 8601 duration; null = deleted codes stay taken forever
-        taken_rate_limit:            # per-person limit on "code not available" answers (audit L7), in redirect.rate_limit.cache_pool
+        custom_code_rate_limit:      # per-person limit on custom-code lookups (audits L7 / NY-S4), in redirect.rate_limit.cache_pool
             enabled: true
-            limit: 10                # 1..100000 answers
+            limit: 10                # 1..100000 lookups per tenant + actor (free codes count too: the attempt is taken first)
             interval: '1 minute'     # then no custom code is looked up until the window ends
+            limiter: null            # CustomCodeLimiterInterface service id; null = symfony/rate-limiter (atomic with symfony/lock)
     target:
         max_length: 2048             # 64..2048
         guard: auto                  # auto (basic + OutboundUrlGuard) | basic | <service id>: a service REPLACES the whole chain (self chain, OutboundUrlGuard, denylist)
@@ -68,7 +69,7 @@ nowo_short_link:
         enforce_in_manager: true
     quota:
         provider: null               # ShortLinkQuotaInterface service id; null = default_limit
-        default_limit: null          # >= 0; null = unlimited
+        default_limit: null          # integer >= 0; null (or ~) = unlimited
         counted_kinds: [manual]      # only configured kinds
     kinds:                           # manual and email are built in; add yours (^[a-z][a-z0-9_]{0,31}$)
         email: { allow_custom_code: false, show_in_ui: false, counted: false }

@@ -13,11 +13,13 @@ use function fputcsv;
 use function fwrite;
 use function in_array;
 use function is_resource;
+use function ltrim;
 
 /**
  * CSV export of the statistics page (contract §11): `day,clicks,machine_clicks`, then one section per breakdown
  * (`referrer`, `country`, `browser`), or a single section. Every cell is neutralised against spreadsheet formula
- * injection (contract §9): a cell starting with `=`, `+`, `-`, `@`, a tab or a carriage return gets a leading `'`
+ * injection (contract §9): a cell starting with `=`, `+`, `-`, `@`, a tab or a carriage return, also after leading
+ * spaces, gets a leading `'`
  * (referrer hosts come from visitors). Pure functions; the controller streams the rows.
  */
 final class StatsCsv
@@ -33,7 +35,9 @@ final class StatsCsv
      */
     public static function cell(string $value): string
     {
-        return $value !== '' && in_array($value[0], self::FORMULA_STARTS, true) ? "'" . $value : $value;
+        $start = ltrim($value, ' ');
+
+        return $start !== '' && in_array($start[0], self::FORMULA_STARTS, true) ? "'" . $value : $value;
     }
 
     /**

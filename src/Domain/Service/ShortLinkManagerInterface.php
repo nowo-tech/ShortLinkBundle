@@ -27,8 +27,8 @@ use Nowo\ShortLinkBundle\Domain\Model\UpdateShortLink;
 interface ShortLinkManagerInterface
 {
     /**
-     * Creates one link. A custom code that is not available counts against the caller's `code.taken_rate_limit`
-     * (people only, not `system` callers); over the limit no code is looked up.
+     * Creates one link. Each custom-code lookup counts against the caller's `code.custom_code_rate_limit` (people
+     * only, not `system` callers); over the limit no code is looked up.
      *
      * @throws AccessDeniedException|CodeAttemptsExceededException|CodeTakenException|InvalidShortLinkArgumentException|QuotaExceededException|TargetRefusedException
      */

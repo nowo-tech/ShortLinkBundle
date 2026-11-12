@@ -72,7 +72,7 @@ All implement `Nowo\ShortLinkBundle\Domain\Exception\ShortLinkExceptionInterface
 | --- | --- |
 | `TargetRefusedException` (`->refusal`: `Scheme`, `Userinfo`, `Length`, `PrivateHost`, `Metadata`, `Unresolvable`, `Denylisted`, `SelfLoop`) | The target cannot be used |
 | `CodeTakenException` / `CodeReservedException` | The custom code is not available (same neutral message for taken, reserved and quarantined codes) |
-| `CodeAttemptsExceededException` | The caller got too many "not available" answers (`code.taken_rate_limit`); no custom code is looked up until the window ends (`system` commands are never limited) |
+| `CodeAttemptsExceededException` | The caller tried too many custom codes (`code.custom_code_rate_limit`, per tenant + actor); no custom code is looked up until the window ends (`system` commands are never limited) |
 | `QuotaExceededException` (`->limit`) | The tenant's plan limit for a counted kind is reached |
 | `AccessDeniedException` | The access port refused the action |
 | `ShortLinkNotFoundException` | No live link with this id in this tenant |
@@ -207,8 +207,17 @@ nowo_short_link_ui:
   are listed).
 - Disable, enable and delete are POST only, with one CSRF token per action (`nowo_short_link_<action>`); a missing or
   wrong token answers 403 and changes nothing.
-- A custom code that is taken, reserved or quarantined answers "This code is not available." for every reason; after
-  `code.taken_rate_limit` such answers the form refuses custom codes for the rest of the window.
+- A custom code that is taken, reserved or quarantined answers "This code is not available." for every reason. Every
+  custom-code lookup counts against `code.custom_code_rate_limit` (per tenant + actor, taken before the lookup); over
+  the limit the form refuses custom codes for the rest of the window. Callers the access port does not identify share
+  one window per tenant; replace `CustomCodeLimiterInterface` to key them by session or network.
+- `ui.tenant_route_parameter` only builds URLs: it copies the `{uuid}` of the current request into the UI links. It
+  never chooses the tenant. Your `ShortLinkTenantContextInterface` must resolve the tenant from that parameter **and**
+  check the current user may act in it (or derive it from the session); the access port then authorises View / Manage
+  in that tenant.
+- Links of kinds with `show_in_ui: false` (e-mail links) are neither listed nor reachable by id: every page and action
+  answers 404 for them.
+- The search matches the code, title and target host case-insensitively (on SQLite only ASCII letters fold).
 - The list reads at most 4 queries per page (links, then the 30-day click totals); the clicks column counts people,
   machine traffic is in the cell title.
 - Pages, blocks and view models: [TEMPLATES.md](TEMPLATES.md). Translations: domain `NowoShortLinkBundle` (en, es,

@@ -81,7 +81,7 @@ ui:
         deleted: "Enlace corto eliminado."
         enable_refused: "El enlace corto sigue desactivado: %reason%"
     error:
-        code_attempts: "Se han probado demasiados códigos no disponibles. Espera un minuto y vuelve a intentarlo."
+        code_attempts: "Se han probado demasiados códigos personalizados. Espera un minuto y vuelve a intentarlo."
         code_unavailable: "Este código no está disponible."
         quota: "Se ha alcanzado el límite de enlaces cortos de tu plan."
         invalid: "No se ha podido guardar el enlace corto. Revisa los campos y vuelve a intentarlo."

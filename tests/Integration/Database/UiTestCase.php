@@ -215,22 +215,52 @@ abstract class UiTestCase extends KernelTestCase
         self::assertSame(1, $this->linkCount());
     }
 
-    public function testTakenCodeAnswersAreLimitedPerActor(): void
+    public function testCustomCodeLookupsAreLimitedPerActorAndCountedBeforeTheLookup(): void
     {
-        $this->boot(['code' => ['taken_rate_limit' => ['limit' => 2]]]);
+        $this->boot(['code' => ['custom_code_rate_limit' => ['limit' => 3]]]);
         $this->create('https://example.com', null, null, 'taken-code');
         $token = $this->token($this->client->request('GET', self::BASE . '/new'), 'short_link[_token]');
+        $this->client->request('POST', self::BASE . '/new', ['short_link' => ['target' => 'https://example.com', 'customCode' => 'free-one', '_token' => $token]]);
+        self::assertSame(303, $this->httpStatus(), 'a free code is created, and its lookup is counted too');
         for ($i = 0; $i < 2; ++$i) {
             $this->client->request('POST', self::BASE . '/new', ['short_link' => ['target' => 'https://example.com', 'customCode' => 'taken-code', '_token' => $token]]);
             self::assertStringContainsString('This code is not available.', $this->html());
         }
         $this->client->request('POST', self::BASE . '/new', ['short_link' => ['target' => 'https://example.com', 'customCode' => 'free-code', '_token' => $token]]);
         self::assertSame(422, $this->httpStatus());
-        self::assertStringContainsString('Too many unavailable codes were tried.', $this->html(), 'over the limit even a free code is not looked up');
-        self::assertSame(1, $this->linkCount());
+        self::assertStringContainsString('Too many custom codes were tried.', $this->html(), 'over the limit even a free code is not looked up');
+        self::assertSame(2, $this->linkCount());
 
         $this->client->request('POST', self::BASE . '/new', ['short_link' => ['target' => 'https://example.com', '_token' => $token]]);
         self::assertSame(303, $this->httpStatus(), 'random codes are never limited');
+    }
+
+    public function testHiddenKindsAreNotReachableById(): void
+    {
+        $this->boot();
+        $email = $this->createEmail('https://example.com/newsletter');
+        $this->create('https://example.com/visible', 'Visible');
+        $crawler = $this->client->request('GET', self::BASE);
+        $tokens  = [];
+        foreach (['disable', 'delete'] as $action) {
+            $tokens[$action] = (string) $crawler->filter('form[action$="/' . $action . '"] input[name="_token"]')->first()->attr('value');
+        }
+        self::assertStringNotContainsString($email->code->value, $this->html());
+
+        foreach (['/edit', '/stats', '/stats.csv'] as $page) {
+            $this->client->request('GET', self::BASE . '/' . $email->id->value . $page);
+            self::assertSame(404, $this->httpStatus(), $page);
+        }
+        $this->client->request('POST', self::BASE . '/' . $email->id->value . '/edit', ['short_link' => ['target' => 'https://evil.example/']]);
+        self::assertSame(404, $this->httpStatus());
+        foreach (['disable', 'delete'] as $action) {
+            $this->client->request('POST', self::BASE . '/' . $email->id->value . '/' . $action, ['confirm' => '1', '_token' => $tokens[$action]]);
+            self::assertSame(404, $this->httpStatus(), $action);
+        }
+        $row = $this->store()->find($this->tenant, $email->id);
+        self::assertNotNull($row, 'the e-mail link is untouched');
+        self::assertTrue($row->active);
+        self::assertSame('https://example.com/newsletter', $row->target->toString());
     }
 
     public function testAFullQuotaReplacesTheForm(): void

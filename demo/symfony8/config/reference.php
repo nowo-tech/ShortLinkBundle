@@ -1382,10 +1382,11 @@ use Symfony\Component\Config\Loader\ParamConfigurator as Param;
  *         blocklist?: bool|Param, // Generated codes skip offensive substrings (Q-O9) // Default: true
  *         max_attempts?: int|Param, // Collisions before the length grows by one // Default: 5
  *         quarantine?: scalar|Param|null, // Deleted codes stay taken for this long (Q-O7); null = forever // Default: "P365D"
- *         taken_rate_limit?: array{ // Per-person limit on "code not available" answers of custom codes (audit L7: no enumeration through the form), stored in redirect.rate_limit.cache_pool
+ *         custom_code_rate_limit?: array{ // Per-person limit on custom-code lookups (audits L7 / NY-S4: no enumeration through the form), per tenant + actor, stored in redirect.rate_limit.cache_pool
  *             enabled?: bool|Param, // Default: true
  *             limit?: int|Param, // Default: 10
  *             interval?: scalar|Param|null, // Default: "1 minute"
+ *             limiter?: scalar|Param|null, // CustomCodeLimiterInterface service (e.g. keyed on the session of callers without an actor); null = the rate limiter above // Default: null
  *         },
  *     },
  *     target?: array{
@@ -1432,7 +1433,7 @@ use Symfony\Component\Config\Loader\ParamConfigurator as Param;
  *     },
  *     quota?: array{
  *         provider?: scalar|Param|null, // ShortLinkQuotaInterface service; null = default_limit // Default: null
- *         default_limit?: int|Param, // Max non-deleted links per tenant and counted kind; null = unlimited // Default: null
+ *         default_limit?: scalar|Param|null, // Max non-deleted links per tenant and counted kind; null = unlimited // Default: null
  *         counted_kinds?: list<scalar|Param|null>,
  *     },
  *     kinds?: array<string, array{ // Default: {"manual":{"allow_custom_code":true,"show_in_ui":true,"counted":true},"email":{"allow_custom_code":false,"show_in_ui":false,"counted":false}}

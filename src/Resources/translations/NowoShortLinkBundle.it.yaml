@@ -81,7 +81,7 @@ ui:
         deleted: "Link breve eliminato."
         enable_refused: "Il link breve resta disattivato: %reason%"
     error:
-        code_attempts: "Sono stati provati troppi codici non disponibili. Attendi un minuto e riprova."
+        code_attempts: "Sono stati provati troppi codici personalizzati. Attendi un minuto e riprova."
         code_unavailable: "Questo codice non è disponibile."
         quota: "È stato raggiunto il limite di link brevi del tuo piano."
         invalid: "Impossibile salvare il link breve. Controlla i campi e riprova."

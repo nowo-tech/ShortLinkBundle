@@ -6,7 +6,7 @@ namespace Nowo\ShortLinkBundle\Tests\Unit\Presentation;
 
 use LogicException;
 use Nowo\ShortLinkBundle\Application\Default\ConfigQuota;
-use Nowo\ShortLinkBundle\Application\Default\UnlimitedCodeTakenLimiter;
+use Nowo\ShortLinkBundle\Application\Default\UnlimitedCustomCodeLimiter;
 use Nowo\ShortLinkBundle\Application\ManagerSettings;
 use Nowo\ShortLinkBundle\Application\QuotaReader;
 use Nowo\ShortLinkBundle\Application\QuotaUsage;
@@ -17,7 +17,7 @@ use Nowo\ShortLinkBundle\Domain\Model\DailyClicks;
 use Nowo\ShortLinkBundle\Domain\Model\DimensionClicks;
 use Nowo\ShortLinkBundle\Domain\Model\LinkKind;
 use Nowo\ShortLinkBundle\Domain\Model\TenantKey;
-use Nowo\ShortLinkBundle\Infrastructure\RateLimit\RateLimiterCodeTakenLimiter;
+use Nowo\ShortLinkBundle\Infrastructure\RateLimit\RateLimiterCustomCodeLimiter;
 use Nowo\ShortLinkBundle\Presentation\Csv\StatsCsv;
 use Nowo\ShortLinkBundle\Presentation\Routing\UiRouteLoader;
 use Nowo\ShortLinkBundle\Presentation\View\DailyChart;
@@ -37,16 +37,16 @@ use function unlink;
 
 /**
  * The small pieces of the management UI: CSV neutralisation, chart geometry, the route loader, the quota reader, the
- * code-taken limiters and the UI dependency checks of the container.
+ * custom-code limiters and the UI dependency checks of the container.
  */
 final class UiPiecesTest extends TestCase
 {
     public function testCsvCellsStartingLikeAFormulaAreNeutralised(): void
     {
-        foreach (['=1+1', '+1', '-1', '@SUM(A1)', "\tx", "\rx"] as $value) {
+        foreach (['=1+1', '+1', '-1', '@SUM(A1)', "\tx", "\rx", ' =1+1', '   @x'] as $value) {
             self::assertSame("'" . $value, StatsCsv::cell($value));
         }
-        foreach (['', 'news.example', '2026-11-12', '12', "'quoted"] as $value) {
+        foreach (['', '   ', ' news.example', 'news.example', '2026-11-12', '12', "'quoted"] as $value) {
             self::assertSame($value, StatsCsv::cell($value));
         }
 
@@ -121,21 +121,24 @@ final class UiPiecesTest extends TestCase
         self::assertTrue((new QuotaUsage(3, 3))->isFull());
     }
 
-    public function testTheCodeTakenLimiterCountsPerActor(): void
+    public function testTheCustomCodeLimiterCountsEveryAttemptPerTenantAndActor(): void
     {
-        $limiter = new RateLimiterCodeTakenLimiter(new RateLimiterFactory(['id' => 'test', 'policy' => 'fixed_window', 'limit' => 2, 'interval' => '1 minute'], new CacheStorage(new ArrayAdapter())));
+        $limiter = new RateLimiterCustomCodeLimiter(new RateLimiterFactory(['id' => 'test', 'policy' => 'fixed_window', 'limit' => 2, 'interval' => '1 minute'], new CacheStorage(new ArrayAdapter())));
+        $acme    = TenantKey::fromString('acme');
+        $other   = TenantKey::fromString('other');
         $alice   = ActorRef::fromString('alice');
-        self::assertTrue($limiter->allows($alice));
-        $limiter->hit($alice);
-        self::assertTrue($limiter->allows($alice));
-        $limiter->hit($alice);
-        self::assertFalse($limiter->allows($alice));
-        self::assertTrue($limiter->allows(ActorRef::fromString('bob')), 'per actor');
-        self::assertTrue($limiter->allows(null), 'anonymous callers share one window of their own');
+        self::assertTrue($limiter->attempt($acme, $alice));
+        self::assertTrue($limiter->attempt($acme, $alice));
+        self::assertFalse($limiter->attempt($acme, $alice), 'the third attempt in the window is refused');
+        self::assertTrue($limiter->attempt($acme, ActorRef::fromString('bob')), 'per actor');
+        self::assertTrue($limiter->attempt($other, $alice), 'per tenant: the same actor id in another tenant has its own window');
 
-        $unlimited = new UnlimitedCodeTakenLimiter();
-        $unlimited->hit($alice);
-        self::assertTrue($unlimited->allows($alice));
+        self::assertTrue($limiter->attempt($acme, null));
+        self::assertTrue($limiter->attempt($acme, null));
+        self::assertFalse($limiter->attempt($acme, null), 'callers without an actor share one window per tenant');
+        self::assertTrue($limiter->attempt($other, null), '… not one window for the whole instance');
+
+        self::assertTrue((new UnlimitedCustomCodeLimiter())->attempt($acme, null));
     }
 
     public function testTheUiNeedsUiKitFormKitAndTheFrameworkServices(): void

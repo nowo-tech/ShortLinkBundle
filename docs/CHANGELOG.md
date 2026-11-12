@@ -26,10 +26,13 @@ S4: the management UI (target 0.2.0).
   the same name wins.
 - Translations of the UI in en, es, fr, it, pt, de and nl; Twig blocks for overrides (`docs/TEMPLATES.md`); UiKit page
   contract test.
-- Audit L7: per-actor limiter on "code not available" answers of custom codes (`code.taken_rate_limit`, default
-  10 per minute, stored in `redirect.rate_limit.cache_pool`; port `CodeTakenLimiterInterface`, new
-  `CodeAttemptsExceededException`). Over the limit no custom code is looked up until the window ends; `system`
-  callers and random codes are never limited.
+- Audits L7 / NY-S4 L2–L3: per-person limit on custom-code lookups (`code.custom_code_rate_limit`, default 10 per
+  minute per tenant + actor, stored in `redirect.rate_limit.cache_pool`, atomic across processes with symfony/lock;
+  port `CustomCodeLimiterInterface`, replaceable through `code.custom_code_rate_limit.limiter`; new
+  `CodeAttemptsExceededException`). The attempt is consumed before the lookup (concurrent requests cannot all pass a
+  peek), so free codes count too; callers without an actor share one window per tenant unless the host's limiter keys
+  them better. Over the limit no custom code is looked up until the window ends; `system` callers and random codes
+  are never limited.
 - `twig/string-extra` is now a requirement (REQ-TWIG-004 baseline; the bundle ships Twig pages).
 - Demo: the UI under `/short-links` (demo access port, demo shell as `ui.layout_template`); Playwright e2e
   (`make test-e2e`, workflow `e2e.yml` on every pull request) and README screenshots (`make demo-screenshots`).
@@ -45,12 +48,15 @@ S4: the management UI (target 0.2.0).
 
 ### Fixed
 
+- Audit NY-S4 L1: links of kinds hidden from people (`show_in_ui: false`, e.g. `email`) answer 404 on every UI page
+  and action by id (edit, statistics, CSV, disable, enable, delete); they could be opened and changed by id before.
+- Audit NY-S4 L4: `quota.default_limit: null` (or `~`) is accepted again and means unlimited.
 - The list search (code, title, target host) is case-insensitive on every database (it was case-sensitive on
-  PostgreSQL, and for codes on MySQL / MariaDB).
+  PostgreSQL, and for codes on MySQL / MariaDB). SQLite's `LOWER()` folds ASCII letters only.
 
 ### Security
 
-- CSV cells starting with `=`, `+`, `-`, `@`, a tab or a carriage return are prefixed with `'`; target URLs are printed
+- CSV cells starting with `=`, `+`, `-`, `@`, a tab or a carriage return (also after leading spaces) are prefixed with `'`; target URLs are printed
   escaped and linked only when http(s), with `rel="noopener noreferrer nofollow"`. The forms never map `system` or
   `kind` (extra fields are refused); people only create `manual` links.
 

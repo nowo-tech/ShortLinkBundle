@@ -42,7 +42,7 @@ final class UiStandardHostTest extends UiTestCase
     protected function boot(array $config = []): void
     {
         /** @var array<string, mixed> $merged */
-        $merged = array_replace_recursive(['access' => ['view_role' => 'ROLE_SL_VIEW', 'manage_role' => 'ROLE_ADMIN'], 'quota' => ['default_limit' => 1000]], $config);
+        $merged = array_replace_recursive(['access' => ['view_role' => 'ROLE_SL_VIEW', 'manage_role' => 'ROLE_ADMIN'], 'quota' => ['default_limit' => null]], $config);
         parent::boot($merged);
     }
 

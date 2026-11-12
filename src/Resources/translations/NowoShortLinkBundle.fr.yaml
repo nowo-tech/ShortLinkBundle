@@ -81,7 +81,7 @@ ui:
         deleted: "Lien court supprimé."
         enable_refused: "Le lien court reste désactivé : %reason%"
     error:
-        code_attempts: "Trop de codes indisponibles ont été essayés. Attendez une minute et réessayez."
+        code_attempts: "Trop de codes personnalisés ont été essayés. Attendez une minute et réessayez."
         code_unavailable: "Ce code n'est pas disponible."
         quota: "La limite de liens courts de votre offre est atteinte."
         invalid: "Le lien court n'a pas pu être enregistré. Vérifiez les champs et réessayez."

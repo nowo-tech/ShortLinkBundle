@@ -22,9 +22,11 @@ S4 (0.2.0) adds the management UI; nothing changes until you enable it.
    With a prefix parameter, set `ui.tenant_route_parameter` (Beacon: `uuid`) so the UI keeps it in its links.
 3. The pages need sessions (CSRF tokens) and your firewall in front of them; access is the access port (`View` /
    `Manage`), the tenant the tenant-context port.
-4. New configuration keys with defaults: `code.taken_rate_limit` (`enabled: true`, `limit: 10`, `interval: 1 minute`)
-   and `ui.layout_template` (null). The limiter applies to every caller of `create()` with a custom code except
-   `system` commands; catch `CodeAttemptsExceededException` if you call it from your own forms.
+4. New configuration keys with defaults: `code.custom_code_rate_limit` (`enabled: true`, `limit: 10`,
+   `interval: 1 minute`, `limiter: null`) and `ui.layout_template` (null). The limiter applies to every custom-code
+   lookup of `create()` except `system` commands (per tenant + actor); catch `CodeAttemptsExceededException` if you
+   call it from your own forms. Callers your access port does not identify share one window per tenant: give your own
+   `CustomCodeLimiterInterface` (`limiter`) to key them by session or network.
 5. The recheck may now abort earlier in a run (per-link threshold); scripts that parse its output keep the same
    messages.
 

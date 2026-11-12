@@ -81,7 +81,7 @@ ui:
         deleted: "Kurzlink gelöscht."
         enable_refused: "Der Kurzlink bleibt deaktiviert: %reason%"
     error:
-        code_attempts: "Zu viele nicht verfügbare Codes wurden versucht. Warten Sie eine Minute und versuchen Sie es erneut."
+        code_attempts: "Zu viele eigene Codes wurden versucht. Warten Sie eine Minute und versuchen Sie es erneut."
         code_unavailable: "Dieser Code ist nicht verfügbar."
         quota: "Das Kurzlink-Limit Ihres Tarifs ist erreicht."
         invalid: "Der Kurzlink konnte nicht gespeichert werden. Prüfen Sie die Felder und versuchen Sie es erneut."

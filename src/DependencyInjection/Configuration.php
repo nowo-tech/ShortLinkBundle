@@ -13,6 +13,7 @@ use Symfony\Component\Config\Definition\ConfigurationInterface;
 use Symfony\Component\Config\Definition\Exception\InvalidConfigurationException;
 
 use function is_array;
+use function is_int;
 use function is_string;
 use function parse_url;
 use function preg_match;
@@ -73,7 +74,12 @@ final class Configuration implements ConfigurationInterface
                     ->addDefaultsIfNotSet()
                     ->children()
                         ->append(ConfigNodes::service('provider', 'ShortLinkQuotaInterface service; null = default_limit'))
-                        ->integerNode('default_limit')->defaultNull()->min(0)->info('Max non-deleted links per tenant and counted kind; null = unlimited')->end()
+                        ->scalarNode('default_limit')->defaultNull()->info('Max non-deleted links per tenant and counted kind; null = unlimited')
+                            ->validate()
+                                ->ifTrue(static fn (mixed $value): bool => $value !== null && (!is_int($value) || $value < 0))
+                                ->thenInvalid('Expected null (unlimited) or an integer >= 0, got %s.')
+                            ->end()
+                        ->end()
                         ->arrayNode('counted_kinds')
                             ->info('Kinds the quota applies to (e-mail links are never counted, Beacon Q-B10)')
                             ->defaultValue([self::KIND_MANUAL])
@@ -252,8 +258,8 @@ final class Configuration implements ConfigurationInterface
                 ->booleanNode('blocklist')->defaultTrue()->info('Generated codes skip offensive substrings (Q-O9)')->end()
                 ->integerNode('max_attempts')->defaultValue(5)->min(1)->max(20)->info('Collisions before the length grows by one')->end()
                 ->append(ConfigNodes::duration('quarantine', 'P365D', 'Deleted codes stay taken for this long (Q-O7); null = forever'))
-                ->arrayNode('taken_rate_limit')
-                    ->info('Per-person limit on "code not available" answers of custom codes (audit L7: no enumeration through the form), stored in redirect.rate_limit.cache_pool')
+                ->arrayNode('custom_code_rate_limit')
+                    ->info('Per-person limit on custom-code lookups (audits L7 / NY-S4: no enumeration through the form), per tenant + actor, stored in redirect.rate_limit.cache_pool')
                     ->addDefaultsIfNotSet()
                     ->children()
                         ->booleanNode('enabled')->defaultTrue()->end()
@@ -264,6 +270,7 @@ final class Configuration implements ConfigurationInterface
                                 ->thenInvalid('Expected an interval such as "1 minute" or "15 minutes", got %s.')
                             ->end()
                         ->end()
+                        ->append(ConfigNodes::service('limiter', 'CustomCodeLimiterInterface service (e.g. keyed on the session of callers without an actor); null = the rate limiter above'))
                     ->end()
                 ->end()
             ->end();

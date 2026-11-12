@@ -81,7 +81,7 @@ ui:
         deleted: "Korte link verwijderd."
         enable_refused: "De korte link blijft gedeactiveerd: %reason%"
     error:
-        code_attempts: "Er zijn te veel niet-beschikbare codes geprobeerd. Wacht een minuut en probeer het opnieuw."
+        code_attempts: "Er zijn te veel eigen codes geprobeerd. Wacht een minuut en probeer het opnieuw."
         code_unavailable: "Deze code is niet beschikbaar."
         quota: "De limiet voor korte links van uw abonnement is bereikt."
         invalid: "De korte link kon niet worden opgeslagen. Controleer de velden en probeer het opnieuw."

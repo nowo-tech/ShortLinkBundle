@@ -104,6 +104,12 @@ final class UiControllerFailuresTest extends KernelTestCase
         } catch (AccessDeniedHttpException) {
             $this->addToAssertionCount(1);
         }
+        try {
+            $controller->disable($this->request('POST', ['confirm' => '1', '_token' => $this->token('nowo_short_link_disable')]), self::ID);
+            self::fail('disable must be denied.');
+        } catch (AccessDeniedHttpException) {
+            $this->addToAssertionCount(1);
+        }
     }
 
     public function testOtherFailuresBecomeFormErrorsOrNotFound(): void
@@ -122,6 +128,12 @@ final class UiControllerFailuresTest extends KernelTestCase
         self::assertStringContainsString('The short link could not be saved.', (string) $edit()->getContent());
 
         $this->failWith(new ShortLinkNotFoundException());
+        try {
+            $controller->disable($this->request('POST', ['confirm' => '1', '_token' => $this->token('nowo_short_link_disable')]), self::ID);
+            self::fail('A link deleted meanwhile is not found.');
+        } catch (NotFoundHttpException) {
+            $this->addToAssertionCount(1);
+        }
         $this->expectException(NotFoundHttpException::class);
         $edit();
     }

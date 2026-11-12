@@ -58,6 +58,7 @@ use Symfony\Contracts\Translation\TranslatorInterface;
 use Twig\Environment;
 
 use function array_map;
+use function in_array;
 use function is_scalar;
 use function is_string;
 use function mb_strlen;
@@ -92,6 +93,7 @@ final readonly class ShortLinkUiController
      * @param int $statsDefaultDays `ui.stats_default_days`
      * @param int $csvMaxDays `ui.csv_max_days`
      * @param string|null $layout `ui.layout_template`
+     * @param list<string> $listedKinds kinds with `show_in_ui: true`: a link of another kind answers 404 (audit NY-S4 L1)
      */
     public function __construct(
         private ShortLinkManagerInterface $manager,
@@ -110,6 +112,7 @@ final readonly class ShortLinkUiController
         private int $csvMaxDays = 366,
         private ?string $layout = null,
         private ?ClockInterface $clock = null,
+        private array $listedKinds = [LinkKind::MANUAL],
     ) {
     }
 
@@ -342,7 +345,7 @@ final readonly class ShortLinkUiController
         if (!$form->isSubmitted() || !$form->isValid()) {
             throw new AccessDeniedHttpException('Invalid CSRF token.');
         }
-        $linkId = $this->id($id, true) ?? throw new NotFoundHttpException('Short link not found.');
+        $linkId = $this->find($tenant, $id)->id;
         try {
             match ($action) {
                 // @igor-ignore - Calls the stateless manager service (a domain verb); nothing is mutated on it.
@@ -388,7 +391,7 @@ final readonly class ShortLinkUiController
     }
 
     /**
-     * A live link of the tenant; a malformed id or another tenant's id → 404.
+     * A live link of the tenant shown in the UI; a malformed id, another tenant's id or a hidden kind → 404.
      */
     private function find(TenantKey $tenant, string $id): ShortLinkView
     {
@@ -399,7 +402,12 @@ final readonly class ShortLinkUiController
             throw $this->denied($exception);
         }
 
-        return $link ?? throw new NotFoundHttpException('Short link not found.');
+        // Kinds hidden from people (e-mail links) are not reachable by id either.
+        if (!$link instanceof ShortLinkView || !in_array($link->kind->value, $this->listedKinds, true)) {
+            throw new NotFoundHttpException('Short link not found.');
+        }
+
+        return $link;
     }
 
     private function id(string $value, bool $notFound): ?ShortLinkId
