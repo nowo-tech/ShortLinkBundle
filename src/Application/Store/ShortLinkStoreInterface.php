@@ -64,6 +64,14 @@ interface ShortLinkStoreInterface
     public function findActiveByCode(string $code, DateTimeImmutable $now): ?ResolvedLink;
 
     /**
+     * Active (enabled, not deleted) rows of every tenant after this id, by id (the recheck command's keyset).
+     * Unreadable rows are skipped.
+     *
+     * @return list<StoredLink>
+     */
+    public function activeAfter(?ShortLinkId $after, int $limit): array;
+
+    /**
      * The live row of the tenant with this id, or null.
      */
     public function find(TenantKey $tenant, ShortLinkId $id): ?StoredLink;

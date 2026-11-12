@@ -175,6 +175,25 @@ final readonly class DbalShortLinkStore implements ShortLinkStoreInterface
     /**
      * {@inheritDoc}
      */
+    public function activeAfter(?ShortLinkId $after, int $limit): array
+    {
+        $sql   = sprintf('SELECT %s FROM %s WHERE active = ? AND deleted_at IS NULL AND id > ? ORDER BY id', self::COLUMNS, $this->table);
+        $rows  = $this->read(static fn (Connection $c): array => $c->fetchAllAssociative($c->getDatabasePlatform()->modifyLimitQuery($sql, $limit), [true, $after->value ?? ''], [ParameterType::BOOLEAN, ParameterType::STRING]));
+        $links = [];
+        foreach ($rows as $row) {
+            try {
+                $links[] = $this->hydrate($row);
+            } catch (Throwable $exception) {
+                $this->logger?->warning('nowo_short_link: unreadable link row skipped by the recheck: {class}', ['class' => $exception::class]);
+            }
+        }
+
+        return $links;
+    }
+
+    /**
+     * {@inheritDoc}
+     */
     public function find(TenantKey $tenant, ShortLinkId $id): ?StoredLink
     {
         foreach ($this->select('tenant_key = ? AND id = ? AND deleted_at IS NULL', [$tenant->value, $id->value]) as $link) {

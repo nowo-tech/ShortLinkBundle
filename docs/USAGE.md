@@ -98,6 +98,40 @@ plain classes: listen to them by class name.
 Ports take and return the bundle's value objects only (no Symfony, Doctrine or HTTP types). Implementations must read
 their request state on every call (FrankenPHP worker mode).
 
+## Statistics
+
+```php
+use Nowo\ShortLinkBundle\Domain\Model\{ClickDimension, DateRange};
+use Nowo\ShortLinkBundle\Domain\Service\ShortLinkStatsReaderInterface;
+
+$range = DateRange::lastDays(30, new \DateTimeImmutable());
+$stats->daily($tenant, $id, $range);                                   // list<DailyClicks>, zeros included
+$stats->breakdown($tenant, $id, ClickDimension::Referrer, $range, 10); // top referrer hosts (~other beyond top N)
+$stats->totals($tenant, [$id1, $id2]);                                 // one grouped read per table
+$stats->bySource($tenant, LinkKind::email(), $sendId);                 // e-mail log: per link, label, position
+```
+
+Human and machine clicks (bots, link previews, e-mail scanners) are always apart. Rolled days come from the daily
+rollup, the others from the raw clicks, so the numbers are exact before the rollup runs. The reader does not check
+access: check `View` yourself.
+
+## Maintenance commands
+
+Schedule them daily (the bundle ships no scheduler), in this order:
+
+| Command | Does |
+| --- | --- |
+| `nowo:short-link:rollup [--max-days=400]` | Rolls raw clicks into the daily table (the last `rollup.lag_days` days again); idempotent |
+| `nowo:short-link:purge` | Deletes raw clicks of rolled days older than `click_log.retention`, rollups older than `click_log.rollup.retention`, tombstones older than `code.quarantine` |
+| `nowo:short-link:recheck [--batch=500]` | Re-runs the save guard (DNS included) over active links; refused ones are disabled (`recheck_refused`) with `ShortLinkStateChangedEvent` + `ShortLinkTargetRefusedEvent` |
+
+## Personal data (GDPR)
+
+`ShortLinkEraserInterface`: `eraseTenant()` (clicks and rollups deleted, links turned into blanked tombstones of the
+tenant `~erased`: their codes stay taken until the quarantine ends), `eraseSource()` (a send's clicks and rollups,
+links tombstoned), `anonymiseActor()` (`created_by` / `updated_by` set to null) and `exportSource()` (one row per
+stored click of a send). Clicks hold no raw IP, no full User-Agent and no cookie.
+
 ## Redirect path and firewalls
 
 Import the route (outside any locale prefix):
