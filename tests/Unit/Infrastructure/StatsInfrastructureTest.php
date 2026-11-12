@@ -69,7 +69,7 @@ final class StatsInfrastructureTest extends TestCase
 
             public function activeAfter(?ShortLinkId $after, int $limit): array
             {
-                return $after === null ? [$this->link] : [];
+                return $after instanceof ShortLinkId ? [] : [$this->link];
             }
 
             public function update(StoredLink $link): void
