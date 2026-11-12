@@ -8,6 +8,7 @@ use Closure;
 use DateTimeImmutable;
 use Nowo\ShortLinkBundle\Domain\Exception\CodeTakenException;
 use Nowo\ShortLinkBundle\Domain\Model\LinkKind;
+use Nowo\ShortLinkBundle\Domain\Model\ResolvedLink;
 use Nowo\ShortLinkBundle\Domain\Model\ShortLinkId;
 use Nowo\ShortLinkBundle\Domain\Model\ShortLinkListQuery;
 use Nowo\ShortLinkBundle\Domain\Model\TenantKey;
@@ -49,6 +50,13 @@ interface ShortLinkStoreInterface
      * Writes the mutable columns of an existing row.
      */
     public function update(StoredLink $link): void;
+
+    /**
+     * The active link holding exactly this code at this instant, or null (redirect hot path: one indexed row with the
+     * columns the redirect needs; the state is decided from the raw row before anything is hydrated, and an unreadable
+     * row answers null with a warning).
+     */
+    public function findActiveByCode(string $code, DateTimeImmutable $now): ?ResolvedLink;
 
     /**
      * The live row of the tenant with this id, or null.

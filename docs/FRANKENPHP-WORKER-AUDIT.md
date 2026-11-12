@@ -3,7 +3,7 @@
 | Field | Value |
 |-------|-------|
 | Package | `nowo-tech/short-link-bundle` (`symfony-bundle`) |
-| Audited revision | S1 domain + persistence (unreleased, branch `feat/s1-domain-persistence`) |
+| Audited revision | S2 redirect (unreleased, branch `feat/s2-redirect`) |
 | Audit date | 2026-11-12 |
 | Method | Manual review of every file under `src/`; PHPStan `ruleset-classic` + `ruleset-worker-strict` + `ruleset-hardening`; Igor (`composer igor`); `WorkerRequestLoopTest` (one kernel, 2,000 requests, two tenants alternating, memory drift < 1 MiB) |
 | **Verdict** | ✅ **Viable** — every S1 service is `readonly` and stateless except the after-commit queue, which holds request-scoped work and drops it at every request / message boundary and on `kernel.reset` |
@@ -29,7 +29,8 @@ between requests (REQ-RUNTIME-002).
 | Statics | ✅ | None |
 | Randomness | ✅ | `random_int()` per character, no seeded engine kept |
 | Request-dependent reads | ✅ | Access (token storage), tenant context and short-URL base (request context) are read on every call |
-| Worker tests | ✅ | `WorkerRequestLoopTest` (2,000 requests) and the functional `testOneKeptAliveKernelServesManyCallsWithoutBleedOrGrowth` (300 creates alternating two tenants, no cross-tenant read, memory flat) on both host kinds |
+| Redirect | ✅ | `RedirectController`, `RedirectResolver`, `ClickRecorder`, `ClickTerminateListener` are readonly; the click payload travels on the request attribute `_nowo_short_link_click` (removed when recorded) or in a Messenger message; limiters are created per call from their factories |
+| Worker tests | ✅ | `WorkerRequestLoopTest` (2,000 requests) and the functional `testOneKeptAliveKernelServesManyCallsWithoutBleedOrGrowth` (300 creates alternating two tenants, no cross-tenant read, memory flat) on both host kinds; `RedirectTest::testOneKeptAliveKernelServesThousandsOfRedirectsWithoutBleedOrGrowth` (5,000 redirects over two tenants and three states, terminate mode, memory flat, in-kernel p95 < 20 ms) |
 | Boot-time caches | ✅ | `NowoShortLinkBundle::getContainerExtension()` keeps its extension (Symfony's own pattern, `@igor-ignore`) |
 | Worker test | ✅ | `tests/Integration/Worker/WorkerRequestLoopTest.php` |
 

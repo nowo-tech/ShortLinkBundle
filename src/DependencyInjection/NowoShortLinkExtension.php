@@ -4,12 +4,17 @@ declare(strict_types=1);
 
 namespace Nowo\ShortLinkBundle\DependencyInjection;
 
+use LogicException;
 use Nowo\OutboundUrlGuardBundle\Guard\OutboundUrlGuard;
+use Nowo\ShortLinkBundle\Application\Click\ClickRecorder;
+use Nowo\ShortLinkBundle\Application\Click\RedirectResolver;
 use Nowo\ShortLinkBundle\Application\CodeGenerator;
 use Nowo\ShortLinkBundle\Application\Default\BuiltInCodeBlocklist;
+use Nowo\ShortLinkBundle\Application\Default\BuiltInUserAgentClassifier;
 use Nowo\ShortLinkBundle\Application\Default\ConfigDenylist;
 use Nowo\ShortLinkBundle\Application\Default\ConfigQuota;
 use Nowo\ShortLinkBundle\Application\Default\ConfigReservedCodes;
+use Nowo\ShortLinkBundle\Application\Default\NullCountryResolver;
 use Nowo\ShortLinkBundle\Application\Default\SingleTenantContext;
 use Nowo\ShortLinkBundle\Application\Guard\ChainTargetGuard;
 use Nowo\ShortLinkBundle\Application\Guard\DenylistGuard;
@@ -17,7 +22,10 @@ use Nowo\ShortLinkBundle\Application\Guard\SelfLoopGuard;
 use Nowo\ShortLinkBundle\Application\ManagerSettings;
 use Nowo\ShortLinkBundle\Application\ShortLinkManager;
 use Nowo\ShortLinkBundle\Application\ShortUrlBuilderInterface;
+use Nowo\ShortLinkBundle\Application\Store\ClickStoreInterface;
 use Nowo\ShortLinkBundle\Application\Store\ShortLinkStoreInterface;
+use Nowo\ShortLinkBundle\Domain\Model\ClickWriteMode;
+use Nowo\ShortLinkBundle\Domain\Port\ClickCountryResolverInterface;
 use Nowo\ShortLinkBundle\Domain\Port\CodeBlocklistInterface;
 use Nowo\ShortLinkBundle\Domain\Port\ReservedCodeProviderInterface;
 use Nowo\ShortLinkBundle\Domain\Port\ShortLinkAccessInterface;
@@ -27,14 +35,19 @@ use Nowo\ShortLinkBundle\Domain\Port\ShortLinkTenantContextInterface;
 use Nowo\ShortLinkBundle\Domain\Port\TargetDenylistInterface;
 use Nowo\ShortLinkBundle\Domain\Port\TargetGuardInterface;
 use Nowo\ShortLinkBundle\Domain\Port\TenantLockInterface;
+use Nowo\ShortLinkBundle\Domain\Port\UserAgentClassifierInterface;
 use Nowo\ShortLinkBundle\Domain\Service\ShortLinkManagerInterface;
 use Nowo\ShortLinkBundle\Infrastructure\Doctrine\ClickTablesSchemaListener;
 use Nowo\ShortLinkBundle\Infrastructure\Doctrine\ShortLinkMetadataListener;
 use Nowo\ShortLinkBundle\Infrastructure\Guard\OutboundUrlGuardBridge;
+use Nowo\ShortLinkBundle\Infrastructure\Http\ClickTerminateListener;
+use Nowo\ShortLinkBundle\Infrastructure\Http\RedirectController;
 use Nowo\ShortLinkBundle\Infrastructure\Lock\NoTenantLock;
+use Nowo\ShortLinkBundle\Infrastructure\Messenger\RecordShortLinkClickHandler;
 use Nowo\ShortLinkBundle\Infrastructure\Persistence\AfterCommitMiddleware;
 use Nowo\ShortLinkBundle\Infrastructure\Persistence\AfterCommitQueue;
 use Nowo\ShortLinkBundle\Infrastructure\Persistence\AfterCommitQueueResetListener;
+use Nowo\ShortLinkBundle\Infrastructure\Persistence\DbalClickStore;
 use Nowo\ShortLinkBundle\Infrastructure\Persistence\DbalShortLinkStore;
 use Nowo\ShortLinkBundle\Infrastructure\Routing\ShortUrlBuilder;
 use Nowo\ShortLinkBundle\Infrastructure\Security\RoleBasedAccess;
@@ -45,6 +58,8 @@ use Symfony\Component\DependencyInjection\Definition;
 use Symfony\Component\DependencyInjection\Extension\Extension;
 use Symfony\Component\DependencyInjection\Extension\PrependExtensionInterface;
 use Symfony\Component\DependencyInjection\Reference;
+use Symfony\Component\RateLimiter\RateLimiterFactory;
+use Symfony\Component\RateLimiter\Storage\CacheStorage;
 
 use function is_array;
 use function is_string;
@@ -114,7 +129,7 @@ final class NowoShortLinkExtension extends Extension implements PrependExtension
      */
     public function load(array $configs, ContainerBuilder $container): void
     {
-        /** @var array{public_base_url: string|null, redirect: array{path_prefix: string}, code: array{random_length: int, allow_custom: bool, reserved: list<string>, blocklist: bool, max_attempts: int}, target: array{max_length: int, guard: string, save_resolve_dns: bool, self_paths: list<string>, own_hosts: list<string>, denylist: array{hosts: list<string>, provider: string|null}}, tenancy: array{context: string|null}, access: array{provider: string|null, view_role: string, manage_role: string, enforce_in_manager: bool}, quota: array{provider: string|null, default_limit: int|null, counted_kinds: list<string>}, kinds: array<string, array{allow_custom_code: bool, show_in_ui: bool, counted: bool}>, ui: array{enabled: bool, path_prefix: string}, doctrine: array{entity_manager: string|null, connection: string|null, table_prefix: string}} $config */
+        /** @var array{public_base_url: string|null, redirect: array{path_prefix: string, status: int, not_found_template: string, rate_limit: array{enabled: bool, cache_pool: string, ipv6_prefix: int, misses: array{limit: int, interval: string}, hits: array{limit: int, interval: string}, over_limit_hits: string}}, code: array{random_length: int, allow_custom: bool, reserved: list<string>, blocklist: bool, max_attempts: int}, target: array{max_length: int, guard: string, save_resolve_dns: bool, self_paths: list<string>, own_hosts: list<string>, denylist: array{hosts: list<string>, provider: string|null}}, tenancy: array{context: string|null}, access: array{provider: string|null, view_role: string, manage_role: string, enforce_in_manager: bool}, quota: array{provider: string|null, default_limit: int|null, counted_kinds: list<string>}, kinds: array<string, array{allow_custom_code: bool, show_in_ui: bool, counted: bool}>, ui: array{enabled: bool, path_prefix: string}, doctrine: array{entity_manager: string|null, connection: string|null, table_prefix: string}, click_log: array{enabled: bool, write: string, store: array{ip_prefix: bool, user_agent_family: bool, referrer_host: bool, country: bool}, ipv4_prefix: int, ipv6_prefix: int, honour_gpc: bool, country_resolver: string|null}} $config */
         $config = $this->processConfiguration(new Configuration(), $configs);
         $container->setParameter(self::ALIAS . '.redirect_path_prefix', $config['redirect']['path_prefix']);
         $container->setParameter(self::ALIAS . '.ui_enabled', $config['ui']['enabled']);
@@ -151,6 +166,10 @@ final class NowoShortLinkExtension extends Extension implements PrependExtension
         $container->register(DbalShortLinkStore::class, DbalShortLinkStore::class)
             ->setArguments([new Reference('doctrine'), new Reference(AfterCommitQueue::class), $config['doctrine']['entity_manager'], $prefix, $logger]);
         $container->setAlias(ShortLinkStoreInterface::class, DbalShortLinkStore::class);
+
+        if ($config['tenancy']['context'] !== null && $config['access']['provider'] === null) {
+            throw new LogicException('nowo_short_link.tenancy.context is set but access.provider is not: the default role-based access grants a role in every tenant. Set access.provider to an access port that checks the tenant.');
+        }
 
         // Ports (public aliases: hosts replace them through configuration or decorate them).
         $this->port($container, ShortLinkTenantContextInterface::class, $config['tenancy']['context'], new Definition(SingleTenantContext::class));
@@ -218,6 +237,92 @@ final class NowoShortLinkExtension extends Extension implements PrependExtension
             '$logger'   => $logger,
         ]);
         $container->setAlias(ShortLinkManagerInterface::class, ShortLinkManager::class)->setPublic(true);
+
+        $this->registerRedirect($container, $config, $logger);
+    }
+
+    /**
+     * S2: the public redirect, its limiters and the click log.
+     *
+     * @param array{redirect: array{path_prefix: string, status: int, not_found_template: string, rate_limit: array{enabled: bool, cache_pool: string, ipv6_prefix: int, misses: array{limit: int, interval: string}, hits: array{limit: int, interval: string}, over_limit_hits: string}}, click_log: array{enabled: bool, write: string, store: array{ip_prefix: bool, user_agent_family: bool, referrer_host: bool, country: bool}, ipv4_prefix: int, ipv6_prefix: int, honour_gpc: bool, country_resolver: string|null}, doctrine: array{entity_manager: string|null, connection: string|null, table_prefix: string}} $config
+     */
+    private function registerRedirect(ContainerBuilder $container, array $config, Reference $logger): void
+    {
+        $clock    = new Reference('clock', ContainerInterface::NULL_ON_INVALID_REFERENCE);
+        $events   = new Reference('event_dispatcher');
+        $redirect = $config['redirect'];
+        $clicks   = $config['click_log'];
+
+        $this->port($container, UserAgentClassifierInterface::class, null, new Definition(BuiltInUserAgentClassifier::class));
+        $this->port($container, ClickCountryResolverInterface::class, $clicks['country_resolver'], new Definition(NullCountryResolver::class));
+        $container->register(DbalClickStore::class, DbalClickStore::class)
+            ->setArguments([new Reference('doctrine'), $config['doctrine']['connection'], $config['doctrine']['entity_manager'], $config['doctrine']['table_prefix']]);
+        $container->setAlias(ClickStoreInterface::class, DbalClickStore::class);
+        $container->register(ClickRecorder::class, ClickRecorder::class)->setArguments([
+            '$clicks'    => new Reference(ClickStoreInterface::class),
+            '$countries' => new Reference(ClickCountryResolverInterface::class),
+            '$events'    => $events,
+            '$store'     => $clicks['store'],
+            '$honourGpc' => $clicks['honour_gpc'],
+            '$logger'    => $logger,
+        ]);
+        $container->register(RedirectResolver::class, RedirectResolver::class)->setArguments([
+            '$store' => new Reference(ShortLinkStoreInterface::class),
+            '$guard' => new Reference(TargetGuardInterface::class),
+            '$clock' => $clock,
+        ]);
+
+        $limiters = ['misses' => null, 'hits' => null];
+        if ($redirect['rate_limit']['enabled']) {
+            $storage = (new Definition(CacheStorage::class))->setArguments([new Reference($redirect['rate_limit']['cache_pool'])]);
+            foreach (['misses', 'hits'] as $name) {
+                $id = self::ALIAS . '.redirect_limiter.' . $name;
+                $container->register($id, RateLimiterFactory::class)->setArguments([[
+                    'id'       => self::ALIAS . '_' . $name,
+                    'policy'   => 'fixed_window',
+                    'limit'    => $redirect['rate_limit'][$name]['limit'],
+                    'interval' => $redirect['rate_limit'][$name]['interval'],
+                ], $storage]);
+                $limiters[$name] = new Reference($id);
+            }
+        }
+
+        $mode = $clicks['enabled'] ? ClickWriteMode::from($clicks['write']) : null;
+        $container->register(RedirectController::class, RedirectController::class)
+            ->setPublic(true)
+            ->addTag('controller.service_arguments')
+            ->setArguments([
+                '$resolver'          => new Reference(RedirectResolver::class),
+                '$classifier'        => new Reference(UserAgentClassifierInterface::class),
+                '$recorder'          => new Reference(ClickRecorder::class),
+                '$twig'              => new Reference('twig'),
+                '$misses'            => $limiters['misses'],
+                '$hits'              => $limiters['hits'],
+                '$blockOverHits'     => $redirect['rate_limit']['over_limit_hits'] === 'block',
+                '$writeMode'         => $mode,
+                '$bus'               => $mode === ClickWriteMode::Messenger ? new Reference('messenger.default_bus') : null,
+                '$status'            => $redirect['status'],
+                '$notFoundTemplate'  => $redirect['not_found_template'],
+                '$ipv4Prefix'        => $clicks['ipv4_prefix'],
+                '$ipv6Prefix'        => $clicks['ipv6_prefix'],
+                '$clock'             => $clock,
+                '$logger'            => $logger,
+                '$limiterIpv6Prefix' => $redirect['rate_limit']['ipv6_prefix'],
+                '$honourGpc'         => $clicks['honour_gpc'],
+            ]);
+        // Always registered: it also dispatches the deferred refused-target event after the response.
+        $container->register(ClickTerminateListener::class, ClickTerminateListener::class)
+            ->setArguments([new Reference(ClickRecorder::class), $events, $logger])
+            ->addTag('kernel.event_listener', ['event' => 'kernel.terminate', 'method' => 'onTerminate']);
+        if ($mode === ClickWriteMode::Messenger) {
+            $container->register(RecordShortLinkClickHandler::class, RecordShortLinkClickHandler::class)
+                ->setArguments([new Reference(ClickRecorder::class)])
+                ->addTag('messenger.message_handler');
+        }
+        if ($mode === ClickWriteMode::Messenger && $clicks['store']['country'] && $clicks['country_resolver'] !== null) {
+            throw new LogicException('nowo_short_link: a country resolver needs the raw IP, which never travels in a Messenger message. Use click_log.write "terminate" or "sync", or set click_log.store.country to false.');
+        }
+        $container->setParameter(self::ALIAS . '.click_write_mode', $mode?->value);
     }
 
     /**

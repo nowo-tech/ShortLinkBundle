@@ -19,6 +19,7 @@ use Nowo\ShortLinkBundle\Application\Store\StoredLink;
 use Nowo\ShortLinkBundle\Domain\Model\ActorRef;
 use Nowo\ShortLinkBundle\Domain\Model\CreateShortLink;
 use Nowo\ShortLinkBundle\Domain\Model\LinkKind;
+use Nowo\ShortLinkBundle\Domain\Model\ResolvedLink;
 use Nowo\ShortLinkBundle\Domain\Model\ShortCode;
 use Nowo\ShortLinkBundle\Domain\Model\ShortLinkId;
 use Nowo\ShortLinkBundle\Domain\Model\ShortLinkListQuery;
@@ -104,7 +105,7 @@ final class ShortLinkManagerTest extends TestCase
 /**
  * Store whose first N code probes collide.
  */
-final class ScriptedStore implements ShortLinkStoreInterface
+class ScriptedStore implements ShortLinkStoreInterface
 {
     public int $probes = 0;
 
@@ -133,6 +134,11 @@ final class ScriptedStore implements ShortLinkStoreInterface
 
     public function update(StoredLink $link): void
     {
+    }
+
+    public function findActiveByCode(string $code, DateTimeImmutable $now): ?ResolvedLink
+    {
+        return null;
     }
 
     public function find(TenantKey $tenant, ShortLinkId $id): ?StoredLink

@@ -2,7 +2,7 @@
 
 **Feature Branch**: `001-baseline`
 **Created**: 2026-11-12
-**Status**: Baseline (S0 scaffold, S1 domain + persistence)
+**Status**: Baseline (S0 scaffold, S1 domain + persistence, S2 redirect)
 **Input**: Contract v1.0 for spec 230 Block A ([`docs/CONTRACT.md`](../../docs/CONTRACT.md)), owner and Beacon answers
 of 2026-11-12 (§17).
 
@@ -60,6 +60,18 @@ registers no service, route, listener or table, whatever the configuration says;
   `createMany()` runs (system flag), **then** the links are created in one transaction with random codes, and a command
   whose (kind, ref, position) already has a live link returns that link (retried sends never duplicate).
 
+### US-06 — Follow a short link (S2)
+
+- **Given** an active link, **when** a visitor opens `/s/{code}` (any query string), **then** the answer is a 302 to the
+  stored target with `no-store`, `no-referrer`, `noindex` and `nosniff`, no cookie and no session.
+- **Given** an unknown, malformed, disabled, expired, deleted or refused (denylisted after save) code, **when** it is
+  opened, **then** the answer is the same 404 bytes and headers for every reason.
+- **Given** an IP over its miss limit, **when** it opens any code, **then** it gets 429 with `Retry-After`; over the hit
+  limit a valid link still redirects, unlogged (or 429 with `block`).
+- **Given** a click, **then** the row holds the time, link, tenant, truncated IP, browser family, referrer host,
+  optional country and the machine flag; with `Sec-GPC: 1` only time, link and machine; HEAD is never logged; a broken
+  click table or resolver never breaks the redirect.
+
 ## Functional requirements
 
 | ID | Requirement |
@@ -84,6 +96,8 @@ registers no service, route, listener or table, whatever the configuration says;
 | FR-DB-002 | DBAL store on the entity manager's connection; never flushes the host EntityManager; XML mapping default + attribute twin; table and index prefix; binary collation on MySQL / MariaDB; click tables by schema listener. |
 | FR-URL-001 | Absolute short URLs from `public_base_url` (re-checked at runtime) or the router request context. |
 | FR-WIRING-001 | Services wired by the extension; DoctrineBundle required; symfony/lock tenant lock when a lock factory exists. |
+| FR-REDIRECT-001 | Redirect step order §7.1, headers §7.2, neutral 404 / 429, limiters, stateless route, guard without DNS, refusal event. |
+| FR-CLICK-001 | Click payload without I/O, three write modes, store flags, GPC, country port after the response, failures contained, `ShortLinkClickedEvent`. |
 | FR-ERROR-001 | Every deliberate exception implements `ShortLinkExceptionInterface`. |
 
 ## Success criteria

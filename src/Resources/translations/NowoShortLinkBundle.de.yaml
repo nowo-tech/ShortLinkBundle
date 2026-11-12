@@ -5,3 +5,6 @@ redirect:
     not_found:
         title: "Link nicht verfügbar"
         message: "Dieser Link existiert nicht oder ist nicht mehr verfügbar."
+    too_many:
+        title: "Zu viele Anfragen"
+        message: "Bitte warte einen Moment und versuche es erneut."

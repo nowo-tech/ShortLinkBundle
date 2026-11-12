@@ -1,0 +1,21 @@
+{#- Neutral answer of the public redirect (contract §7.2): the same bytes for every 404 reason (unknown, disabled,
+    expired, deleted, refused target) and a 429 variant. No code, tenant or target; no script, no inline style (CSP-safe);
+    themable: override @NowoShortLink/redirect/not_found.html.twig or set redirect.not_found_template. -#}
+{%- set _key = status == 429 ? 'redirect.too_many' : 'redirect.not_found' -%}
+<!DOCTYPE html>
+<html lang="{{ app.request.locale|default('en') }}">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="robots" content="noindex, nofollow">
+    <title>{{ (_key ~ '.title')|trans({}, 'NowoShortLinkBundle') }}</title>
+</head>
+<body>
+    {% block nowo_short_link_redirect_body %}
+        <main>
+            <h1>{{ (_key ~ '.title')|trans({}, 'NowoShortLinkBundle') }}</h1>
+            <p>{{ (_key ~ '.message')|trans({}, 'NowoShortLinkBundle') }}</p>
+        </main>
+    {% endblock %}
+</body>
+</html>

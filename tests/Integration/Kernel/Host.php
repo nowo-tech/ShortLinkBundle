@@ -9,6 +9,7 @@ use Doctrine\DBAL\Connection;
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\Tools\SchemaTool;
 use Doctrine\Persistence\ManagerRegistry;
+use Nowo\ShortLinkBundle\Domain\Event\ShortLinkClickedEvent;
 use Nowo\ShortLinkBundle\Domain\Event\ShortLinkCreatedEvent;
 use Nowo\ShortLinkBundle\Domain\Event\ShortLinkDeletedEvent;
 use Nowo\ShortLinkBundle\Domain\Event\ShortLinkStateChangedEvent;
@@ -40,8 +41,8 @@ final readonly class Host
     /** Fixed start time of the test clock. */
     public const NOW = '2026-11-12 10:00:00';
 
-    /** The five domain events the recording listener follows. */
-    public const EVENTS = [ShortLinkCreatedEvent::class, ShortLinkUpdatedEvent::class, ShortLinkStateChangedEvent::class, ShortLinkDeletedEvent::class, ShortLinkTargetRefusedEvent::class];
+    /** The domain events the recording listener follows. */
+    public const EVENTS = [ShortLinkCreatedEvent::class, ShortLinkUpdatedEvent::class, ShortLinkStateChangedEvent::class, ShortLinkDeletedEvent::class, ShortLinkTargetRefusedEvent::class, ShortLinkClickedEvent::class];
 
     private function __construct(public string $kind)
     {
