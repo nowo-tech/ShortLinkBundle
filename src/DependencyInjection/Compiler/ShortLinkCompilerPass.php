@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace Nowo\ShortLinkBundle\DependencyInjection\Compiler;
 
 use LogicException;
+use Nowo\ShortLinkBundle\DependencyInjection\NowoShortLinkExtension;
+use Nowo\ShortLinkBundle\Domain\Model\ClickWriteMode;
 use Nowo\ShortLinkBundle\Domain\Port\TenantLockInterface;
 use Nowo\ShortLinkBundle\Infrastructure\Lock\NoTenantLock;
 use Nowo\ShortLinkBundle\Infrastructure\Lock\SymfonyTenantLock;
@@ -16,7 +18,7 @@ use Symfony\Component\Lock\LockFactory;
 use function class_exists;
 
 /**
- * Checks DoctrineBundle (the links are stored through Doctrine DBAL) and switches the tenant lock to symfony/lock
+ * Checks the Messenger click mode (a bus exists), checks DoctrineBundle (the links are stored through Doctrine DBAL) and switches the tenant lock to symfony/lock
  * when the host has a lock factory (`lock.factory`), so plan limits stay exact under concurrent creates.
  */
 final class ShortLinkCompilerPass implements CompilerPassInterface
@@ -28,6 +30,9 @@ final class ShortLinkCompilerPass implements CompilerPassInterface
     {
         if (!$container->has('doctrine')) {
             throw new LogicException('nowo_short_link needs DoctrineBundle with the ORM: install and enable doctrine/doctrine-bundle (the links are stored through Doctrine DBAL).');
+        }
+        if ($container->getParameter(NowoShortLinkExtension::ALIAS . '.click_write_mode') === ClickWriteMode::Messenger->value && !$container->has('messenger.default_bus')) {
+            throw new LogicException('nowo_short_link.click_log.write is "messenger" but no Messenger bus exists: install symfony/messenger and configure framework.messenger.');
         }
         if ((string) $container->getAlias(TenantLockInterface::class) !== NoTenantLock::class || !$container->has('lock.factory') || !class_exists(LockFactory::class)) {
             return;

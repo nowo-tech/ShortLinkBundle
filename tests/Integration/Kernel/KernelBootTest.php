@@ -22,6 +22,7 @@ use Nowo\ShortLinkBundle\Domain\Service\ShortLinkManagerInterface;
 use Nowo\ShortLinkBundle\Infrastructure\Lock\NoTenantLock;
 use Nowo\ShortLinkBundle\Infrastructure\Security\RoleBasedAccess;
 use Nowo\ShortLinkBundle\NowoShortLinkBundle;
+use Nowo\ShortLinkBundle\Tests\Fixtures\Ddd\TestAccess;
 use Nowo\ShortLinkBundle\Tests\Fixtures\Ddd\TestTenantContext;
 use Symfony\Component\DependencyInjection\ContainerBuilder;
 use Symfony\Component\DependencyInjection\ContainerInterface;
@@ -57,11 +58,13 @@ final class KernelBootTest extends KernelTestCase
             'ui'              => ['enabled' => true, 'path_prefix' => '/admin/links', 'tenant_route_parameter' => 'uuid'],
             'doctrine'        => ['table_prefix' => 'app_', 'mapping' => 'attribute'],
             'tenancy'         => ['context' => TestTenantContext::class],
+            'access'          => ['provider' => TestAccess::class],
             'target'          => ['guard' => 'app.guard'],
         ], null, static function ($container, string $url): void {
             $container->parameters()->set('env(SHORT_LINK_TEST_BASE_URL)', 'https://beacon.example');
             $container->extension('doctrine', ['dbal' => ['url' => $url], 'orm' => []]);
             $container->services()->set(TestTenantContext::class);
+            $container->services()->set(TestAccess::class);
             $container->services()->set('app.guard', ChainTargetGuard::class)->args([[]]);
         });
         $container = $kernel->getContainer();

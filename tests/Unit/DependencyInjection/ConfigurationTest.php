@@ -25,6 +25,7 @@ final class ConfigurationTest extends TestCase
             'rate_limit'         => [
                 'enabled'         => true,
                 'cache_pool'      => 'cache.app',
+                'ipv6_prefix'     => 64,
                 'misses'          => ['limit' => 20, 'interval' => '1 minute'],
                 'hits'            => ['limit' => 120, 'interval' => '1 minute'],
                 'over_limit_hits' => 'redirect_unlogged',
@@ -40,14 +41,15 @@ final class ConfigurationTest extends TestCase
             'denylist'         => ['hosts' => [], 'provider' => null],
         ], $config['target']);
         self::assertSame([
-            'enabled'     => true,
-            'write'       => 'terminate',
-            'store'       => ['ip_prefix' => true, 'user_agent_family' => true, 'referrer_host' => true, 'country' => true],
-            'ipv4_prefix' => 24,
-            'ipv6_prefix' => 48,
-            'honour_gpc'  => true,
-            'retention'   => 'P90D',
-            'rollup'      => ['lag_days' => 2, 'referrer_top_n' => 50, 'retention' => null],
+            'enabled'          => true,
+            'write'            => 'terminate',
+            'store'            => ['ip_prefix' => true, 'user_agent_family' => true, 'referrer_host' => true, 'country' => true],
+            'ipv4_prefix'      => 24,
+            'ipv6_prefix'      => 48,
+            'country_resolver' => null,
+            'honour_gpc'       => true,
+            'retention'        => 'P90D',
+            'rollup'           => ['lag_days' => 2, 'referrer_top_n' => 50, 'retention' => null],
         ], $config['click_log']);
         self::assertSame(['context' => null], $config['tenancy']);
         self::assertSame(['provider' => null, 'view_role' => 'ROLE_ADMIN', 'manage_role' => 'ROLE_ADMIN', 'enforce_in_manager' => true], $config['access']);

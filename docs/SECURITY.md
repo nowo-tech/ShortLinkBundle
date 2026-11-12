@@ -12,8 +12,8 @@
 
 ## Status and scope
 
-S1 (domain + persistence): the manager, the ports, the target guard and the DBAL store. No route yet (the redirect is
-S2, the UI S4): nothing is reachable over HTTP.
+S1–S2: the manager, the ports, the target guard, the DBAL store and the public redirect `GET|HEAD /s/{code}` with its
+click log (the only HTTP surface until the S4 UI).
 
 **Covers (from S1):** how short codes are generated and reserved, how targets are validated at save and at redirect
 time, how the public redirect answers, what each click stores and for how long, and how tenants are isolated.
@@ -67,7 +67,15 @@ From contract §9. Each threat names the control and the slice that ships it.
 - **Known gaps tracked for later slices:** the per-actor limiter on `CodeTakenException` answers (contract §6.2) lands
   with the S4 form, where enumeration through the UI happens; without symfony/lock, concurrent creates may overshoot a
   plan limit by a few links.
-- **S2–S5:** see the table above and the contract.
+- **S2:** the redirect takes only `{code}` (query ignored, `Location` from the database, no CRLF possible); one
+  neutral 404 for every reason after the same single query; miss limiter peeked before the lookup; hit limiter with
+  redirect-unlogged / block; HEAD never logged; stateless route, no cookie; redirect guard on every answer (literals +
+  denylist, no DNS) with a refusal event; no raw IP stored or logged (only the truncated prefix and, for the country
+  resolver, the raw IP in memory after the response); GPC honoured; recorder and Messenger failures contained.
+- **Audit NW (S2):** M1 limiter key per IPv6 /64 (configurable /56–/64), IPv4-mapped / 6to4 folded; M2 every event
+  dispatch and log call on the redirect path guarded, refused event deferred to `kernel.terminate`; L3 minimal
+  hot-path query, state decided before hydration; L4 unreadable rows → 404 + warning; L6 6to4 / Teredo prefixes.
+- **S3–S5:** see the table above and the contract.
 
 ## Release security checklist (12.4.1)
 

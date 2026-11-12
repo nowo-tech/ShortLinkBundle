@@ -12,10 +12,9 @@ links (e-mail sends) and a UiKit + FormKit management UI.**
 interfaces and value objects with no Symfony, Doctrine or HTTP types, the bundle-owned tables are mapped in XML (with an
 attribute twin) and referenced by id, and the bundle never flushes your EntityManager.
 
-> 🚧 **Status: S0 scaffold.** The package is built slice by slice from its design contract
-> ([docs/CONTRACT.md](docs/CONTRACT.md), v1.0 for spec 230 Block A). S0 ships the bundle class, the strict configuration
-> tree and the tooling; the domain, the redirect, the statistics and the UI land with the slices in
-> [docs/ROADMAP.md](docs/ROADMAP.md). First tag: 0.1.0 (S1), after its security audit.
+> 🚧 **Status: built slice by slice** from its design contract ([docs/CONTRACT.md](docs/CONTRACT.md), v1.0 for spec 230
+> Block A): S1 (domain + persistence) and S2 (redirect + click log) are in review; statistics and the UI follow
+> ([docs/ROADMAP.md](docs/ROADMAP.md)). First tag: 0.1.0, after its security audit.
 
 > 📋 **Compatible with Symfony 7.4, 8.0 and 8.1** · PHP 8.2+ (Symfony 8.x requires PHP 8.4+)
 
@@ -98,6 +97,7 @@ FrankenPHP worker mode, MySQL, UiKit layout and FormKit forms, Web Profiler, Twi
 - [Contract v1.0 (spec 230 Block A)](docs/CONTRACT.md)
 - [Architecture](docs/ARCHITECTURE.md)
 - [FrankenPHP worker audit](docs/FRANKENPHP-WORKER-AUDIT.md)
+- [Performance](docs/PERFORMANCE.md)
 - [Demo with FrankenPHP](docs/DEMO-FRANKENPHP.md)
 - [PSR compliance](docs/PSR.md)
 - [GitHub CI](docs/GITHUB_CI.md)
