@@ -12,8 +12,8 @@
 
 ## Status and scope
 
-S0 scaffold: the bundle class and the strict configuration tree; no service, route, listener or table is registered,
-so nothing is reachable over HTTP.
+S1 (domain + persistence): the manager, the ports, the target guard and the DBAL store. No route yet (the redirect is
+S2, the UI S4): nothing is reachable over HTTP.
 
 **Covers (from S1):** how short codes are generated and reserved, how targets are validated at save and at redirect
 time, how the public redirect answers, what each click stores and for how long, and how tenants are isolated.
@@ -54,7 +54,16 @@ From contract §9. Each threat names the control and the slice that ships it.
 - **S0:** strict configuration; no service registered; GitGuardian-safe repository (no credential-looking strings,
   passwordless CI and demo databases); the database suite proves case-sensitive unique codes on SQLite, MySQL, MariaDB
   and PostgreSQL.
-- **S1–S5:** see the table above and the contract.
+- **S1:** `TargetUrl` refusal matrix (scheme, userinfo, control / whitespace / backslash, length, IDN to punycode);
+  save guard (self chain, OutboundUrlGuard with `allowPrivate` always false and DNS on save when configured, denylist);
+  neutral `CodeTakenException` for taken / reserved / quarantined codes; tombstones keep deleted codes; exact unique
+  codes (binary collation + PHP `===`); tenant filter + PHP re-check on every read; access checked per action (anonymous
+  denied by default; `system` only for programmatic callers); quota serialised per tenant with symfony/lock; events after
+  commit with the target host only; logs carry the tenant and counts, never codes, targets or IPs.
+- **Known gaps tracked for later slices:** the per-actor limiter on `CodeTakenException` answers (contract §6.2) lands
+  with the S4 form, where enumeration through the UI happens; without symfony/lock, concurrent creates may overshoot a
+  plan limit by a few links.
+- **S2–S5:** see the table above and the contract.
 
 ## Release security checklist (12.4.1)
 

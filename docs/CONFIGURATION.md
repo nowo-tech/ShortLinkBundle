@@ -8,7 +8,7 @@
 - [Symfony Beacon example](#symfony-beacon-example)
 
 The tree is strict (REQ-SF-006): unknown keys and invalid values are refused at container build, and the message names
-the path and the allowed values. Every key of the contract exists from S0; S0 itself registers no service.
+the path and the allowed values. Every key of the contract exists from S0; S1 wires the manager, the ports and the store (no route before S2).
 
 ## Full reference
 
