@@ -51,6 +51,15 @@ S4: the management UI (target 0.2.0).
 - Audit NY-S4 L1: links of kinds hidden from people (`show_in_ui: false`, e.g. `email`) answer 404 on every UI page
   and action by id (edit, statistics, CSV, disable, enable, delete); they could be opened and changed by id before.
 - Audit NY-S4 L4: `quota.default_limit: null` (or `~`) is accepted again and means unlimited.
+- Audit NY-S4 N1: env placeholders. Every key with a custom validator was checked in a real compiled container
+  (MergeExtensionConfigurationPass + ValidateEnvPlaceholdersPass): `public_base_url`, `quota.default_limit`
+  (`%env(int:…)%`), the durations (`code.quarantine`, `click_log.retention`, `click_log.rollup.retention`), the
+  rate-limit intervals, `ui.tenant_route_parameter`, `target.self_paths`, the host lists and the integer keys accept
+  one (the retention cross-check is left to runtime when a value is a placeholder); `redirect.path_prefix`,
+  `ui.path_prefix` and `doctrine.table_prefix` refuse one with a clear message (they are used while compiling); a
+  literal empty value is still refused.
+- `ActorRef` accepts ZWNJ / ZWJ (U+200C / U+200D) inside a value (Persian names, emoji sequences), never at its
+  edges.
 - PAD SPACE sweep (affects 0.1.0; no advisory: 0.x release, host-triggered eraser): `utf8mb4_bin` is PAD SPACE on
   MySQL / MariaDB, so `anonymiseActor('u1 ')` also cleared the attribution of `u1`. `ActorRef` now refuses leading /
   trailing whitespace, control and format characters and invalid UTF-8 (`ActorRef::fromStored()` keeps reading 0.1.0

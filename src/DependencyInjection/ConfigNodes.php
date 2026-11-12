@@ -32,7 +32,7 @@ final class ConfigNodes
         $node->defaultValue($default)
             ->validate()
                 ->ifTrue(static fn (mixed $value): bool => !is_string($value) || preg_match(self::PATH_PATTERN, $value) !== 1)
-                ->thenInvalid('Expected an absolute path without a trailing slash and other than "/" (e.g. "/s"), got %s.')
+                ->thenInvalid('Expected an absolute path without a trailing slash and other than "/" (e.g. "/s"; route paths are compiled, so no environment variable), got %s.')
             ->end();
 
         return $node;
@@ -54,14 +54,15 @@ final class ConfigNodes
     }
 
     /**
-     * An optional ISO 8601 duration (`P90D`, `P1Y`); null = keep forever.
+     * An optional ISO 8601 duration (`P90D`, `P1Y`); null = keep forever. An env placeholder is accepted (the commands
+     * read it at runtime); a literal empty value is refused by the extension.
      */
     public static function duration(string $name, ?string $default, string $info): ScalarNodeDefinition
     {
         $node = new ScalarNodeDefinition($name);
         $node->defaultValue($default)->info($info)
             ->validate()
-                ->ifTrue(static fn (mixed $value): bool => $value !== null && !self::isDuration($value))
+                ->ifTrue(static fn (mixed $value): bool => $value !== null && $value !== '' && !self::isDuration($value))
                 ->thenInvalid('Expected an ISO 8601 duration such as "P90D" or null, got %s.')
             ->end();
 
@@ -77,12 +78,24 @@ final class ConfigNodes
         $node->addDefaultsIfNotSet()
             ->children()
                 ->integerNode('limit')->defaultValue($limit)->min(1)->max(100000)->end()
-                ->scalarNode('interval')->defaultValue($interval)->cannotBeEmpty()
-                    ->validate()
-                        ->ifTrue(static fn (mixed $value): bool => !is_string($value) || preg_match('/^\d+ (second|minute|hour|day)s?$/D', $value) !== 1)
-                        ->thenInvalid('Expected an interval such as "1 minute" or "15 minutes", got %s.')
-                    ->end()
-                ->end()
+                ->append(self::interval('interval', $interval))
+            ->end();
+
+        return $node;
+    }
+
+    /**
+     * A rate-limit interval (`1 minute`, `15 minutes`). An env placeholder is accepted (the value is read when the
+     * limiter is built, at runtime); the empty string Symfony validates placeholders with passes here and a literal
+     * empty value is refused by the extension ({@see NowoShortLinkExtension::RUNTIME_STRING_PATHS}).
+     */
+    public static function interval(string $name, string $default): ScalarNodeDefinition
+    {
+        $node = new ScalarNodeDefinition($name);
+        $node->defaultValue($default)
+            ->validate()
+                ->ifTrue(static fn (mixed $value): bool => $value !== '' && (!is_string($value) || preg_match('/^\d+ (second|minute|hour|day)s?$/D', $value) !== 1))
+                ->thenInvalid('Expected an interval such as "1 minute" or "15 minutes", got %s.')
             ->end();
 
         return $node;

@@ -133,6 +133,10 @@ final class Configuration implements ConfigurationInterface
      */
     public static function retentionProblem(?string $retention, int $lagDays, ?string $rollupRetention): ?string
     {
+        // An env placeholder (or the empty value Symfony validates it with) is checked at runtime by the commands.
+        if (($retention !== null && !ConfigNodes::isDuration($retention)) || ($rollupRetention !== null && !ConfigNodes::isDuration($rollupRetention))) {
+            return null;
+        }
         $raw = $retention === null ? null : self::seconds($retention);
         if ($raw !== null && $raw < ($lagDays + 1) * 86400) {
             return 'click_log.retention must keep raw clicks at least click_log.rollup.lag_days + 1 days, or a recomputed day loses its clicks.';
@@ -264,12 +268,7 @@ final class Configuration implements ConfigurationInterface
                     ->children()
                         ->booleanNode('enabled')->defaultTrue()->end()
                         ->integerNode('limit')->defaultValue(10)->min(1)->max(100000)->end()
-                        ->scalarNode('interval')->defaultValue('1 minute')->cannotBeEmpty()
-                            ->validate()
-                                ->ifTrue(static fn (mixed $value): bool => !is_string($value) || preg_match('/^\d+ (second|minute|hour|day)s?$/D', $value) !== 1)
-                                ->thenInvalid('Expected an interval such as "1 minute" or "15 minutes", got %s.')
-                            ->end()
-                        ->end()
+                        ->append(ConfigNodes::interval('interval', '1 minute'))
                         ->append(ConfigNodes::service('limiter', 'CustomCodeLimiterInterface service (e.g. keyed on the session of callers without an actor); null = the rate limiter above'))
                     ->end()
                 ->end()
@@ -299,7 +298,7 @@ final class Configuration implements ConfigurationInterface
                     ->defaultValue(['/s/'])
                     ->scalarPrototype()
                         ->validate()
-                            ->ifTrue(static fn (mixed $value): bool => !is_string($value) || !str_starts_with($value, '/'))
+                            ->ifTrue(static fn (mixed $value): bool => $value !== '' && (!is_string($value) || !str_starts_with($value, '/')))
                             ->thenInvalid('Expected an absolute path such as "/s/", got %s.')
                         ->end()
                     ->end()
@@ -400,7 +399,7 @@ final class Configuration implements ConfigurationInterface
                 ->scalarNode('tenant_route_parameter')->defaultNull()
                     ->info('Route parameter of the host prefix kept when the UI builds its links (Beacon: "uuid" in /organizations/{uuid}/short-links)')
                     ->validate()
-                        ->ifTrue(static fn (mixed $value): bool => $value !== null && (!is_string($value) || preg_match('/^[A-Za-z_][A-Za-z0-9_]{0,63}$/D', $value) !== 1))
+                        ->ifTrue(static fn (mixed $value): bool => $value !== null && $value !== '' && (!is_string($value) || preg_match('/^[A-Za-z_][A-Za-z0-9_]{0,63}$/D', $value) !== 1))
                         ->thenInvalid('Expected a route parameter name such as "uuid", got %s.')
                     ->end()
                 ->end()

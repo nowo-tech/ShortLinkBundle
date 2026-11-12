@@ -72,6 +72,7 @@ use Nowo\ShortLinkBundle\Presentation\Form\ShortLinkFilterType;
 use Nowo\ShortLinkBundle\Presentation\Form\ShortLinkType;
 use Nowo\ShortLinkBundle\Presentation\Form\StatsRangeType;
 use Nowo\ShortLinkBundle\Presentation\Routing\UiRouteLoader;
+use Symfony\Component\Config\Definition\Exception\InvalidConfigurationException;
 use Symfony\Component\DependencyInjection\ContainerBuilder;
 use Symfony\Component\DependencyInjection\ContainerInterface;
 use Symfony\Component\DependencyInjection\Definition;
@@ -86,8 +87,11 @@ use function array_key_exists;
 use function array_keys;
 use function array_unique;
 use function array_values;
+use function count;
+use function implode;
 use function is_array;
 use function is_string;
+use function sprintf;
 
 /**
  * Loads `nowo_short_link`: validates the strict configuration tree, publishes the container parameters and registers
@@ -101,6 +105,27 @@ final class NowoShortLinkExtension extends Extension implements PrependExtension
 
     /** Doctrine mapping name of the bundle's entity. */
     public const MAPPING_NAME = 'NowoShortLinkBundle';
+
+    /**
+     * Keys read at runtime that accept an env placeholder: their validators let the empty string Symfony checks
+     * placeholders with pass, so a literal empty value is refused here.
+     */
+    public const RUNTIME_STRING_PATHS = [
+        ['code', 'quarantine'],
+        ['click_log', 'retention'],
+        ['click_log', 'rollup', 'retention'],
+        ['redirect', 'rate_limit', 'misses', 'interval'],
+        ['redirect', 'rate_limit', 'hits', 'interval'],
+        ['code', 'custom_code_rate_limit', 'interval'],
+        ['ui', 'tenant_route_parameter'],
+    ];
+
+    /** Keys used while the container or the routes are compiled: no env placeholder. */
+    public const COMPILE_TIME_PATHS = [
+        ['redirect', 'path_prefix'],
+        ['ui', 'path_prefix'],
+        ['doctrine', 'table_prefix'],
+    ];
 
     /** FormKit profile of the UI forms (`nowo_form_kit.profiles.short_link`). */
     public const FORM_PROFILE = 'short_link';
@@ -182,6 +207,7 @@ final class NowoShortLinkExtension extends Extension implements PrependExtension
     {
         /** @var array{public_base_url: string|null, redirect: array{path_prefix: string, status: int, not_found_template: string, rate_limit: array{enabled: bool, cache_pool: string, ipv6_prefix: int, misses: array{limit: int, interval: string}, hits: array{limit: int, interval: string}, over_limit_hits: string}}, code: array{random_length: int, allow_custom: bool, reserved: list<string>, blocklist: bool, max_attempts: int, quarantine: string|null, custom_code_rate_limit: array{enabled: bool, limit: int, interval: string, limiter: string|null}}, target: array{max_length: int, guard: string, recheck_max_unresolvable_percent: int, recheck_min_sample: int, save_resolve_dns: bool, self_paths: list<string>, own_hosts: list<string>, denylist: array{hosts: list<string>, provider: string|null}}, tenancy: array{context: string|null}, access: array{provider: string|null, view_role: string, manage_role: string, enforce_in_manager: bool}, quota: array{provider: string|null, default_limit: int|null, counted_kinds: list<string>}, kinds: array<string, array{allow_custom_code: bool, show_in_ui: bool, counted: bool}>, ui: array{enabled: bool, path_prefix: string, tenant_route_parameter: string|null, page_size: int, stats_default_days: int, csv_max_days: int, layout_template: string|null}, doctrine: array{entity_manager: string|null, connection: string|null, table_prefix: string}, click_log: array{enabled: bool, write: string, store: array{ip_prefix: bool, user_agent_family: bool, referrer_host: bool, country: bool}, ipv4_prefix: int, ipv6_prefix: int, honour_gpc: bool, country_resolver: string|null, retention: string|null, rollup: array{lag_days: int, referrer_top_n: int, retention: string|null}}} $config */
         $config = $this->processConfiguration(new Configuration(), $configs);
+        $this->assertPlaceholders($container, $config);
         $container->setParameter(self::ALIAS . '.redirect_path_prefix', $config['redirect']['path_prefix']);
         $container->setParameter(self::ALIAS . '.ui_enabled', $config['ui']['enabled']);
         $container->setParameter(self::ALIAS . '.ui_path_prefix', $config['ui']['path_prefix']);
@@ -458,6 +484,42 @@ final class NowoShortLinkExtension extends Extension implements PrependExtension
             throw new LogicException('nowo_short_link: a country resolver needs the raw IP, which never travels in a Messenger message. Use click_log.write "terminate" or "sync", or set click_log.store.country to false.');
         }
         $container->setParameter(self::ALIAS . '.click_write_mode', $mode?->value);
+    }
+
+    /**
+     * Env placeholders (audit NY-S4 N1): refused with a clear message where the value is needed while compiling;
+     * a literal empty value refused where an env placeholder is allowed (see {@see self::RUNTIME_STRING_PATHS}).
+     *
+     * @param array<array-key, mixed> $config
+     */
+    private function assertPlaceholders(ContainerBuilder $container, array $config): void
+    {
+        foreach (self::COMPILE_TIME_PATHS as $path) {
+            $value = $this->at($config, $path);
+            if (is_string($value) && $container->resolveEnvPlaceholders($value, '%%env(%s)%%') !== $value) {
+                throw new InvalidConfigurationException(sprintf('nowo_short_link.%s cannot be an environment variable: it is used while the container and the routes are compiled.', implode('.', $path)));
+            }
+        }
+        foreach (self::RUNTIME_STRING_PATHS as $path) {
+            $last = $path[count($path) - 1];
+            if ($this->at($config, $path) === '') {
+                throw new InvalidConfigurationException(sprintf('Invalid configuration for path "nowo_short_link.%s": %s.', implode('.', $path), $last === 'tenant_route_parameter' ? 'expected a route parameter name or null, got ""' : 'expected a value, got ""'));
+            }
+        }
+    }
+
+    /**
+     * @param array<array-key, mixed> $config
+     * @param list<string> $path
+     */
+    private function at(array $config, array $path): mixed
+    {
+        $value = $config;
+        foreach ($path as $key) {
+            $value = is_array($value) ? $value[$key] ?? null : null;
+        }
+
+        return $value;
     }
 
     /**

@@ -4,6 +4,7 @@
 
 - [Full reference](#full-reference)
 - [Validation](#validation)
+- [Environment variables](#environment-variables)
 - [FormKit profile](#formkit-profile)
 - [Container parameters](#container-parameters)
 - [Symfony Beacon example](#symfony-beacon-example)
@@ -106,6 +107,15 @@ true}}` keeps `allow_custom_code: false` and `counted: false`). A kind is counte
 - `tenancy.context` needs `access.provider`: the default role-based access grants the same role in every tenant, so a
   multi-tenant host must give an access port that checks the tenant (the container refuses to build otherwise).
 - `REQ-CFG-001` (profiles) does not apply: one instance-wide configuration; per-tenant variation goes through the ports.
+
+## Environment variables
+
+Keys read at runtime accept an env placeholder (`%env(…)%`, integers as `%env(int:…)%`): `public_base_url`,
+`quota.default_limit`, `code.quarantine`, `click_log.retention`, `click_log.rollup.retention`, the rate-limit
+`interval` and `limit` keys, `ui.tenant_route_parameter`, `ui.page_size` and the other integers, `code.reserved`,
+`target.self_paths`, `target.own_hosts` and `target.denylist.hosts`. Their value is checked when it is read; the
+retention cross-check above only runs on literal values. `redirect.path_prefix`, `ui.path_prefix` and
+`doctrine.table_prefix` are used while the container and the routes are compiled and refuse an env placeholder.
 
 ## FormKit profile
 
