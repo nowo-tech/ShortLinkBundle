@@ -2,7 +2,7 @@
 
 **Feature Branch**: `001-baseline`
 **Created**: 2026-11-12
-**Status**: Baseline (S0 scaffold)
+**Status**: Baseline (S0 scaffold, S1 domain + persistence)
 **Input**: Contract v1.0 for spec 230 Block A ([`docs/CONTRACT.md`](../../docs/CONTRACT.md)), owner and Beacon answers
 of 2026-11-12 (§17).
 
@@ -39,6 +39,27 @@ registers no service, route, listener or table, whatever the configuration says;
 - **Given** one kernel kept alive and not reset, **when** it serves 2,000 requests alternating two tenants, **then**
   each response carries only its own request's data and memory stays flat (< 1 MiB drift).
 
+### US-04 — Create and manage links (S1)
+
+- **Given** a tenant manager, **when** they create a link with a target, an optional custom code, title and expiry,
+  **then** the target is normalised and guarded, the code is random base62 (7) or the lowercased custom code, unique per
+  instance, and `ShortLinkCreatedEvent` is dispatched after commit (never on rollback).
+- **Given** a taken, reserved or quarantined (tombstoned) custom code, **when** anyone asks for it, **then** the answer is
+  the same neutral `CodeTakenException` whatever tenant owns it.
+- **Given** a target that is not http(s), has userinfo, is private / loopback / link-local / metadata, is denylisted or
+  is one of our own short links, **when** it is saved, **then** it is refused with its reason and (guard refusals)
+  `ShortLinkTargetRefusedEvent` names the host only.
+- **Given** another tenant's id, **when** find / update / disable / enable / delete is called, **then** it answers as
+  missing.
+- **Given** a plan limit on manual links, **when** it is reached, **then** creation fails with `QuotaExceededException`;
+  e-mail links never count; with symfony/lock the check and insert are serialised per tenant.
+
+### US-05 — Generated links for e-mail sends (S1)
+
+- **Given** a batch of up to 200 commands of kind `email` with a source (send ref, label, position), **when**
+  `createMany()` runs (system flag), **then** the links are created in one transaction with random codes, and a command
+  whose (kind, ref, position) already has a live link returns that link (retried sends never duplicate).
+
 ## Functional requirements
 
 | ID | Requirement |
@@ -49,6 +70,21 @@ registers no service, route, listener or table, whatever the configuration says;
 | FR-WORKER-001 | One kernel kept alive serves N requests with no bleed between tenants and flat memory. |
 | FR-DB-001 | Short codes are unique and compare exactly on SQLite, MySQL (`utf8mb4_bin`), MariaDB (`utf8mb4_bin`) and PostgreSQL. |
 | FR-I18N-001 | Seven translation catalogues with the same keys (en, es, it, fr, pt, de, nl). |
+| FR-VO-001 | Value objects of contract §3.1 validated on construction; messages name the rule, never the value. |
+| FR-PORT-001 | Ports of §3.2 are framework-free interfaces with defaults; each is a public alias hosts can replace. |
+| FR-CODE-001 | Random base62 codes from the CSPRNG, skipping reserved and blocklisted candidates; collisions retry and grow the length after `max_attempts` (logged). |
+| FR-CODE-002 | Custom codes lowercased, `[a-z0-9-]{3,32}` without leading / trailing / double hyphen, unique per instance, neutral refusal; immutable. |
+| FR-TARGET-001 | `TargetUrl` normalisation and refusal matrix (scheme, userinfo, control / whitespace / backslash, length). |
+| FR-GUARD-001 | Save guard chain: self chain, OutboundUrlGuard (never private; DNS on save only when configured), denylist port. |
+| FR-MANAGE-001 | Manager create / update / disable / enable / delete (tombstone) / find / list (keyset, filters) / shortUrl. |
+| FR-BULK-001 | `createMany()` ≤ 200, random codes only, quota once per batch, dedupe by (kind, ref, position). |
+| FR-ACCESS-001 | Access port checked per action unless `system` or `enforce_in_manager: false`; default role-based, deny without a token. |
+| FR-QUOTA-001 | Quota on counted kinds only; exact under concurrency with symfony/lock. |
+| FR-EVENT-001 | Events after the outermost commit, none on rollback, ids / VOs / target host only. |
+| FR-DB-002 | DBAL store on the entity manager's connection; never flushes the host EntityManager; XML mapping default + attribute twin; table and index prefix; binary collation on MySQL / MariaDB; click tables by schema listener. |
+| FR-URL-001 | Absolute short URLs from `public_base_url` (re-checked at runtime) or the router request context. |
+| FR-WIRING-001 | Services wired by the extension; DoctrineBundle required; symfony/lock tenant lock when a lock factory exists. |
+| FR-ERROR-001 | Every deliberate exception implements `ShortLinkExceptionInterface`. |
 
 ## Success criteria
 

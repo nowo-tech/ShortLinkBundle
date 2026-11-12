@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Nowo\ShortLinkBundle\Infrastructure\Doctrine\Entity\ShortLinkRecord (contract §5.1), the default mapping
+  (doctrine.mapping: xml); the class carries the same mapping as attributes for doctrine.mapping: attribute. The table
+  and index names get doctrine.table_prefix and the identifier columns a binary collation on MySQL / MariaDB through
+  Nowo\ShortLinkBundle\Infrastructure\Doctrine\ShortLinkMetadataListener. A DDD host that registers this file on its
+  own entity manager gets the same listener.
+-->
+<doctrine-mapping xmlns="http://doctrine-project.org/schemas/orm/doctrine-mapping"
+                  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                  xsi:schemaLocation="http://doctrine-project.org/schemas/orm/doctrine-mapping https://www.doctrine-project.org/schemas/orm/doctrine-mapping.xsd">
+    <entity name="Nowo\ShortLinkBundle\Infrastructure\Doctrine\Entity\ShortLinkRecord" table="nowo_short_link">
+        <indexes>
+            <index name="idx_short_link_tenant_list" columns="tenant_key,kind,deleted_at,created_at"/>
+            <index name="idx_short_link_tenant_source" columns="tenant_key,kind,source_ref"/>
+            <index name="idx_short_link_deleted" columns="deleted_at"/>
+            <index name="idx_short_link_target_host" columns="target_host"/>
+        </indexes>
+        <unique-constraints>
+            <unique-constraint name="uniq_short_link_code" columns="code"/>
+        </unique-constraints>
+
+        <id name="id" type="string" column="id" length="36"/>
+
+        <field name="tenantKey" type="string" column="tenant_key" length="64"/>
+        <field name="code" type="string" column="code" length="32"/>
+        <field name="codeCustom" type="boolean" column="code_custom"/>
+        <field name="targetUrl" type="string" column="target_url" length="2048"/>
+        <field name="targetHost" type="string" column="target_host" length="253"/>
+        <field name="title" type="string" column="title" length="255" nullable="true"/>
+        <field name="kind" type="string" column="kind" length="32"/>
+        <field name="sourceRef" type="string" column="source_ref" length="64" nullable="true"/>
+        <field name="sourceLabel" type="string" column="source_label" length="128" nullable="true"/>
+        <field name="sourcePosition" type="smallint" column="source_position" nullable="true"/>
+        <field name="metadata" type="json" column="metadata" nullable="true"/>
+        <field name="active" type="boolean" column="active"/>
+        <field name="expiresAt" type="datetime_immutable" column="expires_at" nullable="true"/>
+        <field name="disabledReason" type="string" column="disabled_reason" length="32" nullable="true"/>
+        <field name="createdAt" type="datetime_immutable" column="created_at"/>
+        <field name="updatedAt" type="datetime_immutable" column="updated_at"/>
+        <field name="deletedAt" type="datetime_immutable" column="deleted_at" nullable="true"/>
+        <field name="createdBy" type="string" column="created_by" length="128" nullable="true"/>
+        <field name="updatedBy" type="string" column="updated_by" length="128" nullable="true"/>
+    </entity>
+</doctrine-mapping>
