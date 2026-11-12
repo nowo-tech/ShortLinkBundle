@@ -1,0 +1,20 @@
+# PHPStan configuration for Short Link Bundle (level max, contract §13 S0).
+#
+# Run: make phpstan
+parameters:
+    level: max
+    paths:
+        - src
+        - tests
+    excludePaths:
+        - demo/*
+        - vendor/*
+    reportUnmatchedIgnoredErrors: false
+    treatPhpDocTypesAsCertain: false
+    ignoreErrors: []
+
+includes:
+  - vendor/nowo-tech/phpstan-frankenphp/ruleset-classic.neon
+  # worker-strict includes default worker rules + request-superglobal hygiene (kernel not reset).
+  - vendor/nowo-tech/phpstan-frankenphp/ruleset-worker-strict.neon
+  - vendor/nowo-tech/phpstan-frankenphp/ruleset-hardening.neon

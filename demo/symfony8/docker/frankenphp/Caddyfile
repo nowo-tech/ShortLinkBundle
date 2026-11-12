@@ -1,0 +1,23 @@
+{
+	order mercure after encode
+	skip_install_trust
+}
+
+# Worker mode (default): the app boots once and serves requests from memory, kernel kept alive and not reset between
+# requests. The bundle keeps no request state in its services (docs/FRANKENPHP-WORKER-AUDIT.md).
+# Mercure + hot_reload serve Nowo Hot Reload in dev (the bundle is registered for dev / test only).
+:80 {
+	root * /app/public
+	encode zstd br gzip
+	mercure {
+		anonymous
+	}
+
+	php_server {
+		hot_reload
+		worker {
+			file /app/public/index.php
+			watch
+		}
+	}
+}

@@ -1,0 +1,6 @@
+# Short Link Bundle: see https://github.com/nowo-tech/ShortLinkBundle/blob/main/docs/CONFIGURATION.md
+nowo_short_link:
+    # Absolute base URL of the short links (e.g. '%env(DEFAULT_URI)%'), needed outside a request (Messenger, CLI).
+    public_base_url: null
+    ui:
+        enabled: false

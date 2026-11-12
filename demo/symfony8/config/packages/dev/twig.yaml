@@ -1,0 +1,3 @@
+# Disable the Twig cache in dev so template changes are visible on refresh (REQ-DEMO-002).
+twig:
+    cache: false

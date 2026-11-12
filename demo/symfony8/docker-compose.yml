@@ -1,0 +1,59 @@
+name: short-link-bundle-demo-symfony-8
+services:
+  php:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: short-link-demo-symfony8-php
+    working_dir: /app
+    restart: unless-stopped
+    ports:
+      # Loopback only (REQ-DEMO-005).
+      - "127.0.0.1:${PORT:-8231}:80"
+    volumes:
+      - .:/app
+      - ../..:/var/short-link-bundle
+      - ./docker/frankenphp/Caddyfile.dev:/etc/frankenphp/Caddyfile.dev
+      - ./docker/php-dev.ini:/usr/local/etc/php/conf.d/99-dev.ini:ro
+      - composer-cache:/root/.composer/cache
+    environment:
+      - COMPOSER_ALLOW_SUPERUSER=1
+      - APP_ENV=dev
+      - APP_DEBUG=1
+      - FRANKENPHP_MODE=${FRANKENPHP_MODE:-worker}
+      # Demo database: passwordless root on the private Compose network (no credential in the repository).
+      - DATABASE_URL=${DATABASE_URL:-mysql://root@db:3306/nowo_short_link_demo?serverVersion=8.0&charset=utf8mb4}
+    # Mitigate Docker/WSL DNS failures resolving repo.packagist.org (composer curl error 6).
+    dns:
+      - 8.8.8.8
+      - 8.8.4.4
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - short-link-demo-network
+  db:
+    image: mysql:8.0
+    container_name: short-link-demo-symfony8-db
+    environment:
+      MYSQL_ALLOW_EMPTY_PASSWORD: 'yes'
+      MYSQL_DATABASE: nowo_short_link_demo
+    volumes:
+      - mysql_data:/var/lib/mysql
+    expose:
+      - "3306"
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    networks:
+      - short-link-demo-network
+
+volumes:
+  composer-cache:
+  mysql_data:
+
+networks:
+  short-link-demo-network:
+    driver: bridge

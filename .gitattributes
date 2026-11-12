@@ -1,0 +1,29 @@
+# Normalise line endings.
+* text=auto eol=lf
+*.webp binary
+*.png binary
+
+# Exclude dev-only paths from git archive (Composer dist packages): REQ-PKG-002.
+/.coderabbit.yaml export-ignore
+/.cursor export-ignore
+/.cursorignore export-ignore
+/.gitattributes export-ignore
+/.githooks export-ignore
+/.github export-ignore
+/.gitignore export-ignore
+/.php-cs-fixer.dist.php export-ignore
+/.scripts export-ignore
+/.scrutinizer.yml export-ignore
+/.specify export-ignore
+/.symfony export-ignore
+/Dockerfile export-ignore
+/Makefile export-ignore
+/demo export-ignore
+/docker-compose.yml export-ignore
+/docs/images export-ignore
+/igor.json export-ignore
+/phpstan.neon.dist export-ignore
+/phpunit.xml.dist export-ignore
+/rector.php export-ignore
+/specs export-ignore
+/tests export-ignore

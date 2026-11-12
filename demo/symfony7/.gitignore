@@ -1,0 +1,24 @@
+# Local environment (do not version secrets or machine-specific env)
+.env
+.env.dev
+.env.local
+.env.local.php
+.env.*.local
+
+# Dependencies and build
+/vendor/
+/node_modules/
+/public/build/
+
+# Symfony runtime
+/var/
+/public/bundles/
+
+# PHPUnit
+/phpunit.xml
+/.phpunit.cache/
+
+# SQLite artifacts (REQ-DEMO-011 — demos use MySQL)
+*.db
+*.sqlite
+*.sqlite3
