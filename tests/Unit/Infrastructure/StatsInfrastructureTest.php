@@ -6,7 +6,9 @@ namespace Nowo\ShortLinkBundle\Tests\Unit\Infrastructure;
 
 use DateTimeImmutable;
 use Doctrine\DBAL\DriverManager;
+use Doctrine\DBAL\Exception;
 use Doctrine\DBAL\Schema\Schema;
+use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\Persistence\ManagerRegistry;
 use Doctrine\Persistence\ObjectManager;
 use LogicException;
@@ -37,6 +39,7 @@ use Nowo\ShortLinkBundle\Infrastructure\Doctrine\ClickTablesSchemaListener;
 use Nowo\ShortLinkBundle\Infrastructure\Guard\OutboundUrlGuardBridge;
 use Nowo\ShortLinkBundle\Infrastructure\Persistence\ClickTables;
 use Nowo\ShortLinkBundle\Infrastructure\Persistence\DbalClickMaintenance;
+use Nowo\ShortLinkBundle\Infrastructure\Persistence\DbalEraser;
 use Nowo\ShortLinkBundle\Tests\Fixtures\MemoryLogger;
 use Nowo\ShortLinkBundle\Tests\Fixtures\ScriptedStore;
 use PHPUnit\Framework\TestCase;
@@ -47,6 +50,7 @@ use Symfony\Component\Console\Tester\CommandTester;
 use Symfony\Component\Lock\LockFactory;
 use Symfony\Component\Lock\Store\InMemoryStore;
 
+use function array_values;
 use function sprintf;
 
 use const DNS_A;
@@ -182,8 +186,8 @@ final class StatsInfrastructureTest extends TestCase
             }
         };
         $logger = new MemoryLogger();
-        $run    = static function (array $options = []) use ($store, $guard, $events, $logger): CommandTester {
-            $tester = new CommandTester(new RecheckCommand($store, $guard, $events, null, 20, $logger));
+        $run    = static function (array $options = [], int $minSample = 20, int $percent = 20) use ($store, $guard, $events, $logger): CommandTester {
+            $tester = new CommandTester(new RecheckCommand($store, $guard, $events, null, $percent, $logger, $minSample));
             $tester->execute($options);
 
             return $tester;
@@ -205,11 +209,23 @@ final class StatsInfrastructureTest extends TestCase
         self::assertStringContainsString('[dry run] Checked 10 link(s), disabled 1', $dry->getDisplay());
         self::assertSame(0, $store->disables, 'the dry run writes nothing');
 
-        $guard->answers = ['h1.example' => TargetRefusal::Unresolvable, 'h2.example' => TargetRefusal::Unresolvable, 'h3.example' => TargetRefusal::Unresolvable, 'h4.example' => TargetRefusal::Denylisted];
-        $tester         = $run();
+        $store->changes  = true;
+        $guard->answers  = ['h1.example' => TargetRefusal::Unresolvable, 'h2.example' => TargetRefusal::Unresolvable, 'h3.example' => TargetRefusal::Unresolvable, 'h4.example' => TargetRefusal::Denylisted];
+        $store->disables = 0;
+        $tester          = $run();
+        self::assertSame(0, $tester->getStatusCode(), 'below the minimum sample (20) the threshold does not apply');
+        self::assertStringContainsString('skipped 3 unresolvable', $tester->getDisplay());
+        self::assertSame(1, $store->disables);
+
+        $store->disables = 0;
+        $tester          = $run([], 5);
         self::assertSame(1, $tester->getStatusCode());
-        self::assertStringContainsString('Aborted: 3 of 10 targets', $tester->getDisplay());
-        self::assertSame(0, $store->disables, 'an aborted batch disables nothing');
+        self::assertStringContainsString('Aborted: 3 of 10 checked targets could not be resolved (DNS outage?). Disabled 1.', $tester->getDisplay());
+        self::assertSame(1, $store->disables, 'the non-DNS refusals of the batch are applied before aborting');
+
+        $guard->answers = ['h1.example' => TargetRefusal::Unresolvable];
+        self::assertSame(1, $run([], 0, 0)->getStatusCode(), 'percent 0 with no minimum sample aborts on any unresolvable target');
+        self::assertSame(0, $run([], 20, 0)->getStatusCode(), 'percent 0 waits for the minimum sample');
     }
 
     public function testTheRollupIsSerialisedWithSymfonyLock(): void
@@ -256,6 +272,53 @@ final class StatsInfrastructureTest extends TestCase
         $recorder = new ClickRecorder($clicks, new NullCountryResolver(), $this->createStub(EventDispatcherInterface::class), logger: $logger, links: $store);
         $recorder->record(new ClickPayload(ShortLinkId::fromString('0190a6d0-0000-7000-8000-000000000001'), TenantKey::default(), LinkKind::manual(), null, new DateTimeImmutable(), null, UserAgentFamily::Unknown, null, false));
         self::assertCount(1, $logger->records);
+    }
+
+    public function testAFailedSourceErasureOnSeparateConnectionsCanBeRetried(): void
+    {
+        $links  = DriverManager::getConnection(['driver' => 'pdo_sqlite', 'memory' => true]);
+        $clicks = DriverManager::getConnection(['driver' => 'pdo_sqlite', 'memory' => true]);
+        $links->executeStatement('CREATE TABLE nowo_short_link (id VARCHAR(36) PRIMARY KEY, tenant_key VARCHAR(64), code VARCHAR(32), kind VARCHAR(32), target_url VARCHAR(2048), target_host VARCHAR(253), title VARCHAR(255), source_ref VARCHAR(64), source_label VARCHAR(128), source_position INTEGER, metadata TEXT, active BOOLEAN, disabled_reason VARCHAR(32), created_at VARCHAR(19), updated_at VARCHAR(19), deleted_at VARCHAR(19), created_by VARCHAR(128), updated_by VARCHAR(128))');
+        $links->insert('nowo_short_link', ['id' => '0190a6d0-0000-7000-8000-000000000001', 'tenant_key' => 'default', 'code' => 'aB3xY9k', 'kind' => 'email', 'target_url' => 'https://example.com/', 'target_host' => 'example.com', 'source_ref' => 'send-1', 'source_label' => 'Logo', 'source_position' => 0, 'active' => 1, 'created_at' => '2026-11-12 10:00:00', 'updated_at' => '2026-11-12 10:00:00', 'created_by' => 'actor-1']);
+        $em = $this->createStub(EntityManagerInterface::class);
+        $em->method('getConnection')->willReturn($links);
+        $registry = $this->createStub(ManagerRegistry::class);
+        $registry->method('getConnection')->willReturn($clicks);
+        $registry->method('getManager')->willReturn($em);
+        $tables = new ClickTables($registry, 'clicks');
+        self::assertFalse($tables->sharesConnection());
+        $eraser = new DbalEraser($tables);
+
+        try {
+            $eraser->eraseSource(TenantKey::default(), LinkKind::email(), 'send-1');
+            self::fail('The click tables do not exist yet.');
+        } catch (Exception) {
+        }
+        self::assertSame('send-1', $links->fetchOne('SELECT source_ref FROM nowo_short_link'), 'the source ref survives a failed run');
+        self::assertNotNull($links->fetchOne('SELECT deleted_at FROM nowo_short_link'));
+
+        $schema = new Schema();
+        (new ClickTablesSchemaListener())->addTables($schema, false);
+        foreach ($schema->toSql($clicks->getDatabasePlatform()) as $sql) {
+            $clicks->executeStatement($sql);
+        }
+        $clicks->insert('nowo_short_link_click', ['link_id' => '0190a6d0-0000-7000-8000-000000000001', 'tenant_key' => 'default', 'clicked_at' => '2026-11-12 10:00:00', 'machine' => 0]);
+        self::assertSame(2, $eraser->eraseSource(TenantKey::default(), LinkKind::email(), 'send-1'), 'the retry finds the links: 1 click + 1 blanked link');
+        self::assertEquals(0, $clicks->fetchOne('SELECT COUNT(*) FROM nowo_short_link_click'));
+        self::assertSame([null, '', null], array_values((array) $links->fetchAssociative('SELECT source_ref, target_url, created_by FROM nowo_short_link')));
+    }
+
+    public function testTheSameConnectionNamedExplicitlyIsShared(): void
+    {
+        $connection = DriverManager::getConnection(['driver' => 'pdo_sqlite', 'memory' => true]);
+        $em         = $this->createStub(EntityManagerInterface::class);
+        $em->method('getConnection')->willReturn($connection);
+        $registry = $this->createStub(ManagerRegistry::class);
+        $registry->method('getConnection')->willReturn($connection);
+        $registry->method('getManager')->willReturn($em);
+
+        self::assertTrue((new ClickTables($registry, 'default'))->sharesConnection());
+        self::assertTrue((new ClickTables($registry))->sharesConnection());
     }
 
     public function testClickTablesUseTheConfiguredConnection(): void

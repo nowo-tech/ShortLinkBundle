@@ -80,6 +80,9 @@ From contract §9. Each threat names the control and the slice that ships it.
   recomputed, retention / lag / rollup-retention checked at build; M4 erasure tombstones first (one transaction when
   possible), late clicks of erased / deleted / foreign links dropped; L1 recheck cursor; L2 rollup lock + day index;
   L3 / L4 blanked source tombstones and rollups in the export; self-chain guard collapses `//`.
+- **Audit NY re-verification:** N1 cumulative recheck breaker with a minimum sample, non-DNS refusals applied before
+  an abort; N2 retry-safe erasure order; N3 second click-delete pass; I1 liveness check only for Messenger clicks;
+  I2 links in the export, tombstone rollups purged; I3 rollup deadlocks skipped.
 - **S3–S5:** see the table above and the contract.
 
 ## Release security checklist (12.4.1)

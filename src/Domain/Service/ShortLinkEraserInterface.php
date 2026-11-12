@@ -36,10 +36,11 @@ interface ShortLinkEraserInterface
     public function anonymiseActor(ActorRef $actor): int;
 
     /**
-     * Personal-data export of one source: one row per stored raw click, and the daily rollup rows of its links
+     * Personal-data export of one source: its links (code, label, position, target, title, creation time), one row per
+     * stored raw click, and the daily rollup rows of its links
      * (referrer host, country and browser family per day stay there after the raw clicks are purged).
      *
-     * @return array{clicks: list<array{code: string, label: string|null, position: int|null, clicked_at: string, ip_prefix: string|null, ua_family: string|null, referrer_host: string|null, country: string|null, machine: bool}>, daily: list<array{code: string, label: string|null, position: int|null, day: string, dimension: string, value: string, clicks: int, machine_clicks: int}>}
+     * @return array{links: list<array{code: string, label: string|null, position: int|null, target: string, title: string|null, created_at: string}>, clicks: list<array{code: string, label: string|null, position: int|null, clicked_at: string, ip_prefix: string|null, ua_family: string|null, referrer_host: string|null, country: string|null, machine: bool}>, daily: list<array{code: string, label: string|null, position: int|null, day: string, dimension: string, value: string, clicks: int, machine_clicks: int}>}
      */
     public function exportSource(TenantKey $tenant, LinkKind $kind, string $sourceRef): array;
 }

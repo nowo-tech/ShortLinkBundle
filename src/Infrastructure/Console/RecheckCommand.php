@@ -23,7 +23,6 @@ use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 
-use function count;
 use function is_numeric;
 use function max;
 use function min;
@@ -35,14 +34,18 @@ use function sprintf;
  * that only applies while the link is still active, not deleted and on the same target (an edit, a delete or an erasure
  * during the run wins); the {@see ShortLinkTargetRefusedEvent} and {@see ShortLinkStateChangedEvent} follow after
  * commit, only when that row changed. DNS failures never disable a link: an unresolvable target is skipped with a
- * warning, and a batch where more than `target.recheck_max_unresolvable_percent` of the targets are unresolvable aborts
- * the run (a resolver outage). `--dry-run` reports without writing. Run it daily.
+ * warning. Once at least `target.recheck_min_sample` links were checked, the run aborts (exit 1) when more than
+ * `target.recheck_max_unresolvable_percent` of all checked targets were unresolvable (a resolver outage; `0` aborts on
+ * any). The other refusals of the batch (denylist, private host, self chain) are applied before the check, so an abort
+ * never leaves them enabled. `--dry-run` reports without writing. Run it daily.
  */
 #[AsCommand(name: 'nowo:short-link:recheck', description: 'Re-check active short-link targets and disable refused ones')]
 final class RecheckCommand extends Command
 {
     /**
-     * @param int $maxUnresolvablePercent abort when more than this share of a batch is unresolvable (0-100)
+     * @param int $maxUnresolvablePercent abort when more than this share of the checked targets is unresolvable (0-100;
+     *                                    0 aborts on any unresolvable target)
+     * @param int $minSample the threshold applies once at least this many links were checked
      */
     public function __construct(
         private readonly ShortLinkStoreInterface $store,
@@ -51,6 +54,7 @@ final class RecheckCommand extends Command
         private readonly ?ClockInterface $clock = null,
         private readonly int $maxUnresolvablePercent = 20,
         private readonly ?LoggerInterface $logger = null,
+        private readonly int $minSample = 20,
     ) {
         parent::__construct();
     }
@@ -92,11 +96,6 @@ final class RecheckCommand extends Command
                 }
             }
             $skipped += $unresolvable;
-            if ($page->links !== [] && $unresolvable * 100 > $this->maxUnresolvablePercent * count($page->links)) {
-                $output->writeln(sprintf('Aborted: %d of %d targets in a batch could not be resolved (DNS outage?). Checked %d link(s), disabled %d.', $unresolvable, count($page->links), $checked, $disabled));
-
-                return Command::FAILURE;
-            }
             foreach ($refused as [$link, $refusal]) {
                 if ($dryRun) {
                     $output->writeln(sprintf('Would disable %s (%s).', $link->id->value, $refusal->value));
@@ -104,6 +103,11 @@ final class RecheckCommand extends Command
                     continue;
                 }
                 $disabled += $this->disable($link, $refusal) ? 1 : 0;
+            }
+            if ($checked >= $this->minSample && $checked > 0 && $skipped * 100 > $this->maxUnresolvablePercent * $checked) {
+                $output->writeln(sprintf('Aborted: %d of %d checked targets could not be resolved (DNS outage?). Disabled %d.', $skipped, $checked, $disabled));
+
+                return Command::FAILURE;
             }
         } while ($page->rawCount === $size && $cursor !== null);
         $output->writeln(sprintf('%sChecked %d link(s), disabled %d, skipped %d unresolvable.', $dryRun ? '[dry run] ' : '', $checked, $disabled, $skipped));

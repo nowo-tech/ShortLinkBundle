@@ -60,7 +60,7 @@ final readonly class ClickTerminateListener
             }
         }
         if (is_array($pending) && ($pending[0] ?? null) instanceof ClickPayload) {
-            $this->recorder->record($pending[0], is_string($pending[1] ?? null) ? $pending[1] : null);
+            $this->recorder->record($pending[0], is_string($pending[1] ?? null) ? $pending[1] : null, true);
         }
     }
 

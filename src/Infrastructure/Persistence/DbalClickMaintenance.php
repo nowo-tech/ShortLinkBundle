@@ -9,12 +9,14 @@ use DateTimeImmutable;
 use DateTimeZone;
 use Doctrine\DBAL\ArrayParameterType;
 use Doctrine\DBAL\Connection;
+use Doctrine\DBAL\Exception\DeadlockException;
 use Doctrine\DBAL\Exception\UniqueConstraintViolationException;
 use Nowo\ShortLinkBundle\Domain\Model\DimensionClicks;
 use Psr\Log\LoggerInterface;
 
 use function array_fill_keys;
 use function array_keys;
+use function array_map;
 use function array_slice;
 use function arsort;
 use function count;
@@ -73,7 +75,7 @@ final readonly class DbalClickMaintenance
             }
             try {
                 $this->rollDay($clicks, $day, $topN, $now);
-            } catch (UniqueConstraintViolationException) {
+            } catch (UniqueConstraintViolationException|DeadlockException) {
                 $this->logger?->warning('nowo_short_link: rollup of {day} skipped: another run wrote it at the same time.', ['day' => $key]);
                 continue;
             }
@@ -102,10 +104,7 @@ final readonly class DbalClickMaintenance
             $clicks->executeStatement(sprintf('DELETE FROM %s WHERE day < ?', $this->tables->days), [$cutoff]);
         }
         if ($quarantine !== null) {
-            $result['tombstones'] = (int) $this->tables->linkConnection()->executeStatement(
-                sprintf('DELETE FROM %s WHERE deleted_at IS NOT NULL AND deleted_at < ?', $this->tables->links),
-                [$this->utc($now->sub(new DateInterval($quarantine)))],
-            );
+            $result['tombstones'] = $this->purgeTombstones($clicks, $this->utc($now->sub(new DateInterval($quarantine))));
         }
 
         return $result;
@@ -198,6 +197,28 @@ final readonly class DbalClickMaintenance
         }
 
         return $out;
+    }
+
+    /**
+     * Deletes tombstones older than the quarantine together with their raw clicks and rollups (audit NY2 I2), in
+     * keyset batches.
+     */
+    private function purgeTombstones(Connection $clicks, string $cutoff): int
+    {
+        $links   = $this->tables->linkConnection();
+        $deleted = 0;
+        while (true) {
+            $ids = array_map(static fn (mixed $id): string => (string) (is_scalar($id) ? $id : ''), $links->fetchFirstColumn(
+                $links->getDatabasePlatform()->modifyLimitQuery(sprintf('SELECT id FROM %s WHERE deleted_at IS NOT NULL AND deleted_at < ? ORDER BY id', $this->tables->links), self::BATCH),
+                [$cutoff],
+            ));
+            if ($ids === []) {
+                return $deleted;
+            }
+            $clicks->executeStatement(sprintf('DELETE FROM %s WHERE link_id IN (?)', $this->tables->clicks), [$ids], [ArrayParameterType::STRING]);
+            $clicks->executeStatement(sprintf('DELETE FROM %s WHERE link_id IN (?)', $this->tables->daily), [$ids], [ArrayParameterType::STRING]);
+            $deleted += (int) $links->executeStatement(sprintf('DELETE FROM %s WHERE id IN (?)', $this->tables->links), [$ids], [ArrayParameterType::STRING]);
+        }
     }
 
     private function purgeClicks(Connection $clicks, string $cutoff): int

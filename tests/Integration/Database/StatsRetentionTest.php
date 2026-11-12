@@ -144,10 +144,14 @@ class StatsRetentionTest extends KernelTestCase
         self::assertSame('2026-11-10 00:00:00', $totals->lastClickAt?->format('Y-m-d H:i:s'));
 
         $flyer = $this->create('https://example.com/flyer', 'flyer');
+        $this->click($flyer, '2026-11-11 10:00:00');
+        $this->runCommand('nowo:short-link:rollup');
         $this->manager()->delete($this->tenant, $flyer->id);
         $this->clock()->modify('+366 days');
         $this->runCommand('nowo:short-link:purge');
         self::assertFalse($this->store()->codeExists('flyer'), 'the code is free after the quarantine');
+        self::assertEquals(0, $this->connection()->fetchOne('SELECT COUNT(*) FROM ' . $this->host()->tablePrefix() . 'nowo_short_link_click_daily WHERE link_id = ?', [$flyer->id->value]), 'its rollups go with the tombstone');
+        self::assertEquals(0, $this->connection()->fetchOne('SELECT COUNT(*) FROM ' . $this->host()->tablePrefix() . 'nowo_short_link_click WHERE link_id = ?', [$flyer->id->value]));
 
         $this->boot(['click_log' => ['retention' => 'P10D', 'rollup' => ['retention' => 'P30D']], 'code' => ['quarantine' => null]]);
         $other = $this->create('https://example.com/other');
@@ -183,15 +187,16 @@ class StatsRetentionTest extends KernelTestCase
         $this->click($views[0], '2026-11-12 09:00:00');
 
         $export = $this->eraser()->exportSource($this->tenant, LinkKind::email(), 'send-9');
+        self::assertSame([['code' => $views[0]->code->value, 'label' => 'Logo', 'position' => 0, 'target' => 'https://example.com/a', 'title' => null, 'created_at' => '2026-11-12 10:00:00']], $export['links']);
         self::assertCount(2, $export['clicks']);
         self::assertSame(['code' => $views[0]->code->value, 'label' => 'Logo', 'position' => 0, 'clicked_at' => '2026-11-11 09:00:00', 'ip_prefix' => '203.0.113.0/24', 'ua_family' => 'firefox', 'referrer_host' => 'mail.example', 'country' => null, 'machine' => false], $export['clicks'][0]);
         self::assertCount(4, $export['daily'], 'the rollup rows of the send are personal data too');
         self::assertContains(['code' => $views[0]->code->value, 'label' => 'Logo', 'position' => 0, 'day' => '2026-11-11', 'dimension' => 'referrer', 'value' => 'mail.example', 'clicks' => 1, 'machine_clicks' => 0], $export['daily']);
-        self::assertSame(['clicks' => [], 'daily' => []], $this->eraser()->exportSource($this->tenant, LinkKind::email(), 'nothing'));
+        self::assertSame(['links' => [], 'clicks' => [], 'daily' => []], $this->eraser()->exportSource($this->tenant, LinkKind::email(), 'nothing'));
         self::assertSame(0, $this->eraser()->eraseSource($this->tenant, LinkKind::email(), 'nothing'));
 
         self::assertGreaterThanOrEqual(3, $this->eraser()->eraseSource($this->tenant, LinkKind::email(), 'send-9'));
-        self::assertSame(['clicks' => [], 'daily' => []], $this->eraser()->exportSource($this->tenant, LinkKind::email(), 'send-9'));
+        self::assertSame(['links' => [], 'clicks' => [], 'daily' => []], $this->eraser()->exportSource($this->tenant, LinkKind::email(), 'send-9'));
         $tombstone = $this->connection()->fetchAssociative('SELECT target_url, target_host, title, source_ref, created_by, updated_by, deleted_at FROM ' . $this->host()->tablePrefix() . 'nowo_short_link WHERE id = ?', [$views[0]->id->value]);
         self::assertIsArray($tombstone);
         self::assertSame(['', '', null, null, null, null], [$tombstone['target_url'], $tombstone['target_host'], $tombstone['title'], $tombstone['source_ref'], $tombstone['created_by'], $tombstone['updated_by']], 'eraseSource blanks the tombstone');

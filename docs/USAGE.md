@@ -121,16 +121,17 @@ Schedule them daily (the bundle ships no scheduler), in this order:
 
 | Command | Does |
 | --- | --- |
-| `nowo:short-link:rollup [--max-days=400]` | Rolls raw clicks into the daily table (the last `rollup.lag_days` days again); idempotent |
+| `nowo:short-link:rollup [--max-days=400]` | Rolls raw clicks into the daily table (the last `rollup.lag_days` days again); idempotent. With symfony/lock runs are serialised (TTL 3600 s); the default `flock` store does that on one host only: use a shared lock store for a multi-host schedule |
 | `nowo:short-link:purge` | Deletes raw clicks of rolled days older than `click_log.retention`, rollups older than `click_log.rollup.retention`, tombstones older than `code.quarantine` |
-| `nowo:short-link:recheck [--batch=500] [--dry-run]` | Re-runs the save guard (DNS included) over active links; refused ones are disabled (`recheck_refused`) with `ShortLinkStateChangedEvent` + `ShortLinkTargetRefusedEvent`, only if still unchanged. Unresolvable targets are skipped with a warning; more than `target.recheck_max_unresolvable_percent` of a batch unresolvable aborts the run (exit 1) |
+| `nowo:short-link:recheck [--batch=500] [--dry-run]` | Re-runs the save guard (DNS included) over active links; refused ones are disabled (`recheck_refused`) with `ShortLinkStateChangedEvent` + `ShortLinkTargetRefusedEvent`, only if still unchanged. Unresolvable targets are skipped with a warning; once `target.recheck_min_sample` links were checked, more than `target.recheck_max_unresolvable_percent` of all checked targets unresolvable aborts the run (exit 1; `0` = on any), after the batch's other refusals were applied |
 
 ## Personal data (GDPR)
 
 See [PRIVACY.md](PRIVACY.md). `ShortLinkEraserInterface`: `eraseTenant()` (links turned into blanked tombstones of the tenant `~erased`, then
 clicks and rollups deleted: the codes stay taken until the quarantine ends), `eraseSource()` (a send's links blanked
 and tombstoned, then its clicks and rollups deleted), `anonymiseActor()` (`created_by` / `updated_by` set to null) and
-`exportSource()` (`clicks`: one row per stored click; `daily`: the rollup rows of the send's links). The eraser
+`exportSource()` (`links`: the send's links with target, title and creation time; `clicks`: one row per stored click;
+`daily`: the rollup rows of the send's links). The eraser
 dispatches no `ShortLinkDeletedEvent`. Clicks that arrive after an erasure (queued Messenger messages) are dropped. Clicks hold no raw IP, no full User-Agent and no cookie.
 
 ## Redirect path and firewalls

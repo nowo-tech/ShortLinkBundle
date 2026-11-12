@@ -36,6 +36,7 @@ final class ConfigurationTest extends TestCase
             'max_length'                       => 2048,
             'guard'                            => 'auto',
             'recheck_max_unresolvable_percent' => 20,
+            'recheck_min_sample'               => 20,
             'save_resolve_dns'                 => true,
             'self_paths'                       => ['/s/'],
             'own_hosts'                        => [],

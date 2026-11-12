@@ -37,11 +37,13 @@ final readonly class ClickRecorder
     }
 
     /**
-     * Records the click; `$clientIp` is the raw IP for the country resolver only (null in Messenger mode).
+     * Records the click; `$clientIp` is the raw IP for the country resolver only (null in Messenger mode). `$resolved`
+     * is true when the redirect resolved the live link in this same request (sync / terminate): the liveness check is
+     * then skipped; Messenger clicks are always checked.
      */
-    public function record(ClickPayload $click, #[SensitiveParameter] ?string $clientIp = null): void
+    public function record(ClickPayload $click, #[SensitiveParameter] ?string $clientIp = null, bool $resolved = false): void
     {
-        if (!$this->isLive($click)) {
+        if (!$resolved && !$this->isLive($click)) {
             return;
         }
         $private = $click->gpc && $this->honourGpc;
