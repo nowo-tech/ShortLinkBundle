@@ -22,8 +22,10 @@ use function sprintf;
 
 /**
  * `nowo:short-link:rollup` (contract §5.3): rolls the raw clicks into the daily table. Run it daily (Beacon: in its
- * maintenance schedule); idempotent. With symfony/lock (a `lock.factory`), concurrent runs are serialised; without it a
- * day written twice at once is skipped instead of crashing (the next run recomputes it).
+ * maintenance schedule); idempotent. With symfony/lock (a `lock.factory`), concurrent runs are serialised by the lock
+ * `nowo_short_link.rollup` (TTL 3600 s); the default `flock` store only serialises runs on one host, so a multi-host
+ * schedule needs a shared store (Redis, database). Without a lock, or across hosts, a day written twice at once (unique
+ * violation or deadlock) is skipped with a warning instead of crashing; the next run recomputes it.
  */
 #[AsCommand(name: 'nowo:short-link:rollup', description: 'Roll raw short-link clicks into daily aggregates')]
 final class RollupCommand extends Command

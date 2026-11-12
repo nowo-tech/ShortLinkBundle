@@ -7,6 +7,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Fixed (audit NY re-verification)
+
+- N1: the recheck abort threshold is evaluated over the whole run, only once `target.recheck_min_sample` (default 20)
+  links were checked, and the other refusals of the batch (denylist, private host, self chain) are applied before it
+  aborts; `recheck_max_unresolvable_percent: 0` aborts on any unresolvable target.
+- N2: erasures run in a retry-safe order (mark deleted keeping the source ref, delete clicks and rollups, blank last);
+  `sharesConnection()` also recognises the same connection named explicitly.
+- N3: erasures delete clicks once more after blanking (a click recorded between the liveness check and its insert).
+- I1: inline click modes (sync, terminate) skip the liveness check; Messenger clicks keep it.
+- I2: `exportSource()` also returns the send's links (target, title, created_at); purging a tombstone deletes its
+  clicks and rollups.
+- I3: a deadlock during the rollup skips the day with a warning, like a unique violation.
+
 ### Fixed (audit NY)
 
 - M1: the recheck disables a link with a narrow update (still active, not deleted, same target and tenant) and

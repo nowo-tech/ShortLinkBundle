@@ -149,7 +149,7 @@ final readonly class RedirectController
             $gpc,
         );
         if ($this->writeMode === ClickWriteMode::Sync) {
-            $this->recorder->record($payload, $request->getClientIp());
+            $this->recorder->record($payload, $request->getClientIp(), true);
         } elseif ($this->writeMode === ClickWriteMode::Messenger) {
             try {
                 $this->bus?->dispatch(new RecordShortLinkClick($payload));

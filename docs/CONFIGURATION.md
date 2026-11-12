@@ -36,7 +36,8 @@ nowo_short_link:
     target:
         max_length: 2048             # 64..2048
         guard: auto                  # auto (basic + OutboundUrlGuard) | basic | <service id>: a service REPLACES the whole chain (self chain, OutboundUrlGuard, denylist)
-        recheck_max_unresolvable_percent: 20  # 0..100: the recheck aborts when more of a batch cannot be resolved
+        recheck_max_unresolvable_percent: 20  # 0..100 of all checked targets unresolvable → the recheck aborts (0 = on any)
+        recheck_min_sample: 20       # the threshold applies once this many links were checked
         save_resolve_dns: true       # DNS check on create / update / enable / recheck, never on the redirect
         self_paths: ['/s/']          # targets on own_hosts under these paths are refused (no chains)
         own_hosts: []                # host names, lowercased

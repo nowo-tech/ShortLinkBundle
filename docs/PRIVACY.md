@@ -20,7 +20,7 @@
 - Raw clicks: `click_log.retention` (default `P90D`), deleted by `nowo:short-link:purge` once their day is rolled. It
   must be at least `click_log.rollup.lag_days` + 1 days.
 - Rollups: `click_log.rollup.retention` (default: kept). It must be at least `click_log.retention`.
-- Tombstones: `code.quarantine` (default `P365D`).
+- Tombstones: `code.quarantine` (default `P365D`); purging a tombstone also deletes its remaining clicks and rollups.
 
 ## E-mail links
 
@@ -31,5 +31,6 @@ retention for the send ends; `exportSource()` includes the rollup rows.
 ## Erasure and export
 
 `ShortLinkEraserInterface` (see [USAGE.md](USAGE.md#personal-data-gdpr)): tombstones first, then clicks and rollups
-(one transaction when both tables share a connection); erased codes stay taken until the quarantine ends. Queued clicks
-that arrive later are dropped by the recorder. The eraser dispatches no `ShortLinkDeletedEvent`.
+(one transaction when both tables share a connection; the order is retry-safe, so a failed run can simply be run
+again); erased codes stay taken until the quarantine ends. Queued Messenger clicks that arrive later are dropped by
+the recorder, and the erasure deletes clicks a second time at its end. The eraser dispatches no `ShortLinkDeletedEvent`.

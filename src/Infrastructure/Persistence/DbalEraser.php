@@ -55,15 +55,14 @@ final readonly class DbalEraser implements ShortLinkEraserInterface
             $now   = $this->now();
             $links = $this->tables->linkConnection();
             $links->executeStatement(sprintf('UPDATE %s SET deleted_at = ? WHERE tenant_key = ? AND deleted_at IS NULL', $this->tables->links), [$now, $tenant->value]);
-            $count = (int) $links->executeStatement(
+            $count = $this->deleteTenantClicks($tenant);
+            $count += (int) $links->executeStatement(
                 sprintf('UPDATE %s SET tenant_key = ?, %s WHERE tenant_key = ?', $this->tables->links, self::BLANK),
                 [self::ERASED_TENANT, false, $now, $tenant->value],
                 [1 => Types::BOOLEAN],
             );
-            $clicks = $this->tables->clickConnection();
-            $count += (int) $clicks->executeStatement(sprintf('DELETE FROM %s WHERE tenant_key = ?', $this->tables->clicks), [$tenant->value]);
 
-            return $count + (int) $clicks->executeStatement(sprintf('DELETE FROM %s WHERE tenant_key = ?', $this->tables->daily), [$tenant->value]);
+            return $count + $this->deleteTenantClicks($tenant);
         });
     }
 
@@ -86,21 +85,46 @@ final readonly class DbalEraser implements ShortLinkEraserInterface
                 [$now, $tenant->value, $linkIds],
                 [2 => ArrayParameterType::STRING],
             );
-            $count = (int) $links->executeStatement(
+            $count = $this->deleteLinkClicks($tenant, $linkIds);
+            $count += (int) $links->executeStatement(
                 sprintf('UPDATE %s SET %s WHERE tenant_key = ? AND id IN (?)', $this->tables->links, self::BLANK),
                 [false, $now, $tenant->value, $linkIds],
                 [0 => Types::BOOLEAN, 3 => ArrayParameterType::STRING],
             );
-            $clicks = $this->tables->clickConnection();
-            $count += (int) $clicks->executeStatement(sprintf('DELETE FROM %s WHERE tenant_key = ? AND link_id IN (?)', $this->tables->clicks), [$tenant->value, $linkIds], [1 => ArrayParameterType::STRING]);
 
-            return $count + (int) $clicks->executeStatement(sprintf('DELETE FROM %s WHERE tenant_key = ? AND link_id IN (?)', $this->tables->daily), [$tenant->value, $linkIds], [1 => ArrayParameterType::STRING]);
+            return $count + $this->deleteLinkClicks($tenant, $linkIds);
         });
     }
 
     /**
-     * Runs the erasure in one transaction when the link and click tables share a connection; otherwise tombstones come
-     * first, so a click arriving in between is dropped by the recorder (the link is no longer live).
+     * Deletes the click and rollup rows of a tenant.
+     */
+    private function deleteTenantClicks(TenantKey $tenant): int
+    {
+        $clicks = $this->tables->clickConnection();
+        $count  = (int) $clicks->executeStatement(sprintf('DELETE FROM %s WHERE tenant_key = ?', $this->tables->clicks), [$tenant->value]);
+
+        return $count + (int) $clicks->executeStatement(sprintf('DELETE FROM %s WHERE tenant_key = ?', $this->tables->daily), [$tenant->value]);
+    }
+
+    /**
+     * Deletes the click and rollup rows of some links of a tenant.
+     *
+     * @param list<string> $linkIds
+     */
+    private function deleteLinkClicks(TenantKey $tenant, array $linkIds): int
+    {
+        $clicks = $this->tables->clickConnection();
+        $count  = (int) $clicks->executeStatement(sprintf('DELETE FROM %s WHERE tenant_key = ? AND link_id IN (?)', $this->tables->clicks), [$tenant->value, $linkIds], [1 => ArrayParameterType::STRING]);
+
+        return $count + (int) $clicks->executeStatement(sprintf('DELETE FROM %s WHERE tenant_key = ? AND link_id IN (?)', $this->tables->daily), [$tenant->value, $linkIds], [1 => ArrayParameterType::STRING]);
+    }
+
+    /**
+     * Runs the erasure in one transaction when the link and click tables share a connection. The order is the same
+     * either way, so a failed run can simply be retried (audit NY2 N2): mark the links deleted (the source ref is kept,
+     * so a retry still finds them), delete their clicks and rollups, blank the tombstones, then delete clicks once more
+     * (a click recorded between the liveness check and its insert, N3).
      *
      * @param Closure(): int $work
      */
@@ -127,7 +151,7 @@ final readonly class DbalEraser implements ShortLinkEraserInterface
     {
         $links = $this->sourceLinks($tenant, $kind, $sourceRef);
         if ($links === []) {
-            return ['clicks' => [], 'daily' => []];
+            return ['links' => [], 'clicks' => [], 'daily' => []];
         }
         $byId   = array_combine(array_column($links, 'id'), $links);
         $clicks = $this->tables->clickConnection();
@@ -142,7 +166,10 @@ final readonly class DbalEraser implements ShortLinkEraserInterface
             [$tenant->value, array_keys($byId)],
             [1 => ArrayParameterType::STRING],
         );
-        $export = ['clicks' => [], 'daily' => []];
+        $export = ['links' => [], 'clicks' => [], 'daily' => []];
+        foreach ($links as $link) {
+            $export['links'][] = ['code' => $link['code'], 'label' => $link['label'], 'position' => $link['position'], 'target' => $link['target'], 'title' => $link['title'], 'created_at' => $link['created']];
+        }
         foreach (array_filter($raw, $mine) as $row) {
             $link               = $byId[$this->text($row['link_id'])];
             $export['clicks'][] = [
@@ -177,12 +204,12 @@ final readonly class DbalEraser implements ShortLinkEraserInterface
     /**
      * Links of one source, re-checked exactly in PHP.
      *
-     * @return list<array{id: string, code: string, label: string|null, position: int|null}>
+     * @return list<array{id: string, code: string, label: string|null, position: int|null, target: string, title: string|null, created: string}>
      */
     private function sourceLinks(TenantKey $tenant, LinkKind $kind, string $sourceRef): array
     {
         $rows = $this->tables->linkConnection()->fetchAllAssociative(
-            sprintf('SELECT id, tenant_key, code, source_ref, source_label, source_position FROM %s WHERE tenant_key = ? AND kind = ? AND source_ref = ?', $this->tables->links),
+            sprintf('SELECT id, tenant_key, code, target_url, title, created_at, source_ref, source_label, source_position FROM %s WHERE tenant_key = ? AND kind = ? AND source_ref = ?', $this->tables->links),
             [$tenant->value, $kind->value, $sourceRef],
         );
         $links = [];
@@ -193,6 +220,9 @@ final readonly class DbalEraser implements ShortLinkEraserInterface
                     'code'     => $this->text($row['code']),
                     'label'    => $this->nullable($row['source_label']),
                     'position' => $row['source_position'] === null ? null : (int) $this->text($row['source_position']),
+                    'target'   => $this->text($row['target_url']),
+                    'title'    => $this->nullable($row['title']),
+                    'created'  => substr($this->text($row['created_at']), 0, 19),
                 ];
             }
         }

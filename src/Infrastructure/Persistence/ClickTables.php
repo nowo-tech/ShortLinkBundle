@@ -52,7 +52,7 @@ final readonly class ClickTables
      */
     public function sharesConnection(): bool
     {
-        return $this->connection === null;
+        return $this->connection === null || $this->clickConnection() === $this->linkConnection();
     }
 
     /**
