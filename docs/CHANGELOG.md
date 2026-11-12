@@ -43,6 +43,11 @@ S4: the management UI (target 0.2.0).
 - Contract §10: rollups are kept while the link exists and deleted with it when its tombstone is purged after
   `code.quarantine`.
 
+### Fixed
+
+- The list search (code, title, target host) is case-insensitive on every database (it was case-sensitive on
+  PostgreSQL, and for codes on MySQL / MariaDB).
+
 ### Security
 
 - CSV cells starting with `=`, `+`, `-`, `@`, a tab or a carriage return are prefixed with `'`; target URLs are printed

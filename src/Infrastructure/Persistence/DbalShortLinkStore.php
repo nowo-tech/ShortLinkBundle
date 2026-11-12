@@ -45,6 +45,7 @@ use function is_int;
 use function is_object;
 use function is_scalar;
 use function json_decode;
+use function mb_strtolower;
 use function sprintf;
 use function str_replace;
 
@@ -293,8 +294,9 @@ final readonly class DbalShortLinkStore implements ShortLinkStoreInterface
                 break;
         }
         if ($query->search !== null) {
-            $like    = '%' . str_replace(['!', '%', '_'], ['!!', '!%', '!_'], $query->search) . '%';
-            $where[] = "(code LIKE ? ESCAPE '!' OR title LIKE ? ESCAPE '!' OR target_host LIKE ? ESCAPE '!')";
+            // Case-insensitive on every platform (PostgreSQL LIKE and MySQL binary collations are case-sensitive).
+            $like    = '%' . str_replace(['!', '%', '_'], ['!!', '!%', '!_'], mb_strtolower($query->search)) . '%';
+            $where[] = "(LOWER(code) LIKE ? ESCAPE '!' OR LOWER(title) LIKE ? ESCAPE '!' OR target_host LIKE ? ESCAPE '!')";
             $params  = [...$params, $like, $like, $like];
         }
         if ($query->after instanceof ShortLinkId) {
