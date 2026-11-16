@@ -7,6 +7,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Documentation
+
+- Spec Kit baseline (REQ-SPECKIT-003): `specs/001-baseline` maps the S4 management UI (controller, route loader, views, view models, CSV, FormKit Types), the custom-code limiter, the quota display and `BinaryCollation` (145/145 units; US-08, FR-CODE-003, FR-QUOTA-002, FR-UI-001/002).
+
 ## [0.2.0] - 2026-11-12
 
 S4: the management UI (target 0.2.0).

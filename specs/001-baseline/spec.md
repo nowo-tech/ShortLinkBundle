@@ -84,6 +84,16 @@ registers no service, route, listener or table, whatever the configuration says;
 - **Given** a target that now resolves to a private address, **when** the recheck runs, **then** the link is disabled
   with `recheck_refused` and events.
 
+### US-08 — Manage links in the UI (S4)
+
+- **Given** a tenant resolved by the tenant-context port, **when** a manager opens the list, **then** the UiKit list page
+  shows the links with their people / machine clicks of the last 30 days, the `q` / `state` filters and a keyset `after`
+  cursor; without a tenant the page is a 404 and without the view role a 403.
+- **Given** the create form, **when** a custom code is tried too often, **then** the lookups stop until the window ends
+  (`CodeAttemptsExceededException`) and the message names no code; over the plan limit the form shows the quota instead.
+- **Given** a link, **when** the statistics page is opened for a range of at most 366 UTC days, **then** it shows the
+  server-side SVG daily chart and the breakdowns, and the CSV export has the same numbers.
+
 ## Functional requirements
 
 | ID | Requirement |
@@ -113,6 +123,10 @@ registers no service, route, listener or table, whatever the configuration says;
 | FR-STATS-001 | Stats reader (daily, breakdown, totals, bySource) exact across the rollup / raw boundary, tenant-filtered. |
 | FR-RETENTION-001 | Rollup (idempotent, lag days, top N), purge (rolled raw rows, rollups, tombstones), recheck command. |
 | FR-GDPR-001 | Eraser: tenant (`~erased` tombstones), source, actor, export. |
+| FR-CODE-003 | Custom-code lookups limited per tenant + actor (`CustomCodeLimiterInterface`, default `RateLimiterCustomCodeLimiter`, `UnlimitedCustomCodeLimiter` when `code.custom_code_rate_limit.enabled: false`); over the limit `CodeAttemptsExceededException`, no code in the message. |
+| FR-QUOTA-002 | Quota display: `QuotaReader` returns the `QuotaUsage` (live links of a counted kind against the plan limit) for the UI; stateless. |
+| FR-UI-001 | Management UI (S4, contract §11): `ShortLinkUiController` list / create / edit / disable / enable / delete / statistics / CSV behind `UiRouteLoader` (`routes/ui.php`, host prefix); `ShortLinkPages` builds UiKit list / form / show view models (`ShortLinkRow`, `DailyChart` SVG, `StatsCsv`); views `ui/list`, `ui/form`, `ui/stats` extend the UiKit page scaffolds. |
+| FR-UI-002 | UI forms are FormKit Types: `ShortLinkType` (create / edit), `ShortLinkActionType` (CSRF-only row actions, one token id per action), `ShortLinkFilterType` and `StatsRangeType` (GET, bookmarkable keys). |
 | FR-ERROR-001 | Every deliberate exception implements `ShortLinkExceptionInterface`. |
 
 ## Success criteria
