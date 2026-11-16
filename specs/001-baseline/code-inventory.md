@@ -2,9 +2,9 @@
 
 **Baseline spec**: [`spec.md`](spec.md)  
 **Package**: `nowo-tech/short-link-bundle`  
-**Last audited**: 2026-11-12 (S3 + audit NY)
+**Last audited**: 2026-11-16 (S4 management UI, 0.2.0; S3 + audit NY)
 
-Scope: every file under `src/`. Audit command: `find src -type f | wc -l` → **124**.
+Scope: every file under `src/`. Audit command: `find src -type f | wc -l` → **145**.
 
 | Source file | Spec section | Requirement IDs |
 | --- | --- | --- |
@@ -20,10 +20,13 @@ Scope: every file under `src/`. Audit command: `find src -type f | wc -l` → **
 | `src/Application/Default/ConfigReservedCodes.php` | Codes | FR-CODE-001, FR-CODE-002 |
 | `src/Application/Default/NullCountryResolver.php` | Redirect and click log | FR-REDIRECT-001, FR-CLICK-001 |
 | `src/Application/Default/SingleTenantContext.php` | Access and tenancy | FR-ACCESS-001 |
+| `src/Application/Default/UnlimitedCustomCodeLimiter.php` | Custom codes | FR-CODE-003 |
 | `src/Application/Guard/ChainTargetGuard.php` | Target guard | FR-TARGET-001, FR-GUARD-001 |
 | `src/Application/Guard/DenylistGuard.php` | Target guard | FR-TARGET-001, FR-GUARD-001 |
 | `src/Application/Guard/SelfLoopGuard.php` | Target guard | FR-TARGET-001, FR-GUARD-001 |
 | `src/Application/ManagerSettings.php` | Manager | FR-MANAGE-001, FR-BULK-001, FR-ACCESS-001, FR-QUOTA-001 |
+| `src/Application/QuotaReader.php` | Quota | FR-QUOTA-002 |
+| `src/Application/QuotaUsage.php` | Quota | FR-QUOTA-002 |
 | `src/Application/ShortLinkManager.php` | Manager | FR-MANAGE-001, FR-BULK-001, FR-ACCESS-001, FR-QUOTA-001 |
 | `src/Application/ShortUrlBuilderInterface.php` | Short URLs | FR-URL-001 |
 | `src/Application/Store/ActiveBatch.php` | Retention and recheck | FR-RETENTION-001 |
@@ -41,6 +44,7 @@ Scope: every file under `src/`. Audit command: `find src -type f | wc -l` → **
 | `src/Domain/Event/ShortLinkTargetRefusedEvent.php` | Events | FR-EVENT-001 |
 | `src/Domain/Event/ShortLinkUpdatedEvent.php` | Events | FR-EVENT-001 |
 | `src/Domain/Exception/AccessDeniedException.php` | Errors | FR-ERROR-001 |
+| `src/Domain/Exception/CodeAttemptsExceededException.php` | Custom codes | FR-CODE-003, FR-ERROR-001 |
 | `src/Domain/Exception/CodeReservedException.php` | Errors | FR-ERROR-001 |
 | `src/Domain/Exception/CodeTakenException.php` | Errors | FR-ERROR-001 |
 | `src/Domain/Exception/InvalidShortLinkArgumentException.php` | Errors | FR-ERROR-001 |
@@ -82,6 +86,7 @@ Scope: every file under `src/`. Audit command: `find src -type f | wc -l` → **
 | `src/Domain/Model/UserAgentFamily.php` | Redirect and click log | FR-REDIRECT-001, FR-CLICK-001 |
 | `src/Domain/Port/ClickCountryResolverInterface.php` | Redirect and click log | FR-REDIRECT-001, FR-CLICK-001 |
 | `src/Domain/Port/CodeBlocklistInterface.php` | Ports | FR-PORT-001 |
+| `src/Domain/Port/CustomCodeLimiterInterface.php` | Custom codes | FR-CODE-003, FR-PORT-001 |
 | `src/Domain/Port/ReservedCodeProviderInterface.php` | Ports | FR-PORT-001 |
 | `src/Domain/Port/ShortLinkAccessInterface.php` | Ports | FR-PORT-001 |
 | `src/Domain/Port/ShortLinkIdGeneratorInterface.php` | Ports | FR-PORT-001 |
@@ -97,6 +102,7 @@ Scope: every file under `src/`. Audit command: `find src -type f | wc -l` → **
 | `src/Infrastructure/Console/PurgeCommand.php` | Retention and recheck | FR-RETENTION-001 |
 | `src/Infrastructure/Console/RecheckCommand.php` | Retention and recheck | FR-RETENTION-001 |
 | `src/Infrastructure/Console/RollupCommand.php` | Retention and recheck | FR-RETENTION-001 |
+| `src/Infrastructure/Doctrine/BinaryCollation.php` | Persistence | FR-DB-001, FR-DB-002 |
 | `src/Infrastructure/Doctrine/ClickTablesSchemaListener.php` | Statistics | FR-STATS-001 |
 | `src/Infrastructure/Doctrine/Entity/ShortLinkRecord.php` | Persistence | FR-DB-001, FR-DB-002, FR-EVENT-001 |
 | `src/Infrastructure/Doctrine/ShortLinkMetadataListener.php` | Persistence | FR-DB-001, FR-DB-002, FR-EVENT-001 |
@@ -117,13 +123,25 @@ Scope: every file under `src/`. Audit command: `find src -type f | wc -l` → **
 | `src/Infrastructure/Persistence/DbalEraser.php` | GDPR | FR-GDPR-001 |
 | `src/Infrastructure/Persistence/DbalShortLinkStore.php` | Persistence | FR-DB-001, FR-DB-002, FR-EVENT-001 |
 | `src/Infrastructure/Persistence/DbalStatsReader.php` | Statistics | FR-STATS-001 |
+| `src/Infrastructure/RateLimit/RateLimiterCustomCodeLimiter.php` | Custom codes | FR-CODE-003 |
 | `src/Infrastructure/Routing/ShortUrlBuilder.php` | Short URLs | FR-URL-001 |
 | `src/Infrastructure/Security/RoleBasedAccess.php` | Access and tenancy | FR-ACCESS-001 |
 | `src/Infrastructure/Uid/UuidV7IdGenerator.php` | Value objects | FR-VO-001 |
 | `src/NowoShortLinkBundle.php` | Bundle | FR-BUNDLE-001 |
+| `src/Presentation/Controller/ShortLinkUiController.php` | Management UI | FR-UI-001, FR-ACCESS-001 |
+| `src/Presentation/Csv/StatsCsv.php` | Management UI | FR-UI-001, FR-STATS-001 |
+| `src/Presentation/Form/ShortLinkActionType.php` | Management UI | FR-UI-002 |
+| `src/Presentation/Form/ShortLinkFilterType.php` | Management UI | FR-UI-002 |
+| `src/Presentation/Form/ShortLinkType.php` | Management UI | FR-UI-002 |
+| `src/Presentation/Form/StatsRangeType.php` | Management UI | FR-UI-002 |
+| `src/Presentation/Routing/UiRouteLoader.php` | Management UI | FR-UI-001 |
+| `src/Presentation/View/DailyChart.php` | Management UI | FR-UI-001 |
+| `src/Presentation/View/ShortLinkPages.php` | Management UI | FR-UI-001 |
+| `src/Presentation/View/ShortLinkRow.php` | Management UI | FR-UI-001 |
 | `src/Resources/config/doctrine-mapping/README.md` | Persistence | FR-DB-001, FR-DB-002, FR-EVENT-001 |
 | `src/Resources/config/doctrine-mapping/ShortLinkRecord.orm.xml` | Persistence | FR-DB-001, FR-DB-002, FR-EVENT-001 |
 | `src/Resources/config/routes/redirect.php` | Redirect and click log | FR-REDIRECT-001, FR-CLICK-001 |
+| `src/Resources/config/routes/ui.php` | Management UI | FR-UI-001 |
 | `src/Resources/translations/NowoShortLinkBundle.de.yaml` | Translations | FR-I18N-001 |
 | `src/Resources/translations/NowoShortLinkBundle.en.yaml` | Translations | FR-I18N-001 |
 | `src/Resources/translations/NowoShortLinkBundle.es.yaml` | Translations | FR-I18N-001 |
@@ -132,6 +150,9 @@ Scope: every file under `src/`. Audit command: `find src -type f | wc -l` → **
 | `src/Resources/translations/NowoShortLinkBundle.nl.yaml` | Translations | FR-I18N-001 |
 | `src/Resources/translations/NowoShortLinkBundle.pt.yaml` | Translations | FR-I18N-001 |
 | `src/Resources/views/redirect/not_found.html.twig` | Redirect and click log | FR-REDIRECT-001, FR-CLICK-001 |
+| `src/Resources/views/ui/form.html.twig` | Management UI | FR-UI-001, FR-UI-002 |
+| `src/Resources/views/ui/list.html.twig` | Management UI | FR-UI-001 |
+| `src/Resources/views/ui/stats.html.twig` | Management UI | FR-UI-001 |
 
-| Total production sources | 124 |
+| Total production sources | 145 |
 | --- | --- |
