@@ -119,6 +119,7 @@ registers no service, route, listener or table, whatever the configuration says;
 | FR-URL-001 | Absolute short URLs from `public_base_url` (re-checked at runtime) or the router request context. |
 | FR-WIRING-001 | Services wired by the extension; DoctrineBundle required; symfony/lock tenant lock when a lock factory exists. |
 | FR-REDIRECT-001 | Redirect step order §7.1, headers §7.2, neutral 404 / 429, limiters, stateless route, guard without DNS, refusal event. |
+| FR-ROUTE-001 | Routes are `#[Route]` attributes on `RedirectController` and `ShortLinkUiController` (REQ-SF-004), read by the `nowo_short_link_redirect` (`routes/redirect.php`) and `nowo_short_link_ui` (`routes/ui.php`) loaders through the internal `ControllerAttributeRouteLoader`; the UI loader prepends `ui.path_prefix` and honours `ui.enabled`; the collection equals the 0.2 fixture; the controllers are not autoconfigured (rule 7). |
 | FR-CLICK-001 | Click payload without I/O, three write modes, store flags, GPC, country port after the response, failures contained, `ShortLinkClickedEvent`. |
 | FR-STATS-001 | Stats reader (daily, breakdown, totals, bySource) exact across the rollup / raw boundary, tenant-filtered. |
 | FR-RETENTION-001 | Rollup (idempotent, lag days, top N), purge (rolled raw rows, rollups, tombstones), recheck command. |

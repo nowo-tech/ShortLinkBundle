@@ -9,6 +9,22 @@
 
 ## Unreleased
 
+**Attribute routes (REQ-SF-004), no action needed.** The routes moved to `#[Route]` attributes on
+`RedirectController` and `ShortLinkUiController`. Keep both imports exactly as they are:
+
+```yaml
+nowo_short_link_redirect:
+    resource: '@NowoShortLinkBundle/Resources/config/routes/redirect.php'
+nowo_short_link_ui:
+    resource: '@NowoShortLinkBundle/Resources/config/routes/ui.php'
+    prefix: /organizations/{uuid}   # optional, unchanged
+```
+
+`redirect.php` now imports the `nowo_short_link_redirect` route loader instead of declaring the route itself; the
+route (name, path, methods, requirements, `_stateless`) is the same. `redirect.path_prefix`, `ui.path_prefix` and
+`ui.enabled` apply as before. Do not replace the imports with `type: attribute` on the bundle controllers (or rely on
+`routing.controllers`): that skips `ui.path_prefix` and `ui.enabled`.
+
 ## To 0.2.0
 
 From **0.1.0**:

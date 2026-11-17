@@ -38,6 +38,7 @@ use Nowo\ShortLinkBundle\Presentation\Form\ShortLinkActionType;
 use Nowo\ShortLinkBundle\Presentation\Form\ShortLinkFilterType;
 use Nowo\ShortLinkBundle\Presentation\Form\ShortLinkType;
 use Nowo\ShortLinkBundle\Presentation\Form\StatsRangeType;
+use Nowo\ShortLinkBundle\Presentation\Routing\UiRouteLoader;
 use Nowo\ShortLinkBundle\Presentation\View\DailyChart;
 use Nowo\ShortLinkBundle\Presentation\View\ShortLinkPages;
 use Psr\Clock\ClockInterface;
@@ -52,6 +53,7 @@ use Symfony\Component\HttpFoundation\Session\FlashBagAwareSessionInterface;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 use Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
+use Symfony\Component\Routing\Attribute\Route;
 use Symfony\Component\Routing\Generator\UrlGeneratorInterface;
 use Symfony\Component\Security\Core\Exception\AccessDeniedException as SecurityAccessDenied;
 use Symfony\Contracts\Translation\TranslatorInterface;
@@ -119,6 +121,7 @@ final readonly class ShortLinkUiController
     /**
      * List of the tenant's links: filters (search, state), keyset pages of `ui.page_size`, clicks of the last 30 days.
      */
+    #[Route('/', name: 'nowo_short_link_index', methods: ['GET'])]
     public function index(Request $request): Response
     {
         $tenant  = $this->tenant(ShortLinkPermission::View);
@@ -159,6 +162,7 @@ final readonly class ShortLinkUiController
      * Create form (target, optional custom code, title, expiry). Over the plan limit the form is replaced by the
      * quota message.
      */
+    #[Route('/new', name: 'nowo_short_link_new', methods: ['GET', 'POST'])]
     public function create(Request $request): Response
     {
         $tenant = $this->tenant(ShortLinkPermission::Manage);
@@ -203,6 +207,7 @@ final readonly class ShortLinkUiController
     /**
      * Edit form (target, title, expiry; the code is immutable).
      */
+    #[Route('/{id}/edit', name: 'nowo_short_link_edit', requirements: ['id' => UiRouteLoader::ID_REQUIREMENT], methods: ['GET', 'POST'])]
     public function edit(Request $request, string $id): Response
     {
         $tenant = $this->tenant(ShortLinkPermission::Manage);
@@ -240,6 +245,7 @@ final readonly class ShortLinkUiController
     /**
      * Disables a link (POST + CSRF).
      */
+    #[Route('/{id}/disable', name: 'nowo_short_link_disable', requirements: ['id' => UiRouteLoader::ID_REQUIREMENT], methods: ['POST'])]
     public function disable(Request $request, string $id): RedirectResponse
     {
         return $this->change($request, $id, 'disable');
@@ -248,6 +254,7 @@ final readonly class ShortLinkUiController
     /**
      * Enables a link again (POST + CSRF); the save guard runs again on its target.
      */
+    #[Route('/{id}/enable', name: 'nowo_short_link_enable', requirements: ['id' => UiRouteLoader::ID_REQUIREMENT], methods: ['POST'])]
     public function enable(Request $request, string $id): RedirectResponse
     {
         return $this->change($request, $id, 'enable');
@@ -256,6 +263,7 @@ final readonly class ShortLinkUiController
     /**
      * Deletes a link (POST + CSRF): a tombstone, its code stays taken for `code.quarantine`.
      */
+    #[Route('/{id}/delete', name: 'nowo_short_link_delete', requirements: ['id' => UiRouteLoader::ID_REQUIREMENT], methods: ['POST'])]
     public function delete(Request $request, string $id): RedirectResponse
     {
         return $this->change($request, $id, 'delete');
@@ -264,6 +272,7 @@ final readonly class ShortLinkUiController
     /**
      * Statistics of one link: totals, daily chart + table, top referrer hosts, countries and browser families.
      */
+    #[Route('/{id}/stats', name: 'nowo_short_link_stats', requirements: ['id' => UiRouteLoader::ID_REQUIREMENT], methods: ['GET'])]
     public function stats(Request $request, string $id): Response
     {
         $tenant = $this->tenant(ShortLinkPermission::View);
@@ -303,6 +312,7 @@ final readonly class ShortLinkUiController
      * CSV export of the statistics (`?from=&to=`, at most `ui.csv_max_days` days: a longer range keeps its last days;
      * `?dimension=daily|referrer|country|ua` for one section; `?excel=1` for a UTF-8 BOM). Formula-injection safe.
      */
+    #[Route('/{id}/stats.csv', name: 'nowo_short_link_stats_csv', requirements: ['id' => UiRouteLoader::ID_REQUIREMENT], methods: ['GET'])]
     public function statsCsv(Request $request, string $id): StreamedResponse
     {
         $tenant    = $this->tenant(ShortLinkPermission::View);

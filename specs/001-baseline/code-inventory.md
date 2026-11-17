@@ -4,7 +4,7 @@
 **Package**: `nowo-tech/short-link-bundle`  
 **Last audited**: 2026-11-16 (S4 management UI, 0.2.0; S3 + audit NY)
 
-Scope: every file under `src/`. Audit command: `find src -type f | wc -l` → **145**.
+Scope: every file under `src/`. Audit command: `find src -type f | wc -l` → **147**.
 
 | Source file | Spec section | Requirement IDs |
 | --- | --- | --- |
@@ -124,6 +124,8 @@ Scope: every file under `src/`. Audit command: `find src -type f | wc -l` → **
 | `src/Infrastructure/Persistence/DbalShortLinkStore.php` | Persistence | FR-DB-001, FR-DB-002, FR-EVENT-001 |
 | `src/Infrastructure/Persistence/DbalStatsReader.php` | Statistics | FR-STATS-001 |
 | `src/Infrastructure/RateLimit/RateLimiterCustomCodeLimiter.php` | Custom codes | FR-CODE-003 |
+| `src/Infrastructure/Routing/ControllerAttributeRouteLoader.php` | Routes (REQ-SF-004) | FR-ROUTE-001 |
+| `src/Infrastructure/Routing/RedirectRouteLoader.php` | Redirect and click log | FR-REDIRECT-001, FR-ROUTE-001 |
 | `src/Infrastructure/Routing/ShortUrlBuilder.php` | Short URLs | FR-URL-001 |
 | `src/Infrastructure/Security/RoleBasedAccess.php` | Access and tenancy | FR-ACCESS-001 |
 | `src/Infrastructure/Uid/UuidV7IdGenerator.php` | Value objects | FR-VO-001 |
@@ -154,5 +156,5 @@ Scope: every file under `src/`. Audit command: `find src -type f | wc -l` → **
 | `src/Resources/views/ui/list.html.twig` | Management UI | FR-UI-001 |
 | `src/Resources/views/ui/stats.html.twig` | Management UI | FR-UI-001 |
 
-| Total production sources | 145 |
+| Total production sources | 147 |
 | --- | --- |
