@@ -34,6 +34,15 @@ route (name, path, methods, requirements, `_stateless`) is the same. `redirect.p
 `ui.enabled` apply as before. Do not replace the imports with `type: attribute` on the bundle controllers (or rely on
 `routing.controllers`): that skips `ui.path_prefix` and `ui.enabled`.
 
+**Twig namespace (REQ-TWIG-001/002).** The bundle's own templates and the `not_found_template` default now render through
+the `@NowoShortLinkBundle` namespace. The legacy `@NowoShortLink` namespace is still registered, so templates that
+include it keep working, but a `twig.paths` entry that maps a directory onto the legacy `NowoShortLink` namespace no
+longer reaches bundle renders: the bundle no longer asks for that namespace. Override templates through the bundle
+namespace instead: put the file in `templates/bundles/NowoShortLinkBundle/<same path>` (for example
+`templates/bundles/NowoShortLinkBundle/redirect/not_found.html.twig`); it wins for both `@NowoShortLinkBundle/...` and
+`@NowoShortLink/...`. To extend the bundle's own template from an override, use `{% extends '@!NowoShortLinkBundle/ui/list.html.twig' %}`.
+Move any directory you registered under `twig.paths` for the legacy namespace to `templates/bundles/NowoShortLinkBundle/`.
+
 ## To 0.2.0
 
 From **0.1.0**:

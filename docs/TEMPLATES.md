@@ -40,6 +40,8 @@ fallback (contract §11, Q-O5). It moves to UiKit's chart component once UiKit s
 A host template that extends `@!NowoShortLinkBundle/ui/<page>.html.twig` and overrides one of the data blocks above. Restyle
 through `nowo_ui_kit.theme` (slots), never in a bundle template override.
 
+To replace a whole template, put the file in `templates/bundles/NowoShortLinkBundle/<same path>`. A `twig.paths` entry for the legacy `NowoShortLink` namespace is not used by bundle renders since 0.3.0 (see UPGRADING).
+
 ## Allowed exceptions
 
 - (none) — `allowedClasses()` is not overridden in the contract test.
