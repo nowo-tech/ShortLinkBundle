@@ -161,7 +161,7 @@ Answers: 302 (or 307) to the stored target; one neutral 404 for every other case
 refused target, malformed code); 429 with `Retry-After` over the per-IP miss limit (and over the hit limit with
 `over_limit_hits: block`). Every answer sends `Cache-Control: no-store, private`, `Referrer-Policy: no-referrer`,
 `X-Robots-Tag: noindex, nofollow` and `X-Content-Type-Options: nosniff`. Override the page with
-`@NowoShortLink/redirect/not_found.html.twig` (or `redirect.not_found_template`); it receives `status` (404 or 429).
+`@NowoShortLinkBundle/redirect/not_found.html.twig` (or `redirect.not_found_template`); it receives `status` (404 or 429).
 
 The limiters key on `Request::getClientIp()`: an IPv4 address (IPv4-mapped and 6to4 addresses fold to it) or the IPv6
 network of `redirect.rate_limit.ipv6_prefix` bits (default /64, since one subscriber usually owns a whole /64).

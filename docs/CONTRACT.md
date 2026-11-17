@@ -250,7 +250,7 @@ nowo_short_link:
     redirect:
         path_prefix: /s
         status: 302                  # 302 | 307; 301/308 refused (browsers cache them forever)
-        not_found_template: '@NowoShortLink/redirect/not_found.html.twig'
+        not_found_template: '@NowoShortLinkBundle/redirect/not_found.html.twig'
         rate_limit:
             enabled: true
             cache_pool: cache.app    # host should give a fast shared pool (Redis / APCu), see Q-B5

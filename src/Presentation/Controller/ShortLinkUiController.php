@@ -151,7 +151,7 @@ final readonly class ShortLinkUiController
         }
         $pages = $this->pages($request);
 
-        return $this->render('@NowoShortLink/ui/list.html.twig', [
+        return $this->render('@NowoShortLinkBundle/ui/list.html.twig', [
             'page'       => $pages->list($page->items, $totals, $filters->createView(), $keep !== [], $this->canManage($tenant) ? $this->actionForms() : null),
             'next_href'  => $page->next instanceof ShortLinkId ? $this->url($request, 'nowo_short_link_index', $keep + ['after' => $page->next->value]) : null,
             'first_href' => $after instanceof ShortLinkId ? $this->url($request, 'nowo_short_link_index', $keep) : null,
@@ -170,7 +170,7 @@ final readonly class ShortLinkUiController
         $quota  = $this->quota->usage($tenant, $kind);
         $pages  = $this->pages($request);
         if ($quota instanceof QuotaUsage && $quota->isFull()) {
-            return $this->render('@NowoShortLink/ui/form.html.twig', ['page' => $pages->form(null, null, $quota), 'quota' => $quota]);
+            return $this->render('@NowoShortLinkBundle/ui/form.html.twig', ['page' => $pages->form(null, null, $quota), 'quota' => $quota]);
         }
         $form = $this->forms->create(ShortLinkType::class, null, ['custom_code' => $this->customCodes]);
         $form->handleRequest($request);
@@ -201,7 +201,7 @@ final readonly class ShortLinkUiController
             }
         }
 
-        return $this->render('@NowoShortLink/ui/form.html.twig', ['page' => $pages->form($form->createView(), null, $quota), 'quota' => $quota], $form->isSubmitted() ? Response::HTTP_UNPROCESSABLE_ENTITY : Response::HTTP_OK);
+        return $this->render('@NowoShortLinkBundle/ui/form.html.twig', ['page' => $pages->form($form->createView(), null, $quota), 'quota' => $quota], $form->isSubmitted() ? Response::HTTP_UNPROCESSABLE_ENTITY : Response::HTTP_OK);
     }
 
     /**
@@ -239,7 +239,7 @@ final readonly class ShortLinkUiController
             }
         }
 
-        return $this->render('@NowoShortLink/ui/form.html.twig', ['page' => $this->pages($request)->form($form->createView(), $link, null), 'quota' => null], $form->isSubmitted() ? Response::HTTP_UNPROCESSABLE_ENTITY : Response::HTTP_OK);
+        return $this->render('@NowoShortLinkBundle/ui/form.html.twig', ['page' => $this->pages($request)->form($form->createView(), $link, null), 'quota' => null], $form->isSubmitted() ? Response::HTTP_UNPROCESSABLE_ENTITY : Response::HTTP_OK);
     }
 
     /**
@@ -297,7 +297,7 @@ final readonly class ShortLinkUiController
             ];
         }
 
-        return $this->render('@NowoShortLink/ui/stats.html.twig', [
+        return $this->render('@NowoShortLinkBundle/ui/stats.html.twig', [
             'page'        => $pages->stats($link, $range, $daily, $this->canManage($tenant), $this->url($request, 'nowo_short_link_stats_csv', $query)),
             'link'        => $link,
             'range_form'  => $form->createView(),

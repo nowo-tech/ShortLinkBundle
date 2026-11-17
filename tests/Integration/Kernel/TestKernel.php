@@ -40,6 +40,7 @@ final class TestKernel extends Kernel
      * @param (Closure(ContainerConfigurator, string): void)|null $configure host configuration (Doctrine, security, services)
      * @param bool $routingControllersOnly REQ-SF-004 rule 7: the routing is only Symfony's default `routing.controllers`
      *                                     import (no bundle route import)
+     * @param string|null $projectDir host project directory (templates/bundles overrides); null = the bundle checkout
      */
     public function __construct(
         private readonly string $id,
@@ -49,6 +50,7 @@ final class TestKernel extends Kernel
         private readonly bool $security = false,
         private readonly bool $ui = false,
         private readonly bool $routingControllersOnly = false,
+        private readonly ?string $projectDir = null,
     ) {
         parent::__construct('test', false);
     }
@@ -85,7 +87,7 @@ final class TestKernel extends Kernel
 
     public function getProjectDir(): string
     {
-        return dirname(__DIR__, 3);
+        return $this->projectDir ?? dirname(__DIR__, 3);
     }
 
     public function getCacheDir(): string

@@ -21,7 +21,7 @@ final class ConfigurationTest extends TestCase
         self::assertSame([
             'path_prefix'        => '/s',
             'status'             => 302,
-            'not_found_template' => '@NowoShortLink/redirect/not_found.html.twig',
+            'not_found_template' => '@NowoShortLinkBundle/redirect/not_found.html.twig',
             'rate_limit'         => [
                 'enabled'         => true,
                 'cache_pool'      => 'cache.app',
