@@ -49,15 +49,15 @@ final class RouteCollectionFixtureTest extends KernelTestCase
     #[DataProvider('scenarios')]
     public function testRouteCollectionMatchesTheFixture(string $scenario): void
     {
-        $actual = self::export($this->routes($scenario));
+        $actual = $this->export($this->routes($scenario));
 
         if (getenv('SHORT_LINK_ROUTE_FIXTURE_WRITE') === '1') {
-            $all            = self::fixture();
+            $all            = $this->fixture();
             $all[$scenario] = $actual;
             file_put_contents(self::FIXTURE, json_encode($all, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR) . "\n");
         }
 
-        $expected = self::fixture()[$scenario] ?? null;
+        $expected = $this->fixture()[$scenario] ?? null;
         self::assertIsArray($expected, 'No fixture for scenario ' . $scenario);
         self::assertSame($expected, $actual);
     }
@@ -65,9 +65,9 @@ final class RouteCollectionFixtureTest extends KernelTestCase
     private function routes(string $scenario): RouteCollection
     {
         $kernel = match ($scenario) {
-            'zero_config' => $this->bootKernel(),
-            'standard_ui' => $this->bootKernel(Host::standard()->bundleConfig(['ui' => ['enabled' => true]]), null, Host::standard()->configure(), true, true),
-            'ddd_ui'      => $this->bootKernel(Host::ddd()->bundleConfig(['ui' => ['enabled' => true]]), null, Host::ddd()->configure(), false, true),
+            'zero_config'     => $this->bootKernel(),
+            'standard_ui'     => $this->bootKernel(Host::standard()->bundleConfig(['ui' => ['enabled' => true]]), null, Host::standard()->configure(), true, true),
+            'ddd_ui'          => $this->bootKernel(Host::ddd()->bundleConfig(['ui' => ['enabled' => true]]), null, Host::ddd()->configure(), false, true),
             'custom_prefixes' => $this->bootKernel(Host::standard()->bundleConfig([
                 'redirect' => ['path_prefix' => '/go'],
                 'ui'       => ['enabled' => true, 'path_prefix' => '/manage/links', 'tenant_route_parameter' => 'workspace'],
@@ -87,7 +87,7 @@ final class RouteCollectionFixtureTest extends KernelTestCase
      *
      * @return array{routes: list<array<string, mixed>>, aliases: array<string, string>}
      */
-    private static function export(RouteCollection $collection): array
+    private function export(RouteCollection $collection): array
     {
         $routes = [];
         foreach ($collection->all() as $name => $route) {
@@ -121,12 +121,13 @@ final class RouteCollectionFixtureTest extends KernelTestCase
     /**
      * @return array<string, mixed>
      */
-    private static function fixture(): array
+    private function fixture(): array
     {
         $json = @file_get_contents(self::FIXTURE);
         if (!is_string($json)) {
             return [];
         }
+        /** @var array<string, mixed>|null $data */
         $data = json_decode($json, true, 512, JSON_THROW_ON_ERROR);
 
         return is_array($data) ? $data : [];

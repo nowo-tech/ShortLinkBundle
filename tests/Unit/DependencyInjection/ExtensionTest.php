@@ -15,7 +15,11 @@ use Nowo\ShortLinkBundle\Domain\Port\TargetDenylistInterface;
 use Nowo\ShortLinkBundle\Domain\Port\TargetGuardInterface;
 use Nowo\ShortLinkBundle\Domain\Service\ShortLinkManagerInterface;
 use Nowo\ShortLinkBundle\Infrastructure\Doctrine\ClickTablesSchemaListener;
+use Nowo\ShortLinkBundle\Infrastructure\Http\RedirectController;
 use Nowo\ShortLinkBundle\Infrastructure\Messenger\RecordShortLinkClickHandler;
+use Nowo\ShortLinkBundle\Infrastructure\Routing\RedirectRouteLoader;
+use Nowo\ShortLinkBundle\Presentation\Controller\ShortLinkUiController;
+use Nowo\ShortLinkBundle\Presentation\Routing\UiRouteLoader;
 use PHPUnit\Framework\TestCase;
 use stdClass;
 use Symfony\Component\DependencyInjection\ContainerBuilder;
@@ -61,6 +65,26 @@ final class ExtensionTest extends TestCase
         self::assertFalse($container->hasDefinition(ClickTablesSchemaListener::class), 'a separate click connection: the host creates those tables');
         self::assertFalse($this->bridge($container)->getArgument(1), 'basic guard never resolves DNS');
         self::assertNull($container->getDefinition(CodeGenerator::class)->getArgument(1));
+    }
+
+    /**
+     * REQ-SF-004: both route loaders are tagged routing.loader, and the controllers (they carry #[Route]) are not
+     * autoconfigured (rule 7) but tagged controller.service_arguments explicitly.
+     */
+    public function testRouteLoadersAreRegisteredAndTheControllersAreNotAutoconfigured(): void
+    {
+        $container = new ContainerBuilder();
+        (new NowoShortLinkExtension())->load([['ui' => ['enabled' => true]]], $container);
+
+        foreach ([RedirectRouteLoader::class, UiRouteLoader::class] as $loader) {
+            self::assertTrue($container->getDefinition($loader)->hasTag('routing.loader'), $loader);
+            self::assertContains('%kernel.environment%', $container->getDefinition($loader)->getArguments(), $loader);
+        }
+        foreach ([RedirectController::class, ShortLinkUiController::class] as $controller) {
+            $definition = $container->getDefinition($controller);
+            self::assertFalse($definition->isAutoconfigured(), $controller);
+            self::assertTrue($definition->hasTag('controller.service_arguments'), $controller);
+        }
     }
 
     public function testATenantContextNeedsATenantAwareAccessPort(): void

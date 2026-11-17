@@ -13,13 +13,11 @@ declare(strict_types=1);
  * answer 405 with `Allow: GET, HEAD`).
  */
 
-use Nowo\ShortLinkBundle\Infrastructure\Http\RedirectController;
+use Nowo\ShortLinkBundle\Infrastructure\Routing\RedirectRouteLoader;
 use Symfony\Component\Routing\Loader\Configurator\RoutingConfigurator;
 
+// Since 0.3 (REQ-SF-004) the route is the #[Route] attribute of Infrastructure\Http\RedirectController, read by the
+// `nowo_short_link_redirect` loader; this file stays the documented import (same name, path, methods, requirements).
 return static function (RoutingConfigurator $routes): void {
-    $routes->add('nowo_short_link_redirect', '%nowo_short_link.redirect_path_prefix%/{code}')
-        ->controller(RedirectController::class)
-        ->methods(['GET', 'HEAD'])
-        ->requirements(['code' => '[^/]+'])
-        ->stateless(true);
+    $routes->import('.', RedirectRouteLoader::TYPE);
 };

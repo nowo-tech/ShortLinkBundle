@@ -38,6 +38,8 @@ final class TestKernel extends Kernel
      * @param array<string, mixed> $bundleConfig `nowo_short_link` configuration
      * @param string|null $databaseUrl DBAL URL; null = a SQLite file
      * @param (Closure(ContainerConfigurator, string): void)|null $configure host configuration (Doctrine, security, services)
+     * @param bool $routingControllersOnly REQ-SF-004 rule 7: the routing is only Symfony's default `routing.controllers`
+     *                                     import (no bundle route import)
      */
     public function __construct(
         private readonly string $id,
@@ -46,6 +48,7 @@ final class TestKernel extends Kernel
         private readonly ?Closure $configure = null,
         private readonly bool $security = false,
         private readonly bool $ui = false,
+        private readonly bool $routingControllersOnly = false,
     ) {
         parent::__construct('test', false);
     }
@@ -138,6 +141,11 @@ final class TestKernel extends Kernel
 
     protected function configureRoutes(RoutingConfigurator $routes): void
     {
+        if ($this->routingControllersOnly) {
+            $routes->import('routing.controllers');
+
+            return;
+        }
         $routes->add('echo', '/echo')->controller(EchoController::class)->methods(['GET']);
         $routes->import(dirname(__DIR__, 3) . '/src/Resources/config/routes/redirect.php');
         $routes->import(dirname(__DIR__, 3) . '/src/Resources/config/routes/ui.php')->prefix('/t/{workspace}');

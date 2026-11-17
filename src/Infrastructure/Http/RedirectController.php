@@ -23,6 +23,7 @@ use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\Messenger\MessageBusInterface;
 use Symfony\Component\RateLimiter\RateLimit;
 use Symfony\Component\RateLimiter\RateLimiterFactoryInterface;
+use Symfony\Component\Routing\Attribute\Route;
 use Throwable;
 use Twig\Environment;
 
@@ -81,6 +82,7 @@ final readonly class RedirectController
     /**
      * Answers one short code.
      */
+    #[Route('%nowo_short_link.redirect_path_prefix%/{code}', name: 'nowo_short_link_redirect', requirements: ['code' => '[^/]+'], methods: ['GET', 'HEAD'], stateless: true)]
     public function __invoke(Request $request, string $code): Response
     {
         $ipKey = $this->limiterKey($request->getClientIp());
