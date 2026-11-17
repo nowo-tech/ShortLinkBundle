@@ -7,6 +7,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Documentation
+
+- UPGRADING (0.3.0): `twig.paths` overrides of the legacy `@NowoShortLink` namespace no longer reach bundle renders; override through `templates/bundles/NowoShortLinkBundle/` (audit SD follow-up). No code change.
+
 ## [0.3.0] - 2026-11-17
 
 ### Changed
