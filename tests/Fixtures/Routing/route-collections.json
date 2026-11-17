@@ -1,0 +1,611 @@
+{
+    "custom_prefixes": {
+        "routes": [
+            {
+                "name": "nowo_short_link_redirect",
+                "path": "/go/{code}",
+                "host": "",
+                "schemes": [],
+                "methods": [
+                    "GET",
+                    "HEAD"
+                ],
+                "defaults": {
+                    "_controller": "Nowo\\ShortLinkBundle\\Infrastructure\\Http\\RedirectController",
+                    "_stateless": true
+                },
+                "requirements": {
+                    "code": "[^/]+"
+                },
+                "options": {
+                    "compiler_class": "Symfony\\Component\\Routing\\RouteCompiler",
+                    "utf8": true
+                },
+                "condition": ""
+            },
+            {
+                "name": "nowo_short_link_index",
+                "path": "/t/{workspace}/manage/links",
+                "host": "",
+                "schemes": [],
+                "methods": [
+                    "GET"
+                ],
+                "defaults": {
+                    "_controller": "Nowo\\ShortLinkBundle\\Presentation\\Controller\\ShortLinkUiController::index"
+                },
+                "requirements": [],
+                "options": {
+                    "compiler_class": "Symfony\\Component\\Routing\\RouteCompiler",
+                    "utf8": true
+                },
+                "condition": ""
+            },
+            {
+                "name": "nowo_short_link_new",
+                "path": "/t/{workspace}/manage/links/new",
+                "host": "",
+                "schemes": [],
+                "methods": [
+                    "GET",
+                    "POST"
+                ],
+                "defaults": {
+                    "_controller": "Nowo\\ShortLinkBundle\\Presentation\\Controller\\ShortLinkUiController::create"
+                },
+                "requirements": [],
+                "options": {
+                    "compiler_class": "Symfony\\Component\\Routing\\RouteCompiler",
+                    "utf8": true
+                },
+                "condition": ""
+            },
+            {
+                "name": "nowo_short_link_edit",
+                "path": "/t/{workspace}/manage/links/{id}/edit",
+                "host": "",
+                "schemes": [],
+                "methods": [
+                    "GET",
+                    "POST"
+                ],
+                "defaults": {
+                    "_controller": "Nowo\\ShortLinkBundle\\Presentation\\Controller\\ShortLinkUiController::edit"
+                },
+                "requirements": {
+                    "id": "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+                },
+                "options": {
+                    "compiler_class": "Symfony\\Component\\Routing\\RouteCompiler",
+                    "utf8": true
+                },
+                "condition": ""
+            },
+            {
+                "name": "nowo_short_link_disable",
+                "path": "/t/{workspace}/manage/links/{id}/disable",
+                "host": "",
+                "schemes": [],
+                "methods": [
+                    "POST"
+                ],
+                "defaults": {
+                    "_controller": "Nowo\\ShortLinkBundle\\Presentation\\Controller\\ShortLinkUiController::disable"
+                },
+                "requirements": {
+                    "id": "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+                },
+                "options": {
+                    "compiler_class": "Symfony\\Component\\Routing\\RouteCompiler",
+                    "utf8": true
+                },
+                "condition": ""
+            },
+            {
+                "name": "nowo_short_link_enable",
+                "path": "/t/{workspace}/manage/links/{id}/enable",
+                "host": "",
+                "schemes": [],
+                "methods": [
+                    "POST"
+                ],
+                "defaults": {
+                    "_controller": "Nowo\\ShortLinkBundle\\Presentation\\Controller\\ShortLinkUiController::enable"
+                },
+                "requirements": {
+                    "id": "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+                },
+                "options": {
+                    "compiler_class": "Symfony\\Component\\Routing\\RouteCompiler",
+                    "utf8": true
+                },
+                "condition": ""
+            },
+            {
+                "name": "nowo_short_link_delete",
+                "path": "/t/{workspace}/manage/links/{id}/delete",
+                "host": "",
+                "schemes": [],
+                "methods": [
+                    "POST"
+                ],
+                "defaults": {
+                    "_controller": "Nowo\\ShortLinkBundle\\Presentation\\Controller\\ShortLinkUiController::delete"
+                },
+                "requirements": {
+                    "id": "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+                },
+                "options": {
+                    "compiler_class": "Symfony\\Component\\Routing\\RouteCompiler",
+                    "utf8": true
+                },
+                "condition": ""
+            },
+            {
+                "name": "nowo_short_link_stats",
+                "path": "/t/{workspace}/manage/links/{id}/stats",
+                "host": "",
+                "schemes": [],
+                "methods": [
+                    "GET"
+                ],
+                "defaults": {
+                    "_controller": "Nowo\\ShortLinkBundle\\Presentation\\Controller\\ShortLinkUiController::stats"
+                },
+                "requirements": {
+                    "id": "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+                },
+                "options": {
+                    "compiler_class": "Symfony\\Component\\Routing\\RouteCompiler",
+                    "utf8": true
+                },
+                "condition": ""
+            },
+            {
+                "name": "nowo_short_link_stats_csv",
+                "path": "/t/{workspace}/manage/links/{id}/stats.csv",
+                "host": "",
+                "schemes": [],
+                "methods": [
+                    "GET"
+                ],
+                "defaults": {
+                    "_controller": "Nowo\\ShortLinkBundle\\Presentation\\Controller\\ShortLinkUiController::statsCsv"
+                },
+                "requirements": {
+                    "id": "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+                },
+                "options": {
+                    "compiler_class": "Symfony\\Component\\Routing\\RouteCompiler",
+                    "utf8": true
+                },
+                "condition": ""
+            }
+        ],
+        "aliases": []
+    },
+    "standard_ui": {
+        "routes": [
+            {
+                "name": "nowo_short_link_redirect",
+                "path": "/s/{code}",
+                "host": "",
+                "schemes": [],
+                "methods": [
+                    "GET",
+                    "HEAD"
+                ],
+                "defaults": {
+                    "_controller": "Nowo\\ShortLinkBundle\\Infrastructure\\Http\\RedirectController",
+                    "_stateless": true
+                },
+                "requirements": {
+                    "code": "[^/]+"
+                },
+                "options": {
+                    "compiler_class": "Symfony\\Component\\Routing\\RouteCompiler",
+                    "utf8": true
+                },
+                "condition": ""
+            },
+            {
+                "name": "nowo_short_link_index",
+                "path": "/t/{workspace}/short-links",
+                "host": "",
+                "schemes": [],
+                "methods": [
+                    "GET"
+                ],
+                "defaults": {
+                    "_controller": "Nowo\\ShortLinkBundle\\Presentation\\Controller\\ShortLinkUiController::index"
+                },
+                "requirements": [],
+                "options": {
+                    "compiler_class": "Symfony\\Component\\Routing\\RouteCompiler",
+                    "utf8": true
+                },
+                "condition": ""
+            },
+            {
+                "name": "nowo_short_link_new",
+                "path": "/t/{workspace}/short-links/new",
+                "host": "",
+                "schemes": [],
+                "methods": [
+                    "GET",
+                    "POST"
+                ],
+                "defaults": {
+                    "_controller": "Nowo\\ShortLinkBundle\\Presentation\\Controller\\ShortLinkUiController::create"
+                },
+                "requirements": [],
+                "options": {
+                    "compiler_class": "Symfony\\Component\\Routing\\RouteCompiler",
+                    "utf8": true
+                },
+                "condition": ""
+            },
+            {
+                "name": "nowo_short_link_edit",
+                "path": "/t/{workspace}/short-links/{id}/edit",
+                "host": "",
+                "schemes": [],
+                "methods": [
+                    "GET",
+                    "POST"
+                ],
+                "defaults": {
+                    "_controller": "Nowo\\ShortLinkBundle\\Presentation\\Controller\\ShortLinkUiController::edit"
+                },
+                "requirements": {
+                    "id": "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+                },
+                "options": {
+                    "compiler_class": "Symfony\\Component\\Routing\\RouteCompiler",
+                    "utf8": true
+                },
+                "condition": ""
+            },
+            {
+                "name": "nowo_short_link_disable",
+                "path": "/t/{workspace}/short-links/{id}/disable",
+                "host": "",
+                "schemes": [],
+                "methods": [
+                    "POST"
+                ],
+                "defaults": {
+                    "_controller": "Nowo\\ShortLinkBundle\\Presentation\\Controller\\ShortLinkUiController::disable"
+                },
+                "requirements": {
+                    "id": "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+                },
+                "options": {
+                    "compiler_class": "Symfony\\Component\\Routing\\RouteCompiler",
+                    "utf8": true
+                },
+                "condition": ""
+            },
+            {
+                "name": "nowo_short_link_enable",
+                "path": "/t/{workspace}/short-links/{id}/enable",
+                "host": "",
+                "schemes": [],
+                "methods": [
+                    "POST"
+                ],
+                "defaults": {
+                    "_controller": "Nowo\\ShortLinkBundle\\Presentation\\Controller\\ShortLinkUiController::enable"
+                },
+                "requirements": {
+                    "id": "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+                },
+                "options": {
+                    "compiler_class": "Symfony\\Component\\Routing\\RouteCompiler",
+                    "utf8": true
+                },
+                "condition": ""
+            },
+            {
+                "name": "nowo_short_link_delete",
+                "path": "/t/{workspace}/short-links/{id}/delete",
+                "host": "",
+                "schemes": [],
+                "methods": [
+                    "POST"
+                ],
+                "defaults": {
+                    "_controller": "Nowo\\ShortLinkBundle\\Presentation\\Controller\\ShortLinkUiController::delete"
+                },
+                "requirements": {
+                    "id": "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+                },
+                "options": {
+                    "compiler_class": "Symfony\\Component\\Routing\\RouteCompiler",
+                    "utf8": true
+                },
+                "condition": ""
+            },
+            {
+                "name": "nowo_short_link_stats",
+                "path": "/t/{workspace}/short-links/{id}/stats",
+                "host": "",
+                "schemes": [],
+                "methods": [
+                    "GET"
+                ],
+                "defaults": {
+                    "_controller": "Nowo\\ShortLinkBundle\\Presentation\\Controller\\ShortLinkUiController::stats"
+                },
+                "requirements": {
+                    "id": "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+                },
+                "options": {
+                    "compiler_class": "Symfony\\Component\\Routing\\RouteCompiler",
+                    "utf8": true
+                },
+                "condition": ""
+            },
+            {
+                "name": "nowo_short_link_stats_csv",
+                "path": "/t/{workspace}/short-links/{id}/stats.csv",
+                "host": "",
+                "schemes": [],
+                "methods": [
+                    "GET"
+                ],
+                "defaults": {
+                    "_controller": "Nowo\\ShortLinkBundle\\Presentation\\Controller\\ShortLinkUiController::statsCsv"
+                },
+                "requirements": {
+                    "id": "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+                },
+                "options": {
+                    "compiler_class": "Symfony\\Component\\Routing\\RouteCompiler",
+                    "utf8": true
+                },
+                "condition": ""
+            }
+        ],
+        "aliases": []
+    },
+    "ui_disabled_custom_prefix": {
+        "routes": [
+            {
+                "name": "nowo_short_link_redirect",
+                "path": "/l/r/{code}",
+                "host": "",
+                "schemes": [],
+                "methods": [
+                    "GET",
+                    "HEAD"
+                ],
+                "defaults": {
+                    "_controller": "Nowo\\ShortLinkBundle\\Infrastructure\\Http\\RedirectController",
+                    "_stateless": true
+                },
+                "requirements": {
+                    "code": "[^/]+"
+                },
+                "options": {
+                    "compiler_class": "Symfony\\Component\\Routing\\RouteCompiler",
+                    "utf8": true
+                },
+                "condition": ""
+            }
+        ],
+        "aliases": []
+    },
+    "ddd_ui": {
+        "routes": [
+            {
+                "name": "nowo_short_link_redirect",
+                "path": "/s/{code}",
+                "host": "",
+                "schemes": [],
+                "methods": [
+                    "GET",
+                    "HEAD"
+                ],
+                "defaults": {
+                    "_controller": "Nowo\\ShortLinkBundle\\Infrastructure\\Http\\RedirectController",
+                    "_stateless": true
+                },
+                "requirements": {
+                    "code": "[^/]+"
+                },
+                "options": {
+                    "compiler_class": "Symfony\\Component\\Routing\\RouteCompiler",
+                    "utf8": true
+                },
+                "condition": ""
+            },
+            {
+                "name": "nowo_short_link_index",
+                "path": "/t/{workspace}/short-links",
+                "host": "",
+                "schemes": [],
+                "methods": [
+                    "GET"
+                ],
+                "defaults": {
+                    "_controller": "Nowo\\ShortLinkBundle\\Presentation\\Controller\\ShortLinkUiController::index"
+                },
+                "requirements": [],
+                "options": {
+                    "compiler_class": "Symfony\\Component\\Routing\\RouteCompiler",
+                    "utf8": true
+                },
+                "condition": ""
+            },
+            {
+                "name": "nowo_short_link_new",
+                "path": "/t/{workspace}/short-links/new",
+                "host": "",
+                "schemes": [],
+                "methods": [
+                    "GET",
+                    "POST"
+                ],
+                "defaults": {
+                    "_controller": "Nowo\\ShortLinkBundle\\Presentation\\Controller\\ShortLinkUiController::create"
+                },
+                "requirements": [],
+                "options": {
+                    "compiler_class": "Symfony\\Component\\Routing\\RouteCompiler",
+                    "utf8": true
+                },
+                "condition": ""
+            },
+            {
+                "name": "nowo_short_link_edit",
+                "path": "/t/{workspace}/short-links/{id}/edit",
+                "host": "",
+                "schemes": [],
+                "methods": [
+                    "GET",
+                    "POST"
+                ],
+                "defaults": {
+                    "_controller": "Nowo\\ShortLinkBundle\\Presentation\\Controller\\ShortLinkUiController::edit"
+                },
+                "requirements": {
+                    "id": "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+                },
+                "options": {
+                    "compiler_class": "Symfony\\Component\\Routing\\RouteCompiler",
+                    "utf8": true
+                },
+                "condition": ""
+            },
+            {
+                "name": "nowo_short_link_disable",
+                "path": "/t/{workspace}/short-links/{id}/disable",
+                "host": "",
+                "schemes": [],
+                "methods": [
+                    "POST"
+                ],
+                "defaults": {
+                    "_controller": "Nowo\\ShortLinkBundle\\Presentation\\Controller\\ShortLinkUiController::disable"
+                },
+                "requirements": {
+                    "id": "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+                },
+                "options": {
+                    "compiler_class": "Symfony\\Component\\Routing\\RouteCompiler",
+                    "utf8": true
+                },
+                "condition": ""
+            },
+            {
+                "name": "nowo_short_link_enable",
+                "path": "/t/{workspace}/short-links/{id}/enable",
+                "host": "",
+                "schemes": [],
+                "methods": [
+                    "POST"
+                ],
+                "defaults": {
+                    "_controller": "Nowo\\ShortLinkBundle\\Presentation\\Controller\\ShortLinkUiController::enable"
+                },
+                "requirements": {
+                    "id": "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+                },
+                "options": {
+                    "compiler_class": "Symfony\\Component\\Routing\\RouteCompiler",
+                    "utf8": true
+                },
+                "condition": ""
+            },
+            {
+                "name": "nowo_short_link_delete",
+                "path": "/t/{workspace}/short-links/{id}/delete",
+                "host": "",
+                "schemes": [],
+                "methods": [
+                    "POST"
+                ],
+                "defaults": {
+                    "_controller": "Nowo\\ShortLinkBundle\\Presentation\\Controller\\ShortLinkUiController::delete"
+                },
+                "requirements": {
+                    "id": "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+                },
+                "options": {
+                    "compiler_class": "Symfony\\Component\\Routing\\RouteCompiler",
+                    "utf8": true
+                },
+                "condition": ""
+            },
+            {
+                "name": "nowo_short_link_stats",
+                "path": "/t/{workspace}/short-links/{id}/stats",
+                "host": "",
+                "schemes": [],
+                "methods": [
+                    "GET"
+                ],
+                "defaults": {
+                    "_controller": "Nowo\\ShortLinkBundle\\Presentation\\Controller\\ShortLinkUiController::stats"
+                },
+                "requirements": {
+                    "id": "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+                },
+                "options": {
+                    "compiler_class": "Symfony\\Component\\Routing\\RouteCompiler",
+                    "utf8": true
+                },
+                "condition": ""
+            },
+            {
+                "name": "nowo_short_link_stats_csv",
+                "path": "/t/{workspace}/short-links/{id}/stats.csv",
+                "host": "",
+                "schemes": [],
+                "methods": [
+                    "GET"
+                ],
+                "defaults": {
+                    "_controller": "Nowo\\ShortLinkBundle\\Presentation\\Controller\\ShortLinkUiController::statsCsv"
+                },
+                "requirements": {
+                    "id": "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+                },
+                "options": {
+                    "compiler_class": "Symfony\\Component\\Routing\\RouteCompiler",
+                    "utf8": true
+                },
+                "condition": ""
+            }
+        ],
+        "aliases": []
+    },
+    "zero_config": {
+        "routes": [
+            {
+                "name": "nowo_short_link_redirect",
+                "path": "/s/{code}",
+                "host": "",
+                "schemes": [],
+                "methods": [
+                    "GET",
+                    "HEAD"
+                ],
+                "defaults": {
+                    "_controller": "Nowo\\ShortLinkBundle\\Infrastructure\\Http\\RedirectController",
+                    "_stateless": true
+                },
+                "requirements": {
+                    "code": "[^/]+"
+                },
+                "options": {
+                    "compiler_class": "Symfony\\Component\\Routing\\RouteCompiler",
+                    "utf8": true
+                },
+                "condition": ""
+            }
+        ],
+        "aliases": []
+    }
+}
