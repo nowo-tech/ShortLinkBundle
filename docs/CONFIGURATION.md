@@ -5,6 +5,7 @@
 - [Full reference](#full-reference)
 - [Validation](#validation)
 - [Environment variables](#environment-variables)
+- [Messenger click writes](#messenger-click-writes)
 - [FormKit profile](#formkit-profile)
 - [Container parameters](#container-parameters)
 - [Symfony Beacon example](#symfony-beacon-example)
@@ -20,7 +21,7 @@ nowo_short_link:
     redirect:
         path_prefix: /s              # absolute, no trailing slash, never "/"
         status: 302                  # 302 | 307 (301 / 308 refused: browsers cache them forever)
-        not_found_template: '@NowoShortLink/redirect/not_found.html.twig'
+        not_found_template: '@NowoShortLinkBundle/redirect/not_found.html.twig'
         rate_limit:
             enabled: true
             cache_pool: cache.app    # give a fast shared pool (Redis / APCu); Beacon: cache.rate_limiter
@@ -116,6 +117,25 @@ Keys read at runtime accept an env placeholder (`%env(…)%`, integers as `%env(
 `target.self_paths`, `target.own_hosts` and `target.denylist.hosts`. Their value is checked when it is read; the
 retention cross-check above only runs on literal values. `redirect.path_prefix`, `ui.path_prefix` and
 `doctrine.table_prefix` are used while the container and the routes are compiled and refuse an env placeholder.
+
+## Messenger click writes
+
+`click_log.write: messenger` is optional and needs `symfony/messenger`. The bundle dispatches `RecordShortLinkClick`
+(a final readonly message carrying the click payload; never the raw IP, so no country is stored in this mode) and
+registers its handler `RecordShortLinkClickHandler` (`#[AsMessageHandler]`).
+
+- **Transport.** Route `Nowo\ShortLinkBundle\Infrastructure\Messenger\RecordShortLinkClick` to the transport of your
+  choice in `framework.messenger.routing`; without a routing entry the message is handled synchronously, in the request.
+- **Retries.** The handler never throws on the click itself: a store failure is logged as a warning with the link id
+  and the exception class, and the click is dropped (the click path never fails a request or a worker), so the
+  transport's `retry_strategy` does not re-run it. A click whose link is missing, deleted, erased or in another tenant
+  is dropped the same way, so a queued click never undoes an erasure. The retry strategy still applies to
+  transport-level failures (for example a message that cannot be deserialized).
+- **Failure transport.** Set `framework.messenger.failure_transport` so a message that exhausts its transport-level
+  retries can be inspected with `messenger:failed:show` and retried or discarded; the message holds no secret.
+- **Redelivery.** Delivery is at-least-once: a message redelivered after a worker crash between the write and the
+  acknowledgement records the click twice. Clicks are counters, not unique visits, so this is accepted.
+- **Logging.** Warnings carry the link id and the exception class only, never the click payload.
 
 ## FormKit profile
 

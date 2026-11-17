@@ -68,7 +68,7 @@ final readonly class RedirectController
         private ?ClickWriteMode $writeMode = ClickWriteMode::Terminate,
         private ?MessageBusInterface $bus = null,
         private int $status = Response::HTTP_FOUND,
-        private string $notFoundTemplate = '@NowoShortLink/redirect/not_found.html.twig',
+        private string $notFoundTemplate = '@NowoShortLinkBundle/redirect/not_found.html.twig',
         private int $ipv4Prefix = 24,
         private int $ipv6Prefix = 48,
         private ?ClockInterface $clock = null,

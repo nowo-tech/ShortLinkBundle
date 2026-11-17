@@ -1395,7 +1395,7 @@ use Symfony\Component\Config\Loader\ParamConfigurator as Param;
  *     redirect?: array{
  *         path_prefix?: scalar|Param|null, // Default: "/s"
  *         status?: 302|307|Param, // 301 / 308 are refused: browsers cache them forever // Default: 302
- *         not_found_template?: scalar|Param|null, // Default: "@NowoShortLink/redirect/not_found.html.twig"
+ *         not_found_template?: scalar|Param|null, // Default: "@NowoShortLinkBundle/redirect/not_found.html.twig"
  *         rate_limit?: array{
  *             enabled?: bool|Param, // Default: true
  *             cache_pool?: scalar|Param|null, // Fast shared pool (Redis / APCu); a database or filesystem pool is unsuitable (contract §7.4) // Default: "cache.app"

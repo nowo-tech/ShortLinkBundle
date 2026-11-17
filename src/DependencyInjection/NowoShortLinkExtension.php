@@ -478,7 +478,8 @@ final class NowoShortLinkExtension extends Extension implements PrependExtension
         if ($mode === ClickWriteMode::Messenger) {
             $container->register(RecordShortLinkClickHandler::class, RecordShortLinkClickHandler::class)
                 ->setArguments([new Reference(ClickRecorder::class)])
-                ->addTag('messenger.message_handler');
+                // #[AsMessageHandler] on the class: FrameworkBundle's autoconfiguration adds the Messenger tag (REQ-MSG-001).
+                ->setAutoconfigured(true);
         }
         if ($mode === ClickWriteMode::Messenger && $clicks['store']['country'] && $clicks['country_resolver'] !== null) {
             throw new LogicException('nowo_short_link: a country resolver needs the raw IP, which never travels in a Messenger message. Use click_log.write "terminate" or "sync", or set click_log.store.country to false.');

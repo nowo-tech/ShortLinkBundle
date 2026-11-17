@@ -216,7 +216,7 @@ final class Configuration implements ConfigurationInterface
             ->children()
                 ->append(ConfigNodes::path('path_prefix', '/s'))
                 ->enumNode('status')->values([302, 307])->defaultValue(302)->info('301 / 308 are refused: browsers cache them forever')->end()
-                ->scalarNode('not_found_template')->defaultValue('@NowoShortLink/redirect/not_found.html.twig')->cannotBeEmpty()->end()
+                ->scalarNode('not_found_template')->defaultValue('@NowoShortLinkBundle/redirect/not_found.html.twig')->cannotBeEmpty()->end()
                 ->arrayNode('rate_limit')
                     ->addDefaultsIfNotSet()
                     ->children()

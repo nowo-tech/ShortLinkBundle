@@ -60,20 +60,20 @@ final class PageContractTest extends PageContractTestCase
         }
         $filters = $forms->createNamed('', ShortLinkFilterType::class)->createView();
 
-        yield 'list (manager)' => new PageFixture('@NowoShortLink/ui/list.html.twig', ['page' => $pages->list($links, $totals, $filters, false, $actions), 'next_href' => '/t/acme/next', 'first_href' => '/t/acme/first']);
-        yield 'list (viewer, filtered)' => new PageFixture('@NowoShortLink/ui/list.html.twig', ['page' => $pages->list($links, [], $filters, true, null), 'next_href' => null, 'first_href' => null]);
-        yield 'list (empty)' => new PageFixture('@NowoShortLink/ui/list.html.twig', ['page' => $pages->list([], [], $filters, false, $actions), 'next_href' => null, 'first_href' => null]);
+        yield 'list (manager)' => new PageFixture('@NowoShortLinkBundle/ui/list.html.twig', ['page' => $pages->list($links, $totals, $filters, false, $actions), 'next_href' => '/t/acme/next', 'first_href' => '/t/acme/first']);
+        yield 'list (viewer, filtered)' => new PageFixture('@NowoShortLinkBundle/ui/list.html.twig', ['page' => $pages->list($links, [], $filters, true, null), 'next_href' => null, 'first_href' => null]);
+        yield 'list (empty)' => new PageFixture('@NowoShortLinkBundle/ui/list.html.twig', ['page' => $pages->list([], [], $filters, false, $actions), 'next_href' => null, 'first_href' => null]);
 
         $create = $forms->create(ShortLinkType::class, null, ['custom_code' => true]);
-        yield 'create' => new PageFixture('@NowoShortLink/ui/form.html.twig', ['page' => $pages->form($create->createView(), null, new QuotaUsage(12, 50)), 'quota' => new QuotaUsage(12, 50)]);
-        yield 'create (quota full)' => new PageFixture('@NowoShortLink/ui/form.html.twig', ['page' => $pages->form(null, null, new QuotaUsage(50, 50)), 'quota' => new QuotaUsage(50, 50)]);
+        yield 'create' => new PageFixture('@NowoShortLinkBundle/ui/form.html.twig', ['page' => $pages->form($create->createView(), null, new QuotaUsage(12, 50)), 'quota' => new QuotaUsage(12, 50)]);
+        yield 'create (quota full)' => new PageFixture('@NowoShortLinkBundle/ui/form.html.twig', ['page' => $pages->form(null, null, new QuotaUsage(50, 50)), 'quota' => new QuotaUsage(50, 50)]);
         $edit = $forms->create(ShortLinkType::class, ['target' => 'https://example.com/a', 'title' => 'Launch', 'expiresAt' => null]);
-        yield 'edit' => new PageFixture('@NowoShortLink/ui/form.html.twig', ['page' => $pages->form($edit->createView(), $links[0], null), 'quota' => null]);
+        yield 'edit' => new PageFixture('@NowoShortLinkBundle/ui/form.html.twig', ['page' => $pages->form($edit->createView(), $links[0], null), 'quota' => null]);
 
         $range = DateRange::of(new DateTimeImmutable('2026-11-10'), new DateTimeImmutable('2026-11-12'));
         $daily = [new DailyClicks('2026-11-10', 0, 0), new DailyClicks('2026-11-11', 4, 1), new DailyClicks('2026-11-12', 2, 0)];
         foreach (['manager' => true, 'viewer' => false] as $profile => $manage) {
-            yield 'stats (' . $profile . ')' => new PageFixture('@NowoShortLink/ui/stats.html.twig', [
+            yield 'stats (' . $profile . ')' => new PageFixture('@NowoShortLinkBundle/ui/stats.html.twig', [
                 'page'        => $pages->stats($links[$manage ? 0 : 1], $range, $daily, $manage, '/t/acme/csv'),
                 'link'        => $links[$manage ? 0 : 1],
                 'range_form'  => $forms->createNamed('', StatsRangeType::class)->createView(),

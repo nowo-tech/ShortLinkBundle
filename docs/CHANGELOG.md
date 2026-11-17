@@ -7,7 +7,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Changed
+
+- Twig namespace: the bundle's own templates, the `redirect.not_found_template` default and the docs use `@NowoShortLinkBundle/...` (REQ-TWIG-002); a new `TwigPathsPass` registers the `NowoShortLinkBundle` namespace (and the `templates/bundles/NowoShortLinkBundle` override directory) while Symfony keeps the legacy `@NowoShortLink` namespace, so a host config value or template reference with the old namespace keeps working.
+- `RecordShortLinkClickHandler` carries `#[AsMessageHandler]` and is registered autoconfigured instead of with a hand-written `messenger.message_handler` tag (REQ-MSG-001).
+
 ### Documentation
+
+- Messenger click writes: transport, retries, failure transport, redelivery and logging documented in CONFIGURATION (REQ-MSG-001).
 
 - Spec Kit baseline (REQ-SPECKIT-003): `specs/001-baseline` maps the S4 management UI (controller, route loader, views, view models, CSV, FormKit Types), the custom-code limiter, the quota display and `BinaryCollation` (145/145 units; US-08, FR-CODE-003, FR-QUOTA-002, FR-UI-001/002).
 

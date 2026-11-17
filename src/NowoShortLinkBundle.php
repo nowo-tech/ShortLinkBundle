@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Nowo\ShortLinkBundle;
 
 use Nowo\ShortLinkBundle\DependencyInjection\Compiler\ShortLinkCompilerPass;
+use Nowo\ShortLinkBundle\DependencyInjection\Compiler\TwigPathsPass;
 use Nowo\ShortLinkBundle\DependencyInjection\NowoShortLinkExtension;
 use Symfony\Component\DependencyInjection\ContainerBuilder;
 use Symfony\Component\DependencyInjection\Extension\ExtensionInterface;
@@ -32,6 +33,7 @@ final class NowoShortLinkBundle extends Bundle
     {
         parent::build($container);
         $container->addCompilerPass(new ShortLinkCompilerPass());
+        $container->addCompilerPass(new TwigPathsPass());
     }
 
     /**

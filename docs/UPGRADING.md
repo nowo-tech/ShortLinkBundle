@@ -51,7 +51,7 @@ S4 (0.2.0) adds the management UI; nothing changes until you enable it.
 
 ### Template contract
 
-New pages `@NowoShortLink/ui/list.html.twig`, `ui/form.html.twig`, `ui/stats.html.twig` (UiKit list / form / show
+New pages `@NowoShortLinkBundle/ui/list.html.twig`, `ui/form.html.twig`, `ui/stats.html.twig` (UiKit list / form / show
 scaffolds) with the data blocks listed in [TEMPLATES.md](TEMPLATES.md).
 
 ## To 0.1.0

@@ -108,7 +108,7 @@ final class ClickInfrastructureTest extends TestCase
             new RedirectResolver($store, new DenylistGuard(new ConfigDenylist())),
             new BuiltInUserAgentClassifier(),
             new ClickRecorder($clicks, new NullCountryResolver(), $events),
-            new Environment(new ArrayLoader(['@NowoShortLink/redirect/not_found.html.twig' => 'gone'])),
+            new Environment(new ArrayLoader(['@NowoShortLinkBundle/redirect/not_found.html.twig' => 'gone'])),
             writeMode: ClickWriteMode::Messenger,
             bus: $bus,
             logger: $logger,
