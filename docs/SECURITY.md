@@ -43,6 +43,7 @@ From contract §9. Each threat names the control and the slice that ships it.
 | Intranet pivot from the visitor's browser | Private, loopback, link-local, CGNAT, metadata targets refused at save (DNS) and at redirect (literals) | S1, S2 |
 | Scheme abuse, header injection | VO: http/https only, no control characters, no userinfo | S1 |
 | Redirect chains | `self_paths` on `own_hosts` refused | S1 |
+| Own-host trust laundering (`target.allow_own_host`) | Off by default; own origins from configuration only (exact `public_base_url` origin, `own_hosts` on default ports, never the `Host` header); short-link paths still refused as `SelfLoop`; userinfo / scheme-relative / backslash refused by the VO; case, trailing dot and IDN normalised before the comparison | Unreleased |
 | Enumeration | 62^7 space, miss limiter, identical 404, no timing branch, neutral `CodeTaken`, per-person custom-code limiter | S1, S2, S4 |
 | Code collision / takeover | Unique index, binary NO PAD collation (`utf8mb4_0900_bin` / `utf8mb4_nopad_bin`), PHP `===`, tombstone quarantine (365 days), immutable codes | S0 (test), S1 |
 | Cross-tenant access | Every query filters on the tenant; another tenant's id answers as missing | S1–S4 |
@@ -97,6 +98,18 @@ From contract §9. Each threat names the control and the slice that ships it.
   characters; `anonymiseActor()` re-checks candidates with `===` and updates by primary key; identifier columns use
   NO PAD binary collations (`utf8mb4_0900_bin` / `utf8mb4_nopad_bin`; `utf8mb4_bin` only on MySQL 5.7). Test emulates a
   PAD collation (MySQL `utf8mb4_bin`, SQLite `RTRIM`).
+- **`target.allow_own_host` (Beacon re-audit C4, unreleased):** opt-in; when on, a target whose
+  `scheme://host:port` equals the origin of `public_base_url` or an exact `own_hosts` entry on its default port skips
+  OutboundUrlGuard and the denylist (intended for intranet / `localhost` deployments linking to their own pages). The
+  `Host` header is never consulted (spoofable without `framework.trusted_hosts`, absent on the CLI and in Messenger), so
+  the verdict cannot be steered by a request and never depends on worker state. On an own origin, paths under
+  `self_paths` and the redirect prefix (the prefix itself included, after decoding, `//` and dot-segment collapsing,
+  case-insensitively) are refused as `SelfLoop`, so the option opens no redirect loop or chain. Look-alikes stay foreign:
+  other port or scheme, subdomain, `own.example.evil`, IDN homographs (punycode differs), `%2e` / `%40` in the host;
+  `https://own@evil`, `//own/…` and `\` never become a target. Tests: `OwnHostGuardTest` (each form) and
+  `WorkerRequestLoopTest` (kept-alive kernel, spoofed private `Host`, same verdicts with and without a request).
+  Residual risk the host accepts by turning it on: any open redirect inside the application's own pages becomes
+  reachable through a short link.
 - **S5:** see the contract.
 
 ## Release security checklist (12.4.1)

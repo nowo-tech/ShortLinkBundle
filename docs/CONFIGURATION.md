@@ -6,6 +6,7 @@
 - [Validation](#validation)
 - [Environment variables](#environment-variables)
 - [Messenger click writes](#messenger-click-writes)
+- [Own-host targets (`target.allow_own_host`)](#own-host-targets-targetallow_own_host)
 
 - [Routes and prefixes (REQ-SF-004)](#routes-and-prefixes-req-sf-004)
 - [FormKit profile](#formkit-profile)
@@ -51,6 +52,7 @@ nowo_short_link:
         save_resolve_dns: true       # DNS check on create / update / enable / recheck, never on the redirect
         self_paths: ['/s/']          # targets on own_hosts under these paths are refused (no chains)
         own_hosts: []                # host names, lowercased
+        allow_own_host: false        # true = targets on this application's own origins skip the rest of the guard (self_paths stay refused); see below
         denylist:
             hosts: []                # exact host or ".suffix"
             provider: null           # TargetDenylistInterface service id; null = the hosts list
@@ -117,8 +119,41 @@ Keys read at runtime accept an env placeholder (`%env(…)%`, integers as `%env(
 `quota.default_limit`, `code.quarantine`, `click_log.retention`, `click_log.rollup.retention`, the rate-limit
 `interval` and `limit` keys, `ui.tenant_route_parameter`, `ui.page_size` and the other integers, `code.reserved`,
 `target.self_paths`, `target.own_hosts` and `target.denylist.hosts`. Their value is checked when it is read; the
-retention cross-check above only runs on literal values. `redirect.path_prefix`, `ui.path_prefix` and
-`doctrine.table_prefix` are used while the container and the routes are compiled and refuse an env placeholder.
+retention cross-check above only runs on literal values. `redirect.path_prefix`, `ui.path_prefix`,
+`doctrine.table_prefix` and `target.allow_own_host` are used while the container and the routes are compiled and
+refuse an env placeholder.
+
+## Own-host targets (`target.allow_own_host`)
+
+By default a target on the application's own host goes through the whole guard like any other: the self chain refuses
+`self_paths` (and `redirect.path_prefix` + `/`), and OutboundUrlGuard refuses it when the host is private or local (an
+intranet deployment, `localhost` in development). `allow_own_host: true` lets the application link to its own pages:
+
+```yaml
+nowo_short_link:
+    public_base_url: '%env(DEFAULT_URI)%'   # e.g. https://beacon.internal:8443
+    target:
+        allow_own_host: true
+        own_hosts: []                       # optional extra hosts (default ports only)
+```
+
+- **Own origins** (`scheme://host:port`), from configuration only:
+  - the origin of `public_base_url`, with its exact scheme, host and port (`https://beacon.internal:8443` is own;
+    `http://beacon.internal:8443` and `https://beacon.internal` are not);
+  - each exact host of `target.own_hosts`, as `http://host` (port 80) and `https://host` (port 443). A `.suffix` entry
+    never matches, and a non-default port only through `public_base_url`.
+- **Never the request:** the `Host` header is never read. It is spoofable unless `framework.trusted_hosts` is set, and
+  the recheck command and Messenger workers have no request; a target gets the same verdict over HTTP, on the CLI and in
+  a kept-alive FrankenPHP worker.
+- **On an own origin:** a path under `self_paths` or `redirect.path_prefix` (the prefix itself, `/s`, included; compared
+  after the router's decoding, `//` and dot-segment collapsing, case-insensitively) is refused as `SelfLoop`; any other
+  path is allowed **without** OutboundUrlGuard and the denylist.
+- **Everything else** goes to the guard unchanged (the `auto` / `basic` chain, or the `target.guard` service, which
+  `allow_own_host` wraps): another port or scheme, a subdomain, `own.example.evil`, an IDN look-alike (its punycode
+  differs). Userinfo (`https://own@evil`), scheme-relative (`//own/…`) and backslash forms are refused by `TargetUrl`
+  before any guard; case and a trailing dot are normalised first, so they cannot dodge the `SelfLoop` check.
+- `allow_own_host` is read while the container is compiled: an env placeholder is refused. `public_base_url` and
+  `own_hosts` may still come from env variables.
 
 ## Messenger click writes
 

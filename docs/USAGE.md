@@ -64,6 +64,16 @@ link returns that link: a retried send never duplicates links. `email` links nev
 are hidden from the default list. `system: true` skips the access check: set it only in programmatic callers, never from
 request input.
 
+### Links to the application's own pages
+
+Click links usually point at the application itself (an e-mail's "open in the app" button). When the application runs
+on a private or local host (intranet, `localhost`), OutboundUrlGuard refuses those targets. Set
+`target.allow_own_host: true` instead of decorating `TargetGuardInterface`: targets on the origin of `public_base_url`
+(and on `target.own_hosts`) are then allowed, the short-link paths (`/s`, `/s/…`) stay refused as `SelfLoop`, and every
+other target is guarded as before. The own origins come from configuration, never from the request `Host`, so the
+verdict is the same in a request, in `nowo:short-link:recheck` and in a Messenger worker. See
+[CONFIGURATION.md](CONFIGURATION.md#own-host-targets-targetallow_own_host).
+
 ## Errors
 
 All implement `Nowo\ShortLinkBundle\Domain\Exception\ShortLinkExceptionInterface`:
@@ -93,7 +103,7 @@ plain classes: listen to them by class name.
 | `ShortLinkAccessInterface` | `access.view_role` / `access.manage_role` (anonymous denied) | `access.provider` |
 | `ShortLinkQuotaInterface` | `quota.default_limit` | `quota.provider` |
 | `TargetDenylistInterface` | `target.denylist.hosts` | `target.denylist.provider` |
-| `TargetGuardInterface` | self chain + OutboundUrlGuard + denylist | `target.guard: <service id>` |
+| `TargetGuardInterface` | self chain + OutboundUrlGuard + denylist | `target.guard: <service id>`; `target.allow_own_host: true` puts the own-origin check in front of either |
 | `ReservedCodeProviderInterface`, `CodeBlocklistInterface`, `ShortLinkIdGeneratorInterface`, `TenantLockInterface` | built in | decorate the alias |
 
 Ports take and return the bundle's value objects only (no Symfony, Doctrine or HTTP types). Implementations must read

@@ -10,6 +10,21 @@
 
 ## Unreleased
 
+**New option `target.allow_own_host` (default `false`, no change unless you set it).** A host that decorated
+`TargetGuardInterface` to let short links point at its own pages (for example on an intranet or `localhost`, which
+OutboundUrlGuard refuses) can drop the decorator:
+
+```yaml
+nowo_short_link:
+    public_base_url: '%env(DEFAULT_URI)%'
+    target:
+        allow_own_host: true
+```
+
+Own origins are the exact origin of `public_base_url` plus `target.own_hosts` on the default ports; the request `Host`
+is never used. Short-link paths on those origins stay refused as `SelfLoop`. Set it as a literal (an env placeholder is
+refused). Details in [CONFIGURATION.md](CONFIGURATION.md#own-host-targets-targetallow_own_host).
+
 ## To 0.3.0
 
 From **0.2.0**:

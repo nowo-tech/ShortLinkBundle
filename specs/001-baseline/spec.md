@@ -110,6 +110,7 @@ registers no service, route, listener or table, whatever the configuration says;
 | FR-CODE-002 | Custom codes lowercased, `[a-z0-9-]{3,32}` without leading / trailing / double hyphen, unique per instance, neutral refusal; immutable. |
 | FR-TARGET-001 | `TargetUrl` normalisation and refusal matrix (scheme, userinfo, control / whitespace / backslash, length). |
 | FR-GUARD-001 | Save guard chain: self chain, OutboundUrlGuard (never private; DNS on save only when configured), denylist port. |
+| FR-GUARD-002 | `target.allow_own_host` (opt-in): targets on own origins (exact `public_base_url` origin, `own_hosts` on default ports; never the request `Host`) skip the rest of the guard, except `self_paths` / the redirect prefix (`SelfLoop`); same verdict over HTTP, CLI, Messenger and a kept-alive worker. |
 | FR-MANAGE-001 | Manager create / update / disable / enable / delete (tombstone) / find / list (keyset, filters) / shortUrl. |
 | FR-BULK-001 | `createMany()` ≤ 200, random codes only, quota once per batch, dedupe by (kind, ref, position). |
 | FR-ACCESS-001 | Access port checked per action unless `system` or `enforce_in_manager: false`; default role-based, deny without a token. |

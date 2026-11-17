@@ -7,6 +7,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- `target.allow_own_host` (default `false`; SYMFONY-BEACON re-audit 2026-11-17 ask C4, for KIT-81 e-mail click links): targets on the application's own origins are allowed without OutboundUrlGuard and the denylist, so an intranet or `localhost` application can link to its own pages without decorating `TargetGuardInterface`. Own origins come from configuration only: the exact `scheme://host:port` of `public_base_url` and each exact `target.own_hosts` host on ports 80 / 443; the request `Host` is never read (same verdict over HTTP, on the CLI, in Messenger and in a kept-alive worker). On an own origin, `self_paths` and the redirect prefix (the prefix itself included) stay refused as `SelfLoop`. The new `OwnHostGuard` wraps the `auto` / `basic` chain or the `target.guard` service. An env placeholder for the option is refused (compile time).
+
+### Tests
+
+- `OwnHostGuardTest`: own origins (case, trailing dot, default ports), redirect-path loops (`/s`, `/S/`, `%73`, `%2F`, `//`, `..`), foreign look-alikes (port, scheme, subdomain, suffix, IDN / punycode homograph, `%2e` / `%40` in the host), userinfo and scheme-relative forms; `WorkerRequestLoopTest`: a kept-alive kernel with spoofed private `Host` headers gives the same verdicts as no request.
+
 ### Documentation
 
 - UPGRADING (0.3.0): `twig.paths` overrides of the legacy `@NowoShortLink` namespace no longer reach bundle renders; override through `templates/bundles/NowoShortLinkBundle/` (audit SD follow-up). No code change.

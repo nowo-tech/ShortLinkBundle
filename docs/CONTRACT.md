@@ -270,6 +270,7 @@ nowo_short_link:
         save_resolve_dns: true       # DNS check on create / update / enable / recheck
         self_paths: ['/s/']          # targets on own hosts under these paths are refused (no chains)
         own_hosts: []                # hosts treated as "self" for self_paths
+        allow_own_host: false        # (post-0.3) true = own origins (public_base_url origin, own_hosts) skip the rest of the guard; self_paths still refused
         denylist: { hosts: [] }      # default denylist implementation
     click_log:
         enabled: true
