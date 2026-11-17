@@ -6,6 +6,8 @@
 - [Validation](#validation)
 - [Environment variables](#environment-variables)
 - [Messenger click writes](#messenger-click-writes)
+
+- [Routes and prefixes (REQ-SF-004)](#routes-and-prefixes-req-sf-004)
 - [FormKit profile](#formkit-profile)
 - [Container parameters](#container-parameters)
 - [Symfony Beacon example](#symfony-beacon-example)
@@ -136,6 +138,24 @@ registers its handler `RecordShortLinkClickHandler` (`#[AsMessageHandler]`).
 - **Redelivery.** Delivery is at-least-once: a message redelivered after a worker crash between the write and the
   acknowledgement records the click twice. Clicks are counters, not unique visits, so this is accepted.
 - **Logging.** Warnings carry the link id and the exception class only, never the click payload.
+
+## Routes and prefixes (REQ-SF-004)
+
+The routes are `#[Route]` attributes on the two controllers and stay opt-in: hosts import the two documented files,
+unchanged since 0.1.
+
+| Import | Loader (type) | How the prefix is applied |
+| --- | --- | --- |
+| `@NowoShortLinkBundle/Resources/config/routes/redirect.php` | `RedirectRouteLoader` (`nowo_short_link_redirect`) | The attribute path is `%nowo_short_link.redirect_path_prefix%/{code}`; the router resolves the container parameter (from `redirect.path_prefix`), as with the 0.2 PHP route file |
+| `@NowoShortLinkBundle/Resources/config/routes/ui.php` | `UiRouteLoader` (`nowo_short_link_ui`) | The attribute paths are relative (`/` for the index, `/new`, `/{id}/edit`, …); the loader prepends `ui.path_prefix` as is (the index is the prefix itself) and returns no route while `ui.enabled` is false |
+
+A `prefix:` / `requirements:` on the host import still applies on top (Beacon: `/organizations/{uuid}`). Every route
+keeps its 0.2 name, path, methods, requirements, defaults (`_controller`, `_stateless` on the redirect), options and
+order, on the standard and the DDD host and with custom prefixes: `tests/Integration/Routing/RouteCollectionFixtureTest.php`
+compares the collection with the fixture dumped before the attributes (`tests/Fixtures/Routing/`). The controller
+services are registered explicitly (`controller.service_arguments`) and not autoconfigured, so on Symfony >= 7.3 a
+host's default `routing.controllers` import never loads them (rule 7, `HostRoutingControllersTest`). Do not import the
+controllers with `type: attribute` yourself: that skips `ui.path_prefix` and the `ui.enabled` switch.
 
 ## FormKit profile
 

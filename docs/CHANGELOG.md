@@ -11,6 +11,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - Twig namespace: the bundle's own templates, the `redirect.not_found_template` default and the docs use `@NowoShortLinkBundle/...` (REQ-TWIG-002); a new `TwigPathsPass` registers the `NowoShortLinkBundle` namespace (and the `templates/bundles/NowoShortLinkBundle` override directory) while Symfony keeps the legacy `@NowoShortLink` namespace, so a host config value or template reference with the old namespace keeps working.
 - `RecordShortLinkClickHandler` carries `#[AsMessageHandler]` and is registered autoconfigured instead of with a hand-written `messenger.message_handler` tag (REQ-MSG-001).
+- Routes are declared with `#[Route]` attributes (REQ-SF-004; owner approval 2026-11-17): the redirect route on `Infrastructure\Http\RedirectController`, the UI routes on `Presentation\Controller\ShortLinkUiController`. `Resources/config/routes/redirect.php` now imports the new `nowo_short_link_redirect` loader (`Infrastructure\Routing\RedirectRouteLoader`), and the `nowo_short_link_ui` loader reads the UI attributes and still adds `ui.path_prefix` and the `ui.enabled` switch; both use an internal `ControllerAttributeRouteLoader`, so a host decorating `routing.loader.attribute` cannot change the bundle routes. Every route keeps its name, path, methods, requirements, defaults, options and order (fixture test against the 0.2 collection on the standard and DDD hosts, default and custom prefixes; demo `debug:router` dumps in `tests/Fixtures/Routing/`). The controller classes are now router cache resources. No host change: keep importing `redirect.php` and `ui.php`. See [UPGRADING](UPGRADING.md#unreleased).
+
+### Tests
+
+- `HostRoutingControllersTest` (REQ-SF-004 rule 7): a kernel whose routing is only `routing.controllers` gets no bundle route, even with the UI enabled.
 
 ### Documentation
 

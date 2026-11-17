@@ -62,6 +62,7 @@ use Nowo\ShortLinkBundle\Infrastructure\Persistence\DbalEraser;
 use Nowo\ShortLinkBundle\Infrastructure\Persistence\DbalShortLinkStore;
 use Nowo\ShortLinkBundle\Infrastructure\Persistence\DbalStatsReader;
 use Nowo\ShortLinkBundle\Infrastructure\RateLimit\RateLimiterCustomCodeLimiter;
+use Nowo\ShortLinkBundle\Infrastructure\Routing\RedirectRouteLoader;
 use Nowo\ShortLinkBundle\Infrastructure\Routing\ShortUrlBuilder;
 use Nowo\ShortLinkBundle\Infrastructure\Security\RoleBasedAccess;
 use Nowo\ShortLinkBundle\Infrastructure\Uid\UuidV7IdGenerator;
@@ -341,6 +342,10 @@ final class NowoShortLinkExtension extends Extension implements PrependExtension
         $ui = $config['ui'];
         $container->register(UiRouteLoader::class, UiRouteLoader::class)
             ->setArguments([$ui['enabled'], $ui['path_prefix'], '%kernel.environment%'])
+            ->addTag('routing.loader');
+        // REQ-SF-004: the redirect route (#[Route] on RedirectController) behind Resources/config/routes/redirect.php.
+        $container->register(RedirectRouteLoader::class, RedirectRouteLoader::class)
+            ->setArguments(['%kernel.environment%'])
             ->addTag('routing.loader');
         if (!$ui['enabled']) {
             return;
