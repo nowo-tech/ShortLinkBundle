@@ -3,11 +3,20 @@
 ## Table of contents
 
 - [Unreleased](#unreleased)
+- [To 0.3.0](#to-030)
 - [To 0.2.0](#to-020)
   - [Template contract](#template-contract)
 - [To 0.1.0](#to-010)
 
 ## Unreleased
+
+## To 0.3.0
+
+From **0.2.0**:
+
+```bash
+composer update nowo-tech/short-link-bundle
+```
 
 **Attribute routes (REQ-SF-004), no action needed.** The routes moved to `#[Route]` attributes on
 `RedirectController` and `ShortLinkUiController`. Keep both imports exactly as they are:
