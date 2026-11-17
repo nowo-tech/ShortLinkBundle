@@ -42,9 +42,10 @@ final class TwigPathsPass implements CompilerPassInterface
         }
 
         // @igor-ignore - Compile-time DI definition wiring; runs once at container build
-
-        // @igor-ignore - Compile-time DI definition wiring; runs once at container build
         $definition->addMethodCall('addPath', [$viewsPath, self::TWIG_NAMESPACE]);
+        // `@!NowoShortLinkBundle/...` always resolves to the bundle's own template (extend it from an override)
+        // @igor-ignore - Compile-time DI definition wiring; runs once at container build
+        $definition->addMethodCall('addPath', [$viewsPath, '!' . self::TWIG_NAMESPACE]);
     }
 
     private function getNativeLoaderServiceId(ContainerBuilder $container): ?string

@@ -33,10 +33,10 @@ abstract class KernelTestCase extends TestCase
      * @param array<string, mixed> $config `nowo_short_link` configuration
      * @param (Closure(ContainerConfigurator, string): void)|null $configure host configuration
      */
-    protected function bootKernel(array $config = [], ?string $databaseUrl = null, ?Closure $configure = null, bool $security = false, bool $ui = false): TestKernel
+    protected function bootKernel(array $config = [], ?string $databaseUrl = null, ?Closure $configure = null, bool $security = false, bool $ui = false, ?string $projectDir = null): TestKernel
     {
         $id              = (string) preg_replace('/\W+/', '_', static::class . '_' . $this->name() . '_' . count($this->kernels));
-        $kernel          = new TestKernel($id, $config, $databaseUrl, $configure, $security, $ui);
+        $kernel          = new TestKernel($id, $config, $databaseUrl, $configure, $security, $ui, false, $projectDir);
         $this->kernels[] = $kernel;
         $kernel->boot();
 

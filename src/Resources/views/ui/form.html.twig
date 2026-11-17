@@ -5,7 +5,7 @@
   form (nowo_short_link_form_errors: plan limit reached meanwhile, CSRF). Over the quota the page has no
   form (body-only mode): nowo_short_link_quota_full prints the message and a disabled button.
 
-  Override: a template that extends '@!NowoShortLink/ui/form.html.twig' and overrides nowo_ui_form_body,
+  Override: a template that extends '@!NowoShortLinkBundle/ui/form.html.twig' and overrides nowo_ui_form_body,
   nowo_ui_form_aside or nowo_short_link_quota_full.
 #}
 {% extends '@NowoUiKit/page/form.html.twig' %}

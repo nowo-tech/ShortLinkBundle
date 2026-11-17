@@ -37,7 +37,7 @@ fallback (contract §11, Q-O5). It moves to UiKit's chart component once UiKit s
 
 ## Overrides
 
-A host template that extends `@!NowoShortLink/ui/<page>.html.twig` and overrides one of the data blocks above. Restyle
+A host template that extends `@!NowoShortLinkBundle/ui/<page>.html.twig` and overrides one of the data blocks above. Restyle
 through `nowo_ui_kit.theme` (slots), never in a bundle template override.
 
 ## Allowed exceptions

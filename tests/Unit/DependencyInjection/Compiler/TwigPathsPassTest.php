@@ -24,6 +24,7 @@ final class TwigPathsPassTest extends TestCase
         $calls = $loader->getMethodCalls();
         $last  = $calls[array_key_last($calls)];
         self::assertSame('addPath', $last[0]);
-        self::assertSame('NowoShortLinkBundle', $last[1][1]);
+        self::assertSame('!NowoShortLinkBundle', $last[1][1]);
+        self::assertSame('NowoShortLinkBundle', $calls[array_key_last($calls) - 1][1][1]);
     }
 }

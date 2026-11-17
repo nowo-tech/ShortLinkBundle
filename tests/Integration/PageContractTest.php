@@ -93,7 +93,7 @@ final class PageContractTest extends PageContractTestCase
     {
         $views = dirname(__DIR__, 2) . '/src/Resources/views';
 
-        return ['NowoShortLink' => $views, '!NowoShortLink' => $views];
+        return ['NowoShortLinkBundle' => $views, '!NowoShortLinkBundle' => $views, 'NowoShortLink' => $views, '!NowoShortLink' => $views];
     }
 
     protected static function translationDirs(): array
