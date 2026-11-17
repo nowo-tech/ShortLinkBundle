@@ -19,6 +19,9 @@ final class TwigPathsPass implements CompilerPassInterface
 {
     private const TWIG_NAMESPACE = 'NowoShortLinkBundle';
 
+    /**
+     * Registers the `NowoShortLinkBundle` and `!NowoShortLinkBundle` namespaces and the host override directory on the native Twig loader.
+     */
     public function process(ContainerBuilder $container): void
     {
         $loaderId = $this->getNativeLoaderServiceId($container);
