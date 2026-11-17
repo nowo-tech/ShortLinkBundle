@@ -108,6 +108,9 @@ From contract §9. Each threat names the control and the slice that ships it.
   other port or scheme, subdomain, `own.example.evil`, IDN homographs (punycode differs), `%2e` / `%40` in the host;
   `https://own@evil`, `//own/…` and `\` never become a target. Tests: `OwnHostGuardTest` (each form) and
   `WorkerRequestLoopTest` (kept-alive kernel, spoofed private `Host`, same verdicts with and without a request).
+  Audit SX (release OK) follow-ups folded in: L1 self paths also under the path of `public_base_url` (`/app/s/`) in
+  `SelfLoopGuard` and `OwnHostGuard`; I1 `TargetUrl` hosts limited to letters, digits, `-`, `.`, `_` or a bracketed
+  IPv6 literal (no `%`, no sub-delims, no zone id), so `evil%2etest` or `127%2e0%2e0%2e1` never reach a guard.
   Residual risk the host accepts by turning it on: any open redirect inside the application's own pages becomes
   reachable through a short link.
 - **S5:** see the contract.

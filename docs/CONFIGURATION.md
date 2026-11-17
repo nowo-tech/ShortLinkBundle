@@ -145,7 +145,8 @@ nowo_short_link:
 - **Never the request:** the `Host` header is never read. It is spoofable unless `framework.trusted_hosts` is set, and
   the recheck command and Messenger workers have no request; a target gets the same verdict over HTTP, on the CLI and in
   a kept-alive FrankenPHP worker.
-- **On an own origin:** a path under `self_paths` or `redirect.path_prefix` (the prefix itself, `/s`, included; compared
+- **On an own origin:** a path under `self_paths` or `redirect.path_prefix`, at the root and under the path of
+  `public_base_url` when it has one (`/app/s/`) (the prefix itself, `/s`, included; compared
   after the router's decoding, `//` and dot-segment collapsing, case-insensitively) is refused as `SelfLoop`; any other
   path is allowed **without** OutboundUrlGuard and the denylist.
 - **Everything else** goes to the guard unchanged (the `auto` / `basic` chain, or the `target.guard` service, which

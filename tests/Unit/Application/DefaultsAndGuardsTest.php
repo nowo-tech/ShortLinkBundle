@@ -125,6 +125,30 @@ final class DefaultsAndGuardsTest extends TestCase
         self::assertTrue((new SelfLoopGuard([], ['/s/'], 'not a url'))->check(TargetUrl::fromString('https://a.example/s/x'), GuardStage::Save)->allowed);
     }
 
+    /**
+     * Audit SX-L1: a `public_base_url` with a path builds `/app/s/…`; those stay refused next to the root form.
+     */
+    public function testTheSelfLoopGuardKnowsTheBasePathOfThePublicUrl(): void
+    {
+        $guard = new SelfLoopGuard([], ['/s/'], 'https://beacon.internal:8443/app/');
+        foreach ([
+            'https://beacon.internal:8443/app/s/abc' => false,
+            'https://beacon.internal:8443/app/s'     => false,
+            'https://beacon.internal:8443/app/%73/x' => false,
+            'https://beacon.internal:8443//app//s/x' => false,
+            'https://beacon.internal:8443/s/abc'     => false,
+            'https://beacon.internal:8443/app/docs'  => true,
+            'https://beacon.internal:8443/apps/s/x'  => true,
+            'https://beacon.internal:8443/APP/s'     => true, // case-sensitive like the router (OwnHostGuard folds case)
+        ] as $url => $allowed) {
+            self::assertSame($allowed, $guard->check(TargetUrl::fromString($url), GuardStage::Save)->allowed, $url);
+        }
+        self::assertSame(['/s/', '/go/', '/app/s/', '/app/go/'], SelfLoopGuard::withBasePath(['/s/', '/go/'], 'https://h.example/x/../app/%2e/'));
+        foreach ([null, '', 'https://h.example', 'https://h.example/', 'http:///x'] as $base) {
+            self::assertSame(['/s/'], SelfLoopGuard::withBasePath(['/s/'], $base), (string) $base);
+        }
+    }
+
     public function testTheChainStopsAtTheFirstRefusal(): void
     {
         $chain = new ChainTargetGuard([

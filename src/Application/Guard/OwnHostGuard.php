@@ -20,7 +20,8 @@ use function strtolower;
 /**
  * `target.allow_own_host` (Beacon re-audit C4): targets on this application's own origins are allowed without the
  * inner guard (so an intranet or `localhost` application can link to its own pages, which OutboundUrlGuard refuses as
- * private), except under the redirect paths, which stay refused as `SelfLoop` (no chains or loops through `/s/`).
+ * private), except under the redirect paths (also under the path of `public_base_url`, e.g. `/app/s/`), which stay
+ * refused as `SelfLoop` (no chains or loops through `/s/`).
  *
  * Own origins come from configuration only, never from the request: `scheme://host:port` of `public_base_url` (exact
  * scheme, host and port) and, for each exact host of `target.own_hosts`, `http://host:80` and `https://host:443`.
@@ -55,7 +56,7 @@ final readonly class OwnHostGuard implements TargetGuardInterface
             return $this->inner->check($target, $stage);
         }
         $path = strtolower(SelfLoopGuard::normalise($target->path()));
-        foreach ($this->selfPaths as $selfPath) {
+        foreach (SelfLoopGuard::withBasePath($this->selfPaths, $this->publicBaseUrl) as $selfPath) {
             $selfPath = strtolower($selfPath);
             if (str_starts_with($path, $selfPath) || $path === rtrim($selfPath, '/')) {
                 return TargetVerdict::refuse(TargetRefusal::SelfLoop);

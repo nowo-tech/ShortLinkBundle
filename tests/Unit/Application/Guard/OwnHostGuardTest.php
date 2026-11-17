@@ -99,8 +99,6 @@ final class OwnHostGuardTest extends TestCase
         yield 'subdomain of an own host' => ['https://sub.links.example/x'];
         yield 'IDN look-alike (Cyrillic i)' => ["https://l\u{0456}nks.example/x"];
         yield 'punycode look-alike' => ['https://' . self::lookAlike() . '/x'];
-        yield 'encoded dot in the host' => ['https://links.example%2eevil.test/x'];
-        yield 'encoded at sign in the host' => ['https://links.example%40evil.test/x'];
         yield 'suffix entry never matches' => ['https://a.suffix.example/x'];
         yield 'other host with own short path' => ['https://evil.test/s/abc'];
     }
@@ -128,6 +126,8 @@ final class OwnHostGuardTest extends TestCase
         yield 'scheme-relative short link' => ['//localhost/s/abc', TargetRefusal::Scheme];
         yield 'backslash' => ['https://links.example\\@evil.test/', TargetRefusal::Scheme];
         yield 'triple slash' => ['https:///links.example/x', TargetRefusal::Scheme];
+        yield 'encoded dot in the host' => ['https://links.example%2eevil.test/x', TargetRefusal::Scheme];
+        yield 'encoded at sign in the host' => ['https://links.example%40evil.test/x', TargetRefusal::Scheme];
     }
 
     /**
@@ -159,6 +159,22 @@ final class OwnHostGuardTest extends TestCase
         self::assertTrue((new OwnHostGuard($inner, [], ['/s/'], "https://l\u{0456}nks.example"))->check(TargetUrl::fromString('https://' . self::lookAlike() . '/'), GuardStage::Save)->allowed, 'an IDN base matches its own punycode only');
         self::assertTrue((new OwnHostGuard($inner, [], ['/s/'], 'http://[::1]:8000'))->check(TargetUrl::fromString('http://[::1]:8000/x'), GuardStage::Save)->allowed, 'IPv6 base');
         self::assertFalse((new OwnHostGuard($inner, [], ['/s/'], 'http://[::1]:8000'))->check(TargetUrl::fromString('http://[::1]:8000/s/x'), GuardStage::Save)->allowed);
+    }
+
+    /**
+     * Audit SX-L1: with a base path in `public_base_url`, the short links live under it; root form kept too.
+     */
+    public function testTheBasePathOfThePublicUrlIsARedirectPathToo(): void
+    {
+        $inner = $this->inner();
+        $guard = new OwnHostGuard($inner, [], ['/s/'], 'https://beacon.internal:8443/app');
+        foreach (['/app/s/abc', '/APP/s', '/app/s', '/app/%73/x', '/App/S/', '/s/abc', '/s'] as $path) {
+            self::assertSame(TargetRefusal::SelfLoop, $guard->check(TargetUrl::fromString('https://beacon.internal:8443' . $path), GuardStage::Save)->refusal, $path);
+        }
+        foreach (['/app', '/app/', '/app/docs', '/apps/s/x', '/x/app/s/y'] as $path) {
+            self::assertTrue($guard->check(TargetUrl::fromString('https://beacon.internal:8443' . $path), GuardStage::Save)->allowed, $path);
+        }
+        self::assertSame([], $inner->seen);
     }
 
     public function testTheOriginFillsTheDefaultPort(): void
