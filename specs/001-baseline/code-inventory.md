@@ -2,9 +2,9 @@
 
 **Baseline spec**: [`spec.md`](spec.md)  
 **Package**: `nowo-tech/short-link-bundle`  
-**Last audited**: 2026-11-16 (S4 management UI, 0.2.0; S3 + audit NY)
+**Last audited**: 2026-11-18 (0.3.0; TwigPathsPass mapped)
 
-Scope: every file under `src/`. Audit command: `find src -type f | wc -l` → **147**.
+Scope: every file under `src/`. Audit command: `find src -type f | wc -l` → **148**.
 
 | Source file | Spec section | Requirement IDs |
 | --- | --- | --- |
@@ -34,6 +34,7 @@ Scope: every file under `src/`. Audit command: `find src -type f | wc -l` → **
 | `src/Application/Store/ShortLinkStoreInterface.php` | Persistence | FR-DB-001, FR-DB-002, FR-EVENT-001 |
 | `src/Application/Store/StoredLink.php` | Persistence | FR-DB-001, FR-DB-002, FR-EVENT-001 |
 | `src/DependencyInjection/Compiler/ShortLinkCompilerPass.php` | Configuration and wiring | FR-CONFIG-001, FR-CONFIG-002, FR-WIRING-001 |
+| `src/DependencyInjection/Compiler/TwigPathsPass.php` | Configuration and wiring | FR-CONFIG-001, FR-WIRING-001 |
 | `src/DependencyInjection/ConfigNodes.php` | Configuration and wiring | FR-CONFIG-001, FR-CONFIG-002, FR-WIRING-001 |
 | `src/DependencyInjection/Configuration.php` | Configuration and wiring | FR-CONFIG-001, FR-CONFIG-002, FR-WIRING-001 |
 | `src/DependencyInjection/NowoShortLinkExtension.php` | Configuration and wiring | FR-CONFIG-001, FR-CONFIG-002, FR-WIRING-001 |
@@ -156,5 +157,5 @@ Scope: every file under `src/`. Audit command: `find src -type f | wc -l` → **
 | `src/Resources/views/ui/list.html.twig` | Management UI | FR-UI-001 |
 | `src/Resources/views/ui/stats.html.twig` | Management UI | FR-UI-001 |
 
-| Total production sources | 147 |
+| Total production sources | 148 |
 | --- | --- |
