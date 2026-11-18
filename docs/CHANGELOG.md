@@ -5,7 +5,17 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## Table of contents
+
+- [[Unreleased]](#unreleased)
+- [[0.4.0] - 2026-11-18](#040---2026-11-18)
+- [[0.3.0] - 2026-11-17](#030---2026-11-17)
+- [[0.2.0] - 2026-11-12](#020---2026-11-12)
+- [[0.1.0] - 2026-11-12](#010---2026-11-12)
+
 ## [Unreleased]
+
+## [0.4.0] - 2026-11-18
 
 ### Added
 
@@ -14,7 +24,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Fixed (hardening)
 
 - Audit SX-L1 (present up to 0.3.0): with a `public_base_url` that has a path (`https://beacon.internal:8443/app`, short URLs at `/app/s/…`), the self-chain check only compared paths from the host root, so `https://…/app/s/abc` was not refused as `SelfLoop`. `SelfLoopGuard` and `OwnHostGuard` now also refuse every self path under the base path (`/app/s/`, `/app/s`), next to the root form; the base path is read at runtime (env placeholders), with the same decoding and case handling as before.
-- Audit SX-I1 (present up to 0.3.0): `TargetUrl` hosts now keep only letters, digits, `-`, `.` and `_` (or a bracketed IPv6 literal of hex digits, `:` and `.`); `%`, `~` and the sub-delims `!$&'()*+,;=` are refused as `Scheme`. Browsers percent-decode a host (`evil%2etest` → `evil.test`, `127%2e0%2e0%2e1` → `127.0.0.1`); the default guards refused those only incidentally (`PrivateHost`), a host guard trusting `TargetUrl::host()` would not have. IPv6 zone ids (`[fe80::1%25eth0]`) are refused too. Stored rows with such a host can no longer be read: check them before upgrading ([UPGRADING](UPGRADING.md#unreleased)).
+- Audit SX-I1 (present up to 0.3.0): `TargetUrl` hosts now keep only letters, digits, `-`, `.` and `_` (or a bracketed IPv6 literal of hex digits, `:` and `.`); `%`, `~` and the sub-delims `!$&'()*+,;=` are refused as `Scheme`. Browsers percent-decode a host (`evil%2etest` → `evil.test`, `127%2e0%2e0%2e1` → `127.0.0.1`); the default guards refused those only incidentally (`PrivateHost`), a host guard trusting `TargetUrl::host()` would not have. IPv6 zone ids (`[fe80::1%25eth0]`) are refused too. Stored rows with such a host can no longer be read: check them before upgrading ([UPGRADING](UPGRADING.md#to-040)).
 
 ### Tests
 
@@ -23,6 +33,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Documentation
 
 - UPGRADING (0.3.0): `twig.paths` overrides of the legacy `@NowoShortLink` namespace no longer reach bundle renders; override through `templates/bundles/NowoShortLinkBundle/` (audit SD follow-up). No code change.
+
+[0.4.0]: https://github.com/nowo-tech/ShortLinkBundle/releases/tag/v0.4.0
 
 ## [0.3.0] - 2026-11-17
 
@@ -215,5 +227,5 @@ First release: slices S1 (domain + persistence), S2 (public redirect) and S3 (st
 - Docs set, Spec Kit baseline, Flex recipe, demos `symfony7` (Symfony 7.4) and `symfony8` (Symfony 8.1) on FrankenPHP
   worker mode with MySQL, UiKit's admin layout and default theme (REQ-DEMO-014) and FormKit (REQ-DEMO-015).
 
-[Unreleased]: https://github.com/nowo-tech/ShortLinkBundle/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/nowo-tech/ShortLinkBundle/compare/v0.4.0...HEAD
 [0.1.0]: https://github.com/nowo-tech/ShortLinkBundle/releases/tag/v0.1.0

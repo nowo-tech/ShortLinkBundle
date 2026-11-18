@@ -3,12 +3,21 @@
 ## Table of contents
 
 - [Unreleased](#unreleased)
+- [To 0.4.0](#to-040)
 - [To 0.3.0](#to-030)
 - [To 0.2.0](#to-020)
   - [Template contract](#template-contract)
 - [To 0.1.0](#to-010)
 
 ## Unreleased
+
+## To 0.4.0
+
+From **0.3.0**:
+
+```bash
+composer update nowo-tech/short-link-bundle
+```
 
 **New option `target.allow_own_host` (default `false`, no change unless you set it).** A host that decorated
 `TargetGuardInterface` to let short links point at its own pages (for example on an intranet or `localhost`, which
