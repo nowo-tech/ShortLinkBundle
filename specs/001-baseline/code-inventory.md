@@ -2,9 +2,9 @@
 
 **Baseline spec**: [`spec.md`](spec.md)  
 **Package**: `nowo-tech/short-link-bundle`  
-**Last audited**: 2026-11-18 (0.3.0; TwigPathsPass mapped)
+**Last audited**: 2026-11-18 (0.3.0 + Unreleased; OwnHostGuard mapped)
 
-Scope: every file under `src/`. Audit command: `find src -type f | wc -l` → **148**.
+Scope: every file under `src/`. Audit command: `find src -type f | wc -l` → **149**.
 
 | Source file | Spec section | Requirement IDs |
 | --- | --- | --- |
@@ -23,6 +23,7 @@ Scope: every file under `src/`. Audit command: `find src -type f | wc -l` → **
 | `src/Application/Default/UnlimitedCustomCodeLimiter.php` | Custom codes | FR-CODE-003 |
 | `src/Application/Guard/ChainTargetGuard.php` | Target guard | FR-TARGET-001, FR-GUARD-001 |
 | `src/Application/Guard/DenylistGuard.php` | Target guard | FR-TARGET-001, FR-GUARD-001 |
+| `src/Application/Guard/OwnHostGuard.php` | Target guard | FR-GUARD-002 |
 | `src/Application/Guard/SelfLoopGuard.php` | Target guard | FR-TARGET-001, FR-GUARD-001 |
 | `src/Application/ManagerSettings.php` | Manager | FR-MANAGE-001, FR-BULK-001, FR-ACCESS-001, FR-QUOTA-001 |
 | `src/Application/QuotaReader.php` | Quota | FR-QUOTA-002 |

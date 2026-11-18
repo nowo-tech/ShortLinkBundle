@@ -7,6 +7,7 @@ namespace Nowo\ShortLinkBundle\Tests\Unit\DependencyInjection;
 use LogicException;
 use Nowo\ShortLinkBundle\Application\CodeGenerator;
 use Nowo\ShortLinkBundle\Application\Guard\ChainTargetGuard;
+use Nowo\ShortLinkBundle\Application\Guard\OwnHostGuard;
 use Nowo\ShortLinkBundle\DependencyInjection\Compiler\ShortLinkCompilerPass;
 use Nowo\ShortLinkBundle\DependencyInjection\NowoShortLinkExtension;
 use Nowo\ShortLinkBundle\Domain\Port\ShortLinkAccessInterface;
@@ -24,6 +25,7 @@ use PHPUnit\Framework\TestCase;
 use stdClass;
 use Symfony\Component\DependencyInjection\ContainerBuilder;
 use Symfony\Component\DependencyInjection\Definition;
+use Symfony\Component\DependencyInjection\Reference;
 
 final class ExtensionTest extends TestCase
 {
@@ -65,6 +67,38 @@ final class ExtensionTest extends TestCase
         self::assertFalse($container->hasDefinition(ClickTablesSchemaListener::class), 'a separate click connection: the host creates those tables');
         self::assertFalse($this->bridge($container)->getArgument(1), 'basic guard never resolves DNS');
         self::assertNull($container->getDefinition(CodeGenerator::class)->getArgument(1));
+    }
+
+    /**
+     * `target.allow_own_host`: the own-host guard wraps the chain (or the host's guard) with configuration only.
+     */
+    public function testAllowOwnHostWrapsTheChainOrTheHostGuard(): void
+    {
+        $container = new ContainerBuilder();
+        (new NowoShortLinkExtension())->load([[
+            'public_base_url' => 'https://links.example',
+            'redirect'        => ['path_prefix' => '/l'],
+            'target'          => ['allow_own_host' => true, 'own_hosts' => ['beacon.example']],
+        ]], $container);
+
+        self::assertSame(OwnHostGuard::class, (string) $container->getAlias(TargetGuardInterface::class));
+        self::assertTrue($container->getAlias(TargetGuardInterface::class)->isPublic());
+        $own = $container->getDefinition(OwnHostGuard::class);
+        self::assertEquals(new Reference(ChainTargetGuard::class), $own->getArgument(0));
+        self::assertSame(['beacon.example'], $own->getArgument(1));
+        self::assertSame(['/s/', '/l/'], $own->getArgument(2));
+        self::assertSame('https://links.example', $own->getArgument(3));
+
+        $custom = new ContainerBuilder();
+        (new NowoShortLinkExtension())->load([['target' => ['allow_own_host' => true, 'guard' => 'app.guard']]], $custom);
+        self::assertSame(OwnHostGuard::class, (string) $custom->getAlias(TargetGuardInterface::class));
+        self::assertEquals(new Reference('app.guard'), $custom->getDefinition(OwnHostGuard::class)->getArgument(0));
+        self::assertFalse($custom->hasDefinition(ChainTargetGuard::class));
+
+        $off = new ContainerBuilder();
+        (new NowoShortLinkExtension())->load([['target' => ['guard' => 'app.guard']]], $off);
+        self::assertSame('app.guard', (string) $off->getAlias(TargetGuardInterface::class));
+        self::assertFalse($off->hasDefinition(OwnHostGuard::class), 'off by default');
     }
 
     /**

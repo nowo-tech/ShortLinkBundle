@@ -19,6 +19,7 @@ use Nowo\ShortLinkBundle\Application\Default\SingleTenantContext;
 use Nowo\ShortLinkBundle\Application\Default\UnlimitedCustomCodeLimiter;
 use Nowo\ShortLinkBundle\Application\Guard\ChainTargetGuard;
 use Nowo\ShortLinkBundle\Application\Guard\DenylistGuard;
+use Nowo\ShortLinkBundle\Application\Guard\OwnHostGuard;
 use Nowo\ShortLinkBundle\Application\Guard\SelfLoopGuard;
 use Nowo\ShortLinkBundle\Application\ManagerSettings;
 use Nowo\ShortLinkBundle\Application\QuotaReader;
@@ -126,6 +127,7 @@ final class NowoShortLinkExtension extends Extension implements PrependExtension
         ['redirect', 'path_prefix'],
         ['ui', 'path_prefix'],
         ['doctrine', 'table_prefix'],
+        ['target', 'allow_own_host'],
     ];
 
     /** FormKit profile of the UI forms (`nowo_form_kit.profiles.short_link`). */
@@ -206,7 +208,7 @@ final class NowoShortLinkExtension extends Extension implements PrependExtension
      */
     public function load(array $configs, ContainerBuilder $container): void
     {
-        /** @var array{public_base_url: string|null, redirect: array{path_prefix: string, status: int, not_found_template: string, rate_limit: array{enabled: bool, cache_pool: string, ipv6_prefix: int, misses: array{limit: int, interval: string}, hits: array{limit: int, interval: string}, over_limit_hits: string}}, code: array{random_length: int, allow_custom: bool, reserved: list<string>, blocklist: bool, max_attempts: int, quarantine: string|null, custom_code_rate_limit: array{enabled: bool, limit: int, interval: string, limiter: string|null}}, target: array{max_length: int, guard: string, recheck_max_unresolvable_percent: int, recheck_min_sample: int, save_resolve_dns: bool, self_paths: list<string>, own_hosts: list<string>, denylist: array{hosts: list<string>, provider: string|null}}, tenancy: array{context: string|null}, access: array{provider: string|null, view_role: string, manage_role: string, enforce_in_manager: bool}, quota: array{provider: string|null, default_limit: int|null, counted_kinds: list<string>}, kinds: array<string, array{allow_custom_code: bool, show_in_ui: bool, counted: bool}>, ui: array{enabled: bool, path_prefix: string, tenant_route_parameter: string|null, page_size: int, stats_default_days: int, csv_max_days: int, layout_template: string|null}, doctrine: array{entity_manager: string|null, connection: string|null, table_prefix: string}, click_log: array{enabled: bool, write: string, store: array{ip_prefix: bool, user_agent_family: bool, referrer_host: bool, country: bool}, ipv4_prefix: int, ipv6_prefix: int, honour_gpc: bool, country_resolver: string|null, retention: string|null, rollup: array{lag_days: int, referrer_top_n: int, retention: string|null}}} $config */
+        /** @var array{public_base_url: string|null, redirect: array{path_prefix: string, status: int, not_found_template: string, rate_limit: array{enabled: bool, cache_pool: string, ipv6_prefix: int, misses: array{limit: int, interval: string}, hits: array{limit: int, interval: string}, over_limit_hits: string}}, code: array{random_length: int, allow_custom: bool, reserved: list<string>, blocklist: bool, max_attempts: int, quarantine: string|null, custom_code_rate_limit: array{enabled: bool, limit: int, interval: string, limiter: string|null}}, target: array{max_length: int, guard: string, recheck_max_unresolvable_percent: int, recheck_min_sample: int, save_resolve_dns: bool, self_paths: list<string>, own_hosts: list<string>, allow_own_host: bool, denylist: array{hosts: list<string>, provider: string|null}}, tenancy: array{context: string|null}, access: array{provider: string|null, view_role: string, manage_role: string, enforce_in_manager: bool}, quota: array{provider: string|null, default_limit: int|null, counted_kinds: list<string>}, kinds: array<string, array{allow_custom_code: bool, show_in_ui: bool, counted: bool}>, ui: array{enabled: bool, path_prefix: string, tenant_route_parameter: string|null, page_size: int, stats_default_days: int, csv_max_days: int, layout_template: string|null}, doctrine: array{entity_manager: string|null, connection: string|null, table_prefix: string}, click_log: array{enabled: bool, write: string, store: array{ip_prefix: bool, user_agent_family: bool, referrer_host: bool, country: bool}, ipv4_prefix: int, ipv6_prefix: int, honour_gpc: bool, country_resolver: string|null, retention: string|null, rollup: array{lag_days: int, referrer_top_n: int, retention: string|null}}} $config */
         $config = $this->processConfiguration(new Configuration(), $configs);
         $this->assertPlaceholders($container, $config);
         $container->setParameter(self::ALIAS . '.redirect_path_prefix', $config['redirect']['path_prefix']);
@@ -275,18 +277,23 @@ final class NowoShortLinkExtension extends Extension implements PrependExtension
             : new Definition(UnlimitedCustomCodeLimiter::class));
 
         // Target guard: self chain + OutboundUrlGuard (never private; DNS on save / recheck) + denylist.
-        $guard = $config['target']['guard'];
+        $guard     = $config['target']['guard'];
+        $selfPaths = array_values(array_unique([...$config['target']['self_paths'], $config['redirect']['path_prefix'] . '/']));
         if ($guard === 'auto' || $guard === 'basic') {
             $container->register(self::ALIAS . '.outbound_url_guard', OutboundUrlGuard::class)->setArguments([false, true]);
             $container->register(ChainTargetGuard::class, ChainTargetGuard::class)->setArguments([[
-                (new Definition(SelfLoopGuard::class))->setArguments([$config['target']['own_hosts'], array_values(array_unique([...$config['target']['self_paths'], $config['redirect']['path_prefix'] . '/'])), $config['public_base_url']]),
+                (new Definition(SelfLoopGuard::class))->setArguments([$config['target']['own_hosts'], $selfPaths, $config['public_base_url']]),
                 (new Definition(OutboundUrlGuardBridge::class))->setArguments([new Reference(self::ALIAS . '.outbound_url_guard'), $guard === 'auto' && $config['target']['save_resolve_dns']]),
                 (new Definition(DenylistGuard::class))->setArguments([new Reference(TargetDenylistInterface::class)]),
             ]]);
-            $container->setAlias(TargetGuardInterface::class, ChainTargetGuard::class)->setPublic(true);
-        } else {
-            $container->setAlias(TargetGuardInterface::class, $guard)->setPublic(true);
+            $guard = ChainTargetGuard::class;
         }
+        if ($config['target']['allow_own_host'] === true) {
+            // Own origins (configuration only, never the Host header) are allowed in front of the chain or the host's guard.
+            $container->register(OwnHostGuard::class, OwnHostGuard::class)->setArguments([new Reference($guard), $config['target']['own_hosts'], $selfPaths, $config['public_base_url']]);
+            $guard = OwnHostGuard::class;
+        }
+        $container->setAlias(TargetGuardInterface::class, $guard)->setPublic(true);
 
         // Application services.
         $container->register(CodeGenerator::class, CodeGenerator::class)->setArguments([

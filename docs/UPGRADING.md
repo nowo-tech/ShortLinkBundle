@@ -10,6 +10,45 @@
 
 ## Unreleased
 
+**New option `target.allow_own_host` (default `false`, no change unless you set it).** A host that decorated
+`TargetGuardInterface` to let short links point at its own pages (for example on an intranet or `localhost`, which
+OutboundUrlGuard refuses) can drop the decorator:
+
+```yaml
+nowo_short_link:
+    public_base_url: '%env(DEFAULT_URI)%'
+    target:
+        allow_own_host: true
+```
+
+Own origins are the exact origin of `public_base_url` plus `target.own_hosts` on the default ports; the request `Host`
+is never used. Short-link paths on those origins stay refused as `SelfLoop`. Set it as a literal (an env placeholder is
+refused). Details in [CONFIGURATION.md](CONFIGURATION.md#own-host-targets-targetallow_own_host).
+
+**Stricter target hosts (audit SX-I1).** A target host may now only hold letters, digits, `-`, `.` and `_` (or a
+bracketed IPv6 literal without a zone id). Targets such as `https://evil%2etest/`, `https://a;b.example/` or
+`http://[fe80::1%25eth0]/` are refused with `TargetRefusal::Scheme` on create / update / enable. No DNS name contains
+these characters, so with the default guard (`auto`, `save_resolve_dns: true`) such targets were already refused (as
+unresolvable or private). With `guard: basic`, `save_resolve_dns: false` or a host guard, a stored row with such a
+host may exist: after the upgrade it can no longer be read, so its redirect answers the neutral 404 (with a warning),
+the recheck skips it (with a warning), and loading it through the manager or the UI throws `TargetRefusedException`. **Before
+upgrading**, look for rows of the `nowo_short_link` table (with your `doctrine.table_prefix`) whose `target_url` host
+contains `%`, `~` or one of `!$&'()*+,;=`, for example with a one-off script on the DBAL connection:
+
+```php
+foreach ($connection->fetchAllAssociative('SELECT id, target_url FROM nowo_short_link WHERE deleted_at IS NULL') as $row) {
+    $host = parse_url($row['target_url'], PHP_URL_HOST);
+    if (is_string($host) && preg_match('/^(?:\[[0-9A-Fa-f:.]+\]|[A-Za-z0-9._-]+)$/D', $host) !== 1) {
+        echo $row['id'], ' ', $row['target_url'], PHP_EOL;
+    }
+}
+```
+
+Then update the target to the real host or delete the link while still on 0.3.
+
+**Base path of `public_base_url` (audit SX-L1).** When `public_base_url` has a path (`https://host/app`), targets on
+the own hosts under `/app/s/` (and `/app/s`) are now refused as `SelfLoop` like `/s/`. No action needed.
+
 ## To 0.3.0
 
 From **0.2.0**:

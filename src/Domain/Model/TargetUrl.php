@@ -29,7 +29,7 @@ use const PHP_URL_PATH;
 /**
  * Target of a link (contract §3.1): an absolute `http` / `https` URL of at most 2 048 bytes after normalisation. The
  * scheme and host are lowercased, an IDN host becomes punycode (UTS #46), a trailing dot and the default port are
- * dropped; userinfo, control characters, whitespace, backslashes and invisible / bidirectional format characters are
+ * dropped; a host keeps only letters, digits, `-`, `.` and `_` (no percent-encoding); userinfo, control characters, whitespace, backslashes and invisible / bidirectional format characters are
  * refused (so a `Location` header can never be split or spoofed). Path, query and fragment are kept, with non-ASCII
  * bytes percent-encoded: the URL is pure ASCII.
  */
@@ -130,14 +130,20 @@ final readonly class TargetUrl
     }
 
     /**
-     * Lowercase ASCII host: IDN to punycode, one trailing dot dropped.
+     * Lowercase ASCII host: IDN to punycode, one trailing dot dropped; only letters, digits, `-`, `.` and `_` (no `%`,
+     * no sub-delims), or a bracketed IPv6 literal of hex digits, `:` and `.`.
      *
-     * @throws TargetRefusedException with `Scheme` when the host cannot be converted
+     * @throws TargetRefusedException with `Scheme` when the host cannot be converted or has another character
      */
     private static function normaliseHost(string $host): string
     {
         if (str_starts_with($host, '[')) {
-            return strtolower($host);
+            $host = strtolower($host);
+            if (preg_match('/^\[[0-9a-f:.]+\]$/D', $host) !== 1) {
+                throw new TargetRefusedException(TargetRefusal::Scheme);
+            }
+
+            return $host;
         }
         if (str_ends_with($host, '.')) {
             $host = substr($host, 0, -1);
@@ -150,7 +156,9 @@ final readonly class TargetUrl
             $host = $ascii;
         }
         $host = strtolower($host);
-        if (preg_match('/^[a-z0-9._~%!$&\'()*+,;=-]+$/D', $host) !== 1) {
+        // Letters, digits, `-`, `.` and `_` only (audit SX-I1): browsers percent-decode a host (`evil%2etest` is
+        // `evil.test`) and the sub-delims are no part of a DNS name, so a guard trusting host() sees what is resolved.
+        if (preg_match('/^[a-z0-9._-]+$/D', $host) !== 1) {
             throw new TargetRefusedException(TargetRefusal::Scheme);
         }
 

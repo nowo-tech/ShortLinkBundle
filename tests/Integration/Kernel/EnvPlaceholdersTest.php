@@ -69,6 +69,7 @@ final class EnvPlaceholdersTest extends KernelTestCase
         yield 'redirect.path_prefix' => [['redirect' => ['path_prefix' => '%env(SL_PREFIX)%']], 'nowo_short_link.redirect.path_prefix cannot be an environment variable'];
         yield 'ui.path_prefix' => [['ui' => ['path_prefix' => '%env(SL_UI)%']], 'nowo_short_link.ui.path_prefix cannot be an environment variable'];
         yield 'doctrine.table_prefix' => [['doctrine' => ['table_prefix' => '%env(SL_TABLES)%']], 'nowo_short_link.doctrine.table_prefix cannot be an environment variable'];
+        yield 'target.allow_own_host' => [['target' => ['allow_own_host' => '%env(bool:SL_OWN)%']], 'nowo_short_link.target.allow_own_host cannot be an environment variable'];
     }
 
     /**

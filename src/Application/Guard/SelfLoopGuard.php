@@ -23,13 +23,14 @@ use function str_starts_with;
 use function strtolower;
 
 use const PHP_URL_HOST;
+use const PHP_URL_PATH;
 
 /**
  * Refuses targets on this application's own hosts under the redirect paths: no redirect chains or loops through
  * `/s/`. Own hosts are `target.own_hosts` plus the host of `public_base_url`; self paths are `target.self_paths` plus
- * `redirect.path_prefix` + `/`. Before the comparison the target path is normalised the way the router matches it:
- * fully percent-decoded (`%73%2F` → `s/`), empty segments collapsed (`//s/` → `/s/`, as slash-merging proxies do)
- * and dot segments removed (`/x/../s/` → `/s/`).
+ * `redirect.path_prefix` + `/`, each also under the path of `public_base_url` when it has one (`/app/s/`). Before the
+ * comparison the target path is normalised the way the router matches it: fully percent-decoded (`%73%2F` → `s/`),
+ * empty segments collapsed (`//s/` → `/s/`, as slash-merging proxies do) and dot segments removed (`/x/../s/` → `/s/`).
  */
 final readonly class SelfLoopGuard implements TargetGuardInterface
 {
@@ -53,13 +54,36 @@ final readonly class SelfLoopGuard implements TargetGuardInterface
             return TargetVerdict::allow();
         }
         $path = self::normalise($target->path());
-        foreach ($this->selfPaths as $selfPath) {
+        foreach (self::withBasePath($this->selfPaths, $this->publicBaseUrl) as $selfPath) {
             if (str_starts_with($path, $selfPath) || $path === rtrim($selfPath, '/')) {
                 return TargetVerdict::refuse(TargetRefusal::SelfLoop);
             }
         }
 
         return TargetVerdict::allow();
+    }
+
+    /**
+     * The self paths plus, when `public_base_url` has a path (`https://host/app` builds `/app/s/…`), each of them under
+     * that base path (audit SX-L1); computed on every call because `public_base_url` may come from an env variable.
+     *
+     * @param list<string> $selfPaths absolute paths, e.g. `/s/`
+     *
+     * @return list<string>
+     */
+    public static function withBasePath(array $selfPaths, ?string $publicBaseUrl): array
+    {
+        $base = $publicBaseUrl === null ? null : parse_url($publicBaseUrl, PHP_URL_PATH);
+        $base = is_string($base) ? rtrim(self::normalise($base), '/') : '';
+        if ($base === '') {
+            return $selfPaths;
+        }
+        $paths = $selfPaths;
+        foreach ($selfPaths as $selfPath) {
+            $paths[] = $base . $selfPath;
+        }
+
+        return $paths;
     }
 
     /**

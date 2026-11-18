@@ -7,6 +7,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- `target.allow_own_host` (default `false`; SYMFONY-BEACON re-audit 2026-11-17 ask C4, for KIT-81 e-mail click links): targets on the application's own origins are allowed without OutboundUrlGuard and the denylist, so an intranet or `localhost` application can link to its own pages without decorating `TargetGuardInterface`. Own origins come from configuration only: the exact `scheme://host:port` of `public_base_url` and each exact `target.own_hosts` host on ports 80 / 443; the request `Host` is never read (same verdict over HTTP, on the CLI, in Messenger and in a kept-alive worker). On an own origin, `self_paths` and the redirect prefix (the prefix itself included) stay refused as `SelfLoop`. The new `OwnHostGuard` wraps the `auto` / `basic` chain or the `target.guard` service. An env placeholder for the option is refused (compile time).
+
+### Fixed (hardening)
+
+- Audit SX-L1 (present up to 0.3.0): with a `public_base_url` that has a path (`https://beacon.internal:8443/app`, short URLs at `/app/s/…`), the self-chain check only compared paths from the host root, so `https://…/app/s/abc` was not refused as `SelfLoop`. `SelfLoopGuard` and `OwnHostGuard` now also refuse every self path under the base path (`/app/s/`, `/app/s`), next to the root form; the base path is read at runtime (env placeholders), with the same decoding and case handling as before.
+- Audit SX-I1 (present up to 0.3.0): `TargetUrl` hosts now keep only letters, digits, `-`, `.` and `_` (or a bracketed IPv6 literal of hex digits, `:` and `.`); `%`, `~` and the sub-delims `!$&'()*+,;=` are refused as `Scheme`. Browsers percent-decode a host (`evil%2etest` → `evil.test`, `127%2e0%2e0%2e1` → `127.0.0.1`); the default guards refused those only incidentally (`PrivateHost`), a host guard trusting `TargetUrl::host()` would not have. IPv6 zone ids (`[fe80::1%25eth0]`) are refused too. Stored rows with such a host can no longer be read: check them before upgrading ([UPGRADING](UPGRADING.md#unreleased)).
+
+### Tests
+
+- `OwnHostGuardTest`: own origins (case, trailing dot, default ports), redirect-path loops (`/s`, `/S/`, `%73`, `%2F`, `//`, `..`), foreign look-alikes (port, scheme, subdomain, suffix, IDN / punycode homograph, `%2e` / `%40` in the host), userinfo and scheme-relative forms; `WorkerRequestLoopTest`: a kept-alive kernel with spoofed private `Host` headers gives the same verdicts as no request.
+
 ### Documentation
 
 - UPGRADING (0.3.0): `twig.paths` overrides of the legacy `@NowoShortLink` namespace no longer reach bundle renders; override through `templates/bundles/NowoShortLinkBundle/` (audit SD follow-up). No code change.

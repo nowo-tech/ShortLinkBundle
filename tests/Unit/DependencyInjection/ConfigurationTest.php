@@ -40,6 +40,7 @@ final class ConfigurationTest extends TestCase
             'save_resolve_dns'                 => true,
             'self_paths'                       => ['/s/'],
             'own_hosts'                        => [],
+            'allow_own_host'                   => false,
             'denylist'                         => ['hosts' => [], 'provider' => null],
         ], $config['target']);
         self::assertSame([
@@ -130,6 +131,7 @@ final class ConfigurationTest extends TestCase
         yield 'self path not a string' => [['target' => ['self_paths' => [3]]], 'self_paths'];
         yield 'own host' => [['target' => ['own_hosts' => ['https://x.example']]], 'own_hosts'];
         yield 'own host not a string' => [['target' => ['own_hosts' => [false]]], 'own_hosts'];
+        yield 'allow own host not a boolean' => [['target' => ['allow_own_host' => 'yes']], 'allow_own_host'];
         yield 'denylist provider empty' => [['target' => ['denylist' => ['provider' => '']]], 'provider'];
         yield 'denylist provider not a string' => [['target' => ['denylist' => ['provider' => 7]]], 'provider'];
         yield 'max length' => [['target' => ['max_length' => 4096]], 'max_length'];

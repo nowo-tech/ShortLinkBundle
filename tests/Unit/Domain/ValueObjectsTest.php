@@ -84,6 +84,20 @@ final class ValueObjectsTest extends TestCase
         yield 'no host' => ['https:///path', TargetRefusal::Scheme];
         yield 'bad port' => ['https://example.com:99999/', TargetRefusal::Scheme];
         yield 'bad host characters' => ['https://exa"mple.com/', TargetRefusal::Scheme];
+        // Audit SX-I1: browsers percent-decode a host, and sub-delims are no part of a DNS name.
+        yield 'encoded dot (evil.test)' => ['https://evil%2etest/', TargetRefusal::Scheme];
+        yield 'encoded loopback (127.0.0.1)' => ['http://127%2e0%2e0%2e1/', TargetRefusal::Scheme];
+        yield 'encoded metadata (169.254.169.254)' => ['http://169%2e254%2e169%2e254/latest/', TargetRefusal::Scheme];
+        yield 'encoded name (localhost)' => ['http://%6Cocalhost/', TargetRefusal::Scheme];
+        yield 'encoded at sign' => ['https://links.example%40evil.test/', TargetRefusal::Scheme];
+        yield 'IPv6 zone id' => ['http://[fe80::1%25eth0]/', TargetRefusal::Scheme];
+        yield 'IPv6 with letters' => ['http://[fe80::zz]/', TargetRefusal::Scheme];
+        yield 'semicolon in host' => ['https://a;b.example/', TargetRefusal::Scheme];
+        yield 'comma in host' => ['https://a,b.example/', TargetRefusal::Scheme];
+        yield 'ampersand in host' => ['https://a&b.example/', TargetRefusal::Scheme];
+        yield 'equals in host' => ['https://a=b.example/', TargetRefusal::Scheme];
+        yield 'other sub-delims in host' => ["https://a!\$'()*+b.example/", TargetRefusal::Scheme];
+        yield 'tilde in host' => ['https://a~b.example/', TargetRefusal::Scheme];
         yield 'bad IDN' => ['https://' . str_repeat('ü', 70) . '.example/', TargetRefusal::Scheme];
         yield 'userinfo' => ['https://user:pass@example.com/', TargetRefusal::Userinfo];
         yield 'user only' => ['https://user@example.com/', TargetRefusal::Userinfo];
@@ -100,6 +114,13 @@ final class ValueObjectsTest extends TestCase
             self::assertSame($refusal, $exception->refusal);
             self::assertSame($refusal->message(), $exception->getMessage());
         }
+    }
+
+    public function testHostsKeepLettersDigitsHyphensDotsAndUnderscores(): void
+    {
+        self::assertSame('a_b-1.example', TargetUrl::fromString('https://A_b-1.Example./x')->host());
+        self::assertSame('::1', TargetUrl::fromString('http://[::1]:8080/')->host());
+        self::assertSame('::ffff:127.0.0.1', TargetUrl::fromString('http://[::FFFF:127.0.0.1]/')->host());
     }
 
     public function testTheConfiguredMaximumLengthApplies(): void
