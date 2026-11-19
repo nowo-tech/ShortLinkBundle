@@ -3,6 +3,7 @@
 ## Table of contents
 
 - [Unreleased](#unreleased)
+  - [To 0.6.0: one live link per source (UK-SL-2)](#to-060-one-live-link-per-source-uk-sl-2)
 - [To 0.5.0](#to-050)
 - [To 0.4.0](#to-040)
 - [To 0.3.0](#to-030)
@@ -11,6 +12,103 @@
 - [To 0.1.0](#to-010)
 
 ## Unreleased
+
+### To 0.6.0: one live link per source (UK-SL-2)
+
+From **0.5.x**: `composer update nowo-tech/short-link-bundle`, then migrate the `nowo_short_link` table (below).
+
+**What changes.** A generated link (one with a `LinkSource`) is unique per tenant, kind, source ref and position while
+it is live, on MySQL, MariaDB, PostgreSQL and SQLite. Before, on MySQL / MariaDB, two `createMany()` calls with the same
+source inside two host transactions could both insert it (the `GET_LOCK` session lock ended before the host commit).
+Now a unique key decides: the second call waits for the first transaction, then answers the first link. It is the
+expected "only one" result, never a `CONFLICT_*` code and never a lock conflict. Plan limits are unchanged.
+
+- `createMany()` with sources and no counted kind no longer takes the tenant database lock; it can join a host
+  transaction on every platform.
+- `create()` with a source that already has a live link now returns that link (no `ShortLinkCreatedEvent`) instead of
+  creating a second one, like `createMany()` always did.
+- The tenant database lock is taken only outside an open transaction (counted creates were already refused inside
+  one), so a failed MySQL / MariaDB `RELEASE_LOCK` closes only the bundle's own connection state, never a host
+  transaction.
+- MySQL / MariaDB with three or more transactions creating the same sources at once: InnoDB may pick a deadlock
+  victim, which answers a lock conflict (`TransientStorageFailure`, nothing committed; a retry answers the existing
+  links). Never a duplicate.
+- PostgreSQL under `REPEATABLE READ` or `SERIALIZABLE` (not the default): the other transaction's link is not visible
+  to yours, so the loser of the race gets `CodeTakenException` (nothing duplicated, nothing written). Retry the call
+  in a new transaction.
+
+**Migration.** New nullable column `source_slot` (the position, -1 without one, while the row is a live generated link;
+NULL otherwise), new unique index `uniq_short_link_live_source (tenant_key, kind, source_ref, source_slot)`, and the old
+`idx_short_link_tenant_source` is dropped (the unique index serves the same lookups). With `doctrine.table_prefix`, the
+table and both index names carry the prefix.
+
+`doctrine:migrations:diff` generates the column, the index and the drop. **Add the backfill (step 3) between the
+`ADD` and the `CREATE UNIQUE INDEX`** by hand; without it, rows created before 0.6.0 are not protected.
+
+1. Add the column.
+
+   ```sql
+   -- MySQL 8.4 / MariaDB 11.4
+   ALTER TABLE nowo_short_link ADD source_slot SMALLINT DEFAULT NULL;
+   -- PostgreSQL 16 / SQLite
+   ALTER TABLE nowo_short_link ADD source_slot SMALLINT DEFAULT NULL;
+   ```
+
+2. Look for duplicates (live rows that share a source). The query is the same on every platform:
+
+   ```sql
+   SELECT tenant_key, kind, source_ref, COALESCE(source_position, -1) AS slot, COUNT(*) AS live_links, MIN(id) AS kept_id
+   FROM nowo_short_link
+   WHERE source_ref IS NOT NULL AND deleted_at IS NULL
+   GROUP BY tenant_key, kind, source_ref, COALESCE(source_position, -1)
+   HAVING COUNT(*) > 1;
+   ```
+
+3. Backfill: the **oldest** live row of each source (the smallest id: ids are UUIDv7) gets the slot. Duplicates keep
+   working (their codes may already be in sent e-mails) but hold no slot; `createMany()` answers the oldest one, as it
+   did before. The unique index can then never fail.
+
+   ```sql
+   -- MySQL 8.4 / MariaDB 11.4
+   UPDATE nowo_short_link l
+   JOIN (
+       SELECT MIN(id) AS id FROM nowo_short_link
+       WHERE source_ref IS NOT NULL AND deleted_at IS NULL
+       GROUP BY tenant_key, kind, source_ref, COALESCE(source_position, -1)
+   ) k ON k.id = l.id
+   SET l.source_slot = COALESCE(l.source_position, -1);
+
+   -- PostgreSQL 16 / SQLite
+   UPDATE nowo_short_link SET source_slot = COALESCE(source_position, -1)
+   WHERE id IN (
+       SELECT MIN(id) FROM nowo_short_link
+       WHERE source_ref IS NOT NULL AND deleted_at IS NULL
+       GROUP BY tenant_key, kind, source_ref, COALESCE(source_position, -1)
+   );
+   ```
+
+   Optional cleanup, only if the duplicates were never sent: delete them through `ShortLinkManagerInterface::delete()`
+   (a tombstone; the codes stay taken). The ids are the live rows of step 2 with no slot:
+
+   ```sql
+   SELECT id, tenant_key, kind, source_ref, source_position, code, created_at FROM nowo_short_link
+   WHERE source_ref IS NOT NULL AND deleted_at IS NULL AND source_slot IS NULL;
+   ```
+
+4. Add the unique index and drop the old one.
+
+   ```sql
+   -- MySQL 8.4 / MariaDB 11.4
+   CREATE UNIQUE INDEX uniq_short_link_live_source ON nowo_short_link (tenant_key, kind, source_ref, source_slot);
+   DROP INDEX idx_short_link_tenant_source ON nowo_short_link;
+   -- PostgreSQL 16 / SQLite
+   CREATE UNIQUE INDEX uniq_short_link_live_source ON nowo_short_link (tenant_key, kind, source_ref, source_slot);
+   DROP INDEX idx_short_link_tenant_source;
+   ```
+
+NULLs never collide in a unique index on these platforms, so the key binds only live generated links (MySQL and MariaDB
+have no partial indexes; the same plain index is used on PostgreSQL so `doctrine:schema:update` stays empty). Run the
+migration before deploying 0.6.0: the new code writes `source_slot`. Your code must not write `source_slot` itself.
 
 ## To 0.5.0
 

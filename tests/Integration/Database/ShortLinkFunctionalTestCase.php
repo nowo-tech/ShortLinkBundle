@@ -6,6 +6,7 @@ namespace Nowo\ShortLinkBundle\Tests\Integration\Database;
 
 use DateTimeImmutable;
 use DateTimeZone;
+use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\Platforms\AbstractMySQLPlatform;
 use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
 use Doctrine\DBAL\Platforms\SQLitePlatform;
@@ -54,9 +55,13 @@ use Symfony\Component\DependencyInjection\ContainerInterface;
 use Symfony\Component\Process\Process;
 
 use function array_column;
+use function array_filter;
 use function array_map;
 use function array_replace_recursive;
+use function array_unique;
+use function array_values;
 use function dirname;
+use function explode;
 use function gc_collect_cycles;
 use function is_scalar;
 use function memory_get_usage;
@@ -64,9 +69,11 @@ use function preg_match;
 use function preg_replace;
 use function sort;
 use function sprintf;
+use function str_contains;
 use function str_starts_with;
 use function strlen;
 use function touch;
+use function trim;
 use function unlink;
 
 use const PHP_BINARY;
@@ -489,6 +496,115 @@ abstract class ShortLinkFunctionalTestCase extends KernelTestCase
         self::assertNotSame($views[0]->id->value, $other[0]->id->value, 'the same source in another tenant is another link');
     }
 
+    /**
+     * Audit UK-SL-2: one live generated link per (tenant, kind, source ref, position), enforced by the live-source
+     * unique key on every platform. A second insert of a live source answers the existing link, inside a host
+     * transaction too, and the transaction stays usable (PostgreSQL: the insert ran in a savepoint). Tombstones and
+     * erased links free their source.
+     */
+    public function testTheLiveSourceUniqueKeyKeepsOneLinkPerSource(): void
+    {
+        $source     = new LinkSource('send-u', 'Logo', 0);
+        $first      = $this->manager()->createMany($this->tenant, [new CreateShortLink('https://example.com/a', kind: LinkKind::email(), source: $source, system: true)])[0];
+        $now        = new DateTimeImmutable(Host::NOW);
+        $clash      = new StoredLink(ShortLinkId::fromString('0190a6d0-0000-7000-8000-0000000000c1'), $this->tenant, ShortCode::random('clash12'), TargetUrl::fromString('https://example.com/clash'), null, LinkKind::email(), $source, null, true, null, null, $now, $now, null, null, null);
+        $connection = $this->host()->connection($this->kernel);
+        $this->listener()->clear();
+
+        $connection->beginTransaction();
+        $stored = $this->store()->insert($clash);
+        self::assertSame($first->id->value, $stored->id->value, 'the live link of the source is answered');
+        $other = $this->manager()->create($this->tenant, new CreateShortLink('https://example.com/after', kind: LinkKind::email(), system: true));
+        $again = $this->manager()->create($this->tenant, new CreateShortLink('https://example.com/b', kind: LinkKind::email(), source: $source, system: true));
+        $connection->commit();
+
+        self::assertSame($first->id->value, $again->id->value, 'create() with a linked source returns that link');
+        self::assertNotNull($this->store()->find($this->tenant, $other->id), 'the host transaction survived the unique violation');
+        self::assertCount(1, $this->listener()->of(ShortLinkCreatedEvent::class), 'only the unsourced link is new');
+        self::assertSame(1, $this->liveLinksOf('send-u'));
+
+        $this->manager()->delete($this->tenant, $first->id);
+        $second = $this->manager()->createMany($this->tenant, [new CreateShortLink('https://example.com/c', kind: LinkKind::email(), source: $source, system: true)])[0];
+        self::assertNotSame($first->id->value, $second->id->value, 'a tombstone frees its source');
+
+        $eraser = $this->container()->get(ShortLinkEraserInterface::class);
+        self::assertInstanceOf(ShortLinkEraserInterface::class, $eraser);
+        $eraser->eraseSource($this->tenant, LinkKind::email(), 'send-u');
+        $third = $this->manager()->createMany($this->tenant, [new CreateShortLink('https://example.com/d', kind: LinkKind::email(), source: $source, system: true)])[0];
+        self::assertNotSame($second->id->value, $third->id->value, 'an erased link frees its source');
+        self::assertSame(1, $this->liveLinksOf('send-u'));
+    }
+
+    /**
+     * Audit UK-SL-2, the race on two real connections: another process inserts the source inside its host transaction
+     * and holds it open. This connection, inside its own host transaction, calls createMany() with the same source: its
+     * insert waits for the other transaction, then the unique key refuses it and the batch answers the other link (no
+     * CONFLICT_*, no duplicate). Before 0.6.0 the MySQL / MariaDB session lock was released before the host commit and
+     * both inserted it.
+     */
+    public function testTwoHostTransactionsCreatingTheSameSourceGetOneLink(): void
+    {
+        $this->skipOnSqlite();
+        $connection = $this->host()->connection($this->kernel);
+        $this->sessionLockWaits($connection, 20);
+        $child = new Process([PHP_BINARY, dirname(__DIR__, 2) . '/Fixtures/bin/source-race.php', TestKernel::defaultDatabaseUrl(), 'source_holder', $this->host()->kind, $this->tenant->value, '-', '1500', 'send-r'], timeout: 120);
+        $child->start();
+        $child->waitUntil(static fn (string $type, string $output): bool => str_contains($output, 'inserted'));
+        $winner = trim(explode("\n", $child->getOutput())[0]);
+        $this->listener()->clear();
+
+        $connection->beginTransaction();
+        $views = $this->manager()->createMany($this->tenant, [
+            new CreateShortLink('https://example.com/mine', kind: LinkKind::email(), source: new LinkSource('send-r', null, 0), system: true),
+            new CreateShortLink('https://example.com/new', kind: LinkKind::email(), source: new LinkSource('send-r2', null, 0), system: true),
+        ]);
+        $connection->commit();
+        $child->wait();
+
+        self::assertTrue($child->isSuccessful(), $child->getErrorOutput());
+        self::assertSame($winner, $views[0]->id->value, 'the other transaction\'s link is answered');
+        self::assertSame(1, $this->liveLinksOf('send-r'));
+        self::assertSame(1, $this->liveLinksOf('send-r2'));
+        $created = $this->listener()->of(ShortLinkCreatedEvent::class);
+        self::assertCount(1, $created, 'only the new source is announced here');
+        self::assertSame($views[1]->id->value, $created[0]->id->value);
+    }
+
+    /**
+     * Audit UK-SL-2 under real parallel processes: six processes, each inside a host transaction held open for a moment,
+     * create the same three sources at once. Exactly three rows exist and every process that commits answers the same
+     * three links. With three or more racers InnoDB may pick a deadlock victim (the refused insert leaves inherited gap
+     * locks): that process gets a lock conflict (409 CONFLICT_001 on a route, nothing of it committed), never a
+     * duplicate and never another link.
+     */
+    public function testParallelHostTransactionsCreateEachSourceOnce(): void
+    {
+        $this->skipOnSqlite();
+        $start = TestKernel::baseDir() . '/source-race-start';
+        @unlink($start);
+        $children = [];
+        for ($i = 0; $i < 6; ++$i) {
+            $process = new Process([PHP_BINARY, dirname(__DIR__, 2) . '/Fixtures/bin/source-race.php', TestKernel::defaultDatabaseUrl(), 'source_race_' . $i, $this->host()->kind, $this->tenant->value, $start, '300', 'send-p1', 'send-p2', 'send-p3'], timeout: 120);
+            $process->start();
+            $children[] = $process;
+        }
+        touch($start);
+        $outputs = [];
+        foreach ($children as $process) {
+            $process->wait();
+            self::assertTrue($process->isSuccessful(), $process->getOutput() . $process->getErrorOutput());
+            $outputs[] = $process->getOutput();
+        }
+        @unlink($start);
+
+        $answered = array_values(array_filter($outputs, static fn (string $output): bool => $output !== "conflict\n"));
+        self::assertNotSame([], $answered, 'at least one process commits');
+        self::assertCount(1, array_unique($answered), 'every committed process answers the same links');
+        foreach (['send-p1', 'send-p2', 'send-p3'] as $ref) {
+            self::assertSame(1, $this->liveLinksOf($ref), $ref);
+        }
+    }
+
     public function testCreateManyRefusesCustomCodesAndLargeBatches(): void
     {
         try {
@@ -686,6 +802,29 @@ abstract class ShortLinkFunctionalTestCase extends KernelTestCase
     private function text(mixed $value): string
     {
         return is_scalar($value) ? (string) $value : '';
+    }
+
+    /**
+     * Live rows of the tenant with this source ref (read straight from the table).
+     */
+    private function liveLinksOf(string $ref): int
+    {
+        $count = $this->host()->connection($this->kernel)->fetchOne(sprintf('SELECT COUNT(*) FROM %snowo_short_link WHERE tenant_key = ? AND source_ref = ? AND deleted_at IS NULL', $this->host()->tablePrefix()), [$this->tenant->value, $ref]);
+
+        return (int) $this->text($count);
+    }
+
+    /**
+     * A bounded lock wait for this session (MySQL / MariaDB `innodb_lock_wait_timeout`, PostgreSQL `lock_timeout`).
+     */
+    private function sessionLockWaits(Connection $connection, int $seconds): void
+    {
+        $platform = $connection->getDatabasePlatform();
+        if ($platform instanceof AbstractMySQLPlatform) {
+            $connection->executeStatement('SET SESSION innodb_lock_wait_timeout = ' . $seconds);
+        } elseif ($platform instanceof PostgreSQLPlatform) {
+            $connection->executeStatement("SET lock_timeout = '" . $seconds . "s'");
+        }
     }
 
     protected function store(): ShortLinkStoreInterface

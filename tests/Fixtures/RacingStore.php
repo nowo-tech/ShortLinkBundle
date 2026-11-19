@@ -22,6 +22,9 @@ final class RacingStore extends ScriptedStore
     /** @var list<TenantKey|null> */
     public array $locks = [];
 
+    /** The live link of the same source that another connection committed first (insert answers it). */
+    public ?StoredLink $winner = null;
+
     public function __construct(public ?StoredLink $before = null, public ?StoredLink $fresh = null)
     {
         parent::__construct();
@@ -32,6 +35,11 @@ final class RacingStore extends ScriptedStore
         $this->locks[] = $lockTenant;
 
         return parent::transactional($work, $afterCommit, $lockTenant);
+    }
+
+    public function insert(StoredLink $link): StoredLink
+    {
+        return $this->winner ?? $link;
     }
 
     public function update(StoredLink $link): void

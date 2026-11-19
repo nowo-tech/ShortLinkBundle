@@ -103,7 +103,7 @@ final readonly class ShortLinkManager implements ShortLinkManagerInterface
         $custom = $command->customCode === null ? null : $this->availableCustomCode($tenant, $kind, $command->customCode, $command->system);
         $actor  = $this->access->currentActor();
 
-        $insert = function () use ($tenant, $command, $kind, $target, $expiry, $title, $custom, $actor, $now): StoredLink {
+        $insert = function () use ($tenant, $command, $kind, $target, $expiry, $title, $custom, $actor, $now): array {
             $this->assertQuota($tenant, $kind, 1);
             $link = new StoredLink(
                 $this->ids->generate(),
@@ -123,20 +123,26 @@ final readonly class ShortLinkManager implements ShortLinkManagerInterface
                 $actor,
                 $actor,
             );
-            $this->store->insert($link);
+            // A source that another connection linked meanwhile returns that link (audit UK-SL-2): nothing new.
+            $stored = $this->store->insert($link);
 
-            return $link;
+            return [$stored, $stored === $link];
         };
-        $created = function (StoredLink $link) use ($command): void {
-            $this->events->dispatch($this->createdEvent($link, $command->system));
+        $created = function (array $result) use ($command): void {
+            /** @var array{StoredLink, bool} $typed */
+            $typed = $result;
+            if ($typed[1]) {
+                $this->events->dispatch($this->createdEvent($typed[0], $command->system));
+            }
         };
 
         // Counted: the store takes the tenant's database lock first, so the count and the insert are exact (rule 4).
-        $link = $this->settings->isCounted($kind->value)
-            ? $this->countedOutsideTransaction($tenant, fn (): StoredLink => $this->store->transactional($insert, $created, $tenant))
+        /** @var array{StoredLink, bool} $result */
+        $result = $this->settings->isCounted($kind->value)
+            ? $this->countedOutsideTransaction($tenant, fn (): array => $this->store->transactional($insert, $created, $tenant))
             : $this->store->transactional($insert, $created);
 
-        return $this->view($link, $now);
+        return $this->view($result[0], $now);
     }
 
     /**
@@ -154,7 +160,6 @@ final readonly class ShortLinkManager implements ShortLinkManagerInterface
         $actor    = $this->access->currentActor();
         $prepared = [];
         $counted  = false;
-        $sourced  = false;
         foreach ($commands as $command) {
             $this->assertGranted(ShortLinkPermission::Manage, $tenant, $command->system);
             if ($command->customCode !== null) {
@@ -162,7 +167,6 @@ final readonly class ShortLinkManager implements ShortLinkManagerInterface
             }
             $kind       = $this->knownKind($command->kind());
             $counted    = $counted || $this->settings->isCounted($kind->value);
-            $sourced    = $sourced || $command->source !== null;
             $prepared[] = [
                 $command,
                 $kind,
@@ -204,8 +208,10 @@ final readonly class ShortLinkManager implements ShortLinkManagerInterface
             }
             foreach ($pending as $index => [$command, $kind, $target, $expiry, $title]) {
                 $link = new StoredLink($this->ids->generate(), $tenant, $this->newRandomCode($tenant), $target, $title, $kind, $command->source, $command->metadata, $command->active, $expiry, $command->active ? null : ShortLinkStateChangedEvent::REASON_MANUAL, $now, $now, null, $actor, $actor);
-                $this->store->insert($link);
-                $results[$index] = [$link, true, $command->system];
+                // The live-source unique key decides a race with another connection (audit UK-SL-2): the loser gets the
+                // winner's link, inside a host transaction too, and announces nothing.
+                $stored          = $this->store->insert($link);
+                $results[$index] = [$stored, $stored === $link, $command->system];
             }
             foreach ($duplicates as $index => $first) {
                 $results[$index] = [$results[$first][0], false, $results[$first][2]];
@@ -224,12 +230,13 @@ final readonly class ShortLinkManager implements ShortLinkManagerInterface
             }
         };
 
-        // The tenant's database lock also makes the find-by-source idempotency exact: two batches with the same source
-        // never both insert it (rule 4, "only one" generated link per source).
+        // Counted: the tenant's database lock keeps the plan limit exact. "Only one" generated link per source (rule 4)
+        // is the live-source unique key's job on every platform, so an uncounted batch takes no tenant lock and may
+        // join a host transaction (audit UK-SL-2).
         /** @var array<int, array{StoredLink, bool, bool}> $results */
         $results = $counted
             ? $this->countedOutsideTransaction($tenant, fn (): array => $this->store->transactional($insert, $created, $tenant))
-            : $this->store->transactional($insert, $created, $sourced ? $tenant : null);
+            : $this->store->transactional($insert, $created);
 
         $views = [];
         foreach ($results as [$link]) {

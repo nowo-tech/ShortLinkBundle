@@ -35,7 +35,7 @@ use function substr;
 final readonly class DbalEraser implements ShortLinkEraserInterface
 {
     /** Columns blanked on an erased tombstone (the code, kind, id and dates stay: the code stays taken). */
-    private const BLANK = "target_url = '', target_host = '', title = NULL, source_ref = NULL, source_label = NULL, source_position = NULL, metadata = NULL, active = ?, disabled_reason = NULL, created_by = NULL, updated_by = NULL, updated_at = ?";
+    private const BLANK = "target_url = '', target_host = '', title = NULL, source_ref = NULL, source_label = NULL, source_position = NULL, source_slot = NULL, metadata = NULL, active = ?, disabled_reason = NULL, created_by = NULL, updated_by = NULL, updated_at = ?";
 
     /** Tenant key of erased tombstones (outside the TenantKey pattern on purpose). */
     public const ERASED_TENANT = '~erased';
@@ -55,7 +55,7 @@ final readonly class DbalEraser implements ShortLinkEraserInterface
         return $this->atomically(function () use ($tenant): int {
             $now   = $this->now();
             $links = $this->tables->linkConnection();
-            $links->executeStatement(sprintf('UPDATE %s SET deleted_at = ? WHERE tenant_key = ? AND deleted_at IS NULL', $this->tables->links), [$now, $tenant->value]);
+            $links->executeStatement(sprintf('UPDATE %s SET deleted_at = ?, source_slot = NULL WHERE tenant_key = ? AND deleted_at IS NULL', $this->tables->links), [$now, $tenant->value]);
             $count = $this->deleteTenantClicks($tenant);
             $count += (int) $links->executeStatement(
                 sprintf('UPDATE %s SET tenant_key = ?, %s WHERE tenant_key = ?', $this->tables->links, self::BLANK),
@@ -82,7 +82,7 @@ final readonly class DbalEraser implements ShortLinkEraserInterface
             $now   = $this->now();
             $links = $this->tables->linkConnection();
             $links->executeStatement(
-                sprintf('UPDATE %s SET deleted_at = ? WHERE tenant_key = ? AND id IN (?) AND deleted_at IS NULL', $this->tables->links),
+                sprintf('UPDATE %s SET deleted_at = ?, source_slot = NULL WHERE tenant_key = ? AND id IN (?) AND deleted_at IS NULL', $this->tables->links),
                 [$now, $tenant->value, $linkIds],
                 [2 => ArrayParameterType::STRING],
             );

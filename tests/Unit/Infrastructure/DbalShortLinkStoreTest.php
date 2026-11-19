@@ -4,11 +4,13 @@ declare(strict_types=1);
 
 namespace Nowo\ShortLinkBundle\Tests\Unit\Infrastructure;
 
+use DateTimeImmutable;
 use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\Driver\AbstractException;
 use Doctrine\DBAL\Exception\ConnectionLost;
 use Doctrine\DBAL\Exception\DeadlockException;
 use Doctrine\DBAL\Exception\LockWaitTimeoutException;
+use Doctrine\DBAL\Exception\UniqueConstraintViolationException;
 use Doctrine\DBAL\Platforms\MySQL80Platform;
 use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
 use Doctrine\DBAL\Platforms\SQLitePlatform;
@@ -16,14 +18,19 @@ use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\Persistence\ManagerRegistry;
 use Doctrine\Persistence\ObjectManager;
 use LogicException;
+use Nowo\ShortLinkBundle\Application\Store\StoredLink;
+use Nowo\ShortLinkBundle\Domain\Exception\CodeTakenException;
+use Nowo\ShortLinkBundle\Domain\Model\LinkKind;
+use Nowo\ShortLinkBundle\Domain\Model\LinkSource;
+use Nowo\ShortLinkBundle\Domain\Model\ShortCode;
 use Nowo\ShortLinkBundle\Domain\Model\ShortLinkId;
+use Nowo\ShortLinkBundle\Domain\Model\TargetUrl;
 use Nowo\ShortLinkBundle\Domain\Model\TenantKey;
 use Nowo\ShortLinkBundle\Infrastructure\Persistence\AfterCommitQueue;
 use Nowo\ShortLinkBundle\Infrastructure\Persistence\DbalShortLinkStore;
 use Nowo\ShortLinkBundle\Tests\Fixtures\MemoryLogger;
 use Nowo\TransactionContract\TransientStorageFailure;
 use PHPUnit\Framework\TestCase;
-use stdClass;
 
 use function str_ends_with;
 use function str_starts_with;
@@ -193,72 +200,152 @@ final class DbalShortLinkStoreTest extends TestCase
     }
 
     /**
-     * Audit UK-SL-3: inside an open host transaction a failed release never closes the connection (the host's work
-     * would be lost); the release is retried when the outermost transaction ends, and closes only if it fails again.
+     * Audit UK-SL-2: the tenant lock is refused inside an open transaction (the MySQL / MariaDB session lock would end
+     * before the host commits, and a failed release could only close the host's connection); nothing runs.
      */
-    public function testAFailedReleaseInsideAHostTransactionIsDeferredToTheEndOfIt(): void
+    public function testTheTenantLockIsRefusedInsideAnOpenTransaction(): void
     {
-        foreach ([true, false] as $commits) {
-            $native     = new stdClass();
+        foreach ([new MySQL80Platform(), new PostgreSQLPlatform()] as $platform) {
             $connection = $this->createMock(Connection::class);
-            $connection->method('getDatabasePlatform')->willReturn(new MySQL80Platform());
-            $connection->method('getNativeConnection')->willReturn($native);
-            $active = true;
-            $connection->method('isTransactionActive')->willReturnCallback(static function () use (&$active): bool {
-                return $active;
-            });
-            $releases = new class {
-                public int $count = 0;
-            };
-            $connection->method('fetchOne')->willReturnCallback(static function (string $query) use ($releases): string {
-                if ($query === 'SELECT RELEASE_LOCK(?)' && ++$releases->count === 1) {
-                    throw self::lost();
-                }
-
-                return '1';
-            });
+            $connection->method('getDatabasePlatform')->willReturn($platform);
+            $connection->method('isTransactionActive')->willReturn(true);
+            $connection->expects(self::never())->method('fetchOne');
             $connection->expects(self::never())->method('close');
-            $queue  = new AfterCommitQueue();
-            $logger = new MemoryLogger();
+            $ran = false;
 
-            self::assertSame(1, (new DbalShortLinkStore($this->registry($connection), $queue, null, '', $logger))->transactional(static fn (): int => 1, null, TenantKey::default()));
-            self::assertSame(1, $releases->count);
-            self::assertCount(1, $logger->records);
-
-            $active = false;
-            $commits ? $queue->committed($native) : $queue->rolledBack($native);
-            self::assertSame(2, $releases->count, 'released once the host transaction ended');
-            $queue->committed($native);
-            self::assertSame(2, $releases->count, 'only once');
+            try {
+                $this->store($this->registry($connection))->transactional(static function () use (&$ran): void {
+                    $ran = true;
+                }, null, TenantKey::default());
+                self::fail('expected a LogicException');
+            } catch (LogicException $exception) {
+                self::assertStringContainsString('outside an open transaction', $exception->getMessage());
+            }
+            self::assertFalse($ran);
         }
     }
 
-    public function testADeferredReleaseThatFailsAgainClosesTheConnectionAndABoundaryRunsIt(): void
+    /**
+     * Audit UK-SL-2: inside a transaction a generated link is inserted in a savepoint; the live-source unique violation
+     * rolls back to it (the transaction survives, PostgreSQL included) and answers the link that won the race, read
+     * with a shared lock on MySQL / MariaDB (latest committed row, no lock upgrade) and plainly elsewhere.
+     */
+    public function testASourceRaceInsideATransactionRollsBackToItsSavepointAndAnswersTheWinner(): void
     {
-        $native     = new stdClass();
+        foreach ([[new MySQL80Platform(), ' LOCK IN SHARE MODE'], [new PostgreSQLPlatform(), ''], [new SQLitePlatform(), '']] as [$platform, $lock]) {
+            $connection = $this->createMock(Connection::class);
+            $connection->method('getDatabasePlatform')->willReturn($platform);
+            $connection->method('isTransactionActive')->willReturn(true);
+            $connection->method('insert')->willThrowException($this->duplicate());
+            $calls = [];
+            $connection->method('createSavepoint')->willReturnCallback(static function (string $name) use (&$calls): void {
+                $calls[] = 'create ' . $name;
+            });
+            $connection->method('rollbackSavepoint')->willReturnCallback(static function (string $name) use (&$calls): void {
+                $calls[] = 'rollback ' . $name;
+            });
+            $connection->expects(self::never())->method('releaseSavepoint');
+            $queries = [];
+            $connection->method('fetchAllAssociative')->willReturnCallback(static function (string $query, array $params) use (&$queries): array {
+                $queries[] = [$query, $params];
+
+                return [self::row('ACME', 'send-1', 2), self::row('acme', 'send-1', 3), self::row('acme', 'send-1', 2, 'winner1')];
+            });
+            $mine = $this->link('acme', 'send-1', 2);
+
+            $stored = $this->store($this->registry($connection))->insert($mine);
+
+            self::assertNotSame($mine, $stored);
+            self::assertSame('winner1', $stored->code->value, 'the look-alike tenant and the other position are never returned');
+            self::assertSame(['create nowo_short_link_source', 'rollback nowo_short_link_source'], $calls);
+            self::assertCount(1, $queries);
+            self::assertStringEndsWith('source_slot = ? AND deleted_at IS NULL' . $lock, $queries[0][0]);
+            self::assertSame(['acme', 'email', 'send-1', 2], $queries[0][1]);
+        }
+    }
+
+    public function testASourceWithoutAPositionUsesTheNoPositionSlotAndASuccessfulInsertReleasesTheSavepoint(): void
+    {
+        $connection = $this->createMock(Connection::class);
+        $connection->method('getDatabasePlatform')->willReturn(new SQLitePlatform());
+        $connection->method('isTransactionActive')->willReturn(true);
+        $rows = [];
+        $connection->method('insert')->willReturnCallback(static function (string $table, array $row) use (&$rows): int {
+            $rows[] = $row;
+
+            return 1;
+        });
+        $connection->expects(self::once())->method('createSavepoint');
+        $connection->expects(self::once())->method('releaseSavepoint')->with('nowo_short_link_source');
+        $connection->expects(self::never())->method('rollbackSavepoint');
+        $mine = $this->link('acme', 'send-1', null);
+
+        self::assertSame($mine, $this->store($this->registry($connection))->insert($mine));
+        self::assertSame(-1, $rows[0]['source_slot']);
+        self::assertNull($rows[0]['source_position']);
+    }
+
+    /**
+     * Outside a transaction (autocommit) no savepoint is needed; a unique violation with no live link of the source is
+     * the code index: CodeTakenException, as before. An unsourced or deleted row never gets a slot.
+     */
+    public function testOutsideATransactionNoSavepointAndAViolationWithoutAWinnerIsTheCode(): void
+    {
         $connection = $this->createMock(Connection::class);
         $connection->method('getDatabasePlatform')->willReturn(new MySQL80Platform());
-        $connection->method('getNativeConnection')->willReturn($native);
-        $active = true;
-        $connection->method('isTransactionActive')->willReturnCallback(static function () use (&$active): bool {
-            return $active;
-        });
-        $connection->method('fetchOne')->willReturnCallback(static function (string $query): string {
-            if ($query === 'SELECT RELEASE_LOCK(?)') {
-                throw self::lost();
-            }
+        $connection->method('isTransactionActive')->willReturn(false);
+        $connection->method('insert')->willThrowException($this->duplicate());
+        $connection->method('fetchAllAssociative')->willReturn([]);
+        $connection->expects(self::never())->method('createSavepoint');
+        $connection->expects(self::never())->method('rollbackSavepoint');
 
-            return '1';
-        });
-        $connection->expects(self::once())->method('close');
-        $queue  = new AfterCommitQueue();
-        $logger = new MemoryLogger();
+        try {
+            $this->store($this->registry($connection))->insert($this->link('acme', 'send-1', 0));
+            self::fail('expected CodeTakenException');
+        } catch (CodeTakenException $exception) {
+            self::assertInstanceOf(UniqueConstraintViolationException::class, $exception->getPrevious());
+        }
 
-        (new DbalShortLinkStore($this->registry($connection), $queue, null, '', $logger))->transactional(static fn (): int => 1, null, TenantKey::default());
-        $active = false;
-        $queue->reset();
-        self::assertCount(2, $logger->records, 'deferred, then closed at the request boundary');
-        $queue->reset();
+        $plain = $this->createMock(Connection::class);
+        $plain->method('getDatabasePlatform')->willReturn(new SQLitePlatform());
+        $plain->method('isTransactionActive')->willReturn(true);
+        $rows = [];
+        $plain->method('insert')->willReturnCallback(static function (string $table, array $row) use (&$rows): int {
+            $rows[] = $row;
+
+            return 1;
+        });
+        $plain->expects(self::never())->method('createSavepoint');
+        $store = $this->store($this->registry($plain));
+        $store->insert($this->link('acme', null, null));
+        $deleted = $this->link('acme', 'send-1', 4);
+        $store->insert(new StoredLink($deleted->id, $deleted->tenant, $deleted->code, $deleted->target, null, $deleted->kind, $deleted->source, null, true, null, null, $deleted->createdAt, $deleted->updatedAt, new DateTimeImmutable('2026-11-12 11:00:00'), null, null));
+        self::assertNull($rows[0]['source_slot']);
+        self::assertNull($rows[1]['source_slot'], 'a tombstone never holds the source');
+        self::assertSame(4, $rows[1]['source_position']);
+    }
+
+    /**
+     * An edit never claims the live-source slot (a duplicate left without one by the 0.6.0 backfill stays editable); a
+     * tombstone clears it.
+     */
+    public function testAnEditLeavesTheSourceSlotAndATombstoneClearsIt(): void
+    {
+        $connection = $this->createMock(Connection::class);
+        $rows       = [];
+        $connection->method('update')->willReturnCallback(static function (string $table, array $row) use (&$rows): int {
+            $rows[] = $row;
+
+            return 1;
+        });
+        $store = $this->store($this->registry($connection));
+        $live  = $this->link('acme', 'send-1', 0);
+        $store->update($live);
+        $store->update(new StoredLink($live->id, $live->tenant, $live->code, $live->target, null, $live->kind, $live->source, null, true, null, null, $live->createdAt, $live->updatedAt, new DateTimeImmutable('2026-11-12 11:00:00'), null, null));
+
+        self::assertArrayNotHasKey('source_slot', $rows[0]);
+        self::assertArrayHasKey('source_slot', $rows[1]);
+        self::assertNull($rows[1]['source_slot']);
     }
 
     public function testPostgreSqlTenantLockIsATransactionAdvisoryLockUnderATransactionLocalLockTimeout(): void
@@ -368,20 +455,20 @@ final class DbalShortLinkStoreTest extends TestCase
     /**
      * @return array<string, mixed>
      */
-    private static function row(string $tenant): array
+    private static function row(string $tenant, ?string $sourceRef = null, ?int $position = null, string $code = 'abc1234'): array
     {
         return [
             'id'              => self::ID,
             'tenant_key'      => $tenant,
-            'code'            => 'abc1234',
+            'code'            => $code,
             'code_custom'     => 0,
             'target_url'      => 'https://example.com/',
             'target_host'     => 'example.com',
             'title'           => null,
-            'kind'            => 'manual',
-            'source_ref'      => null,
+            'kind'            => $sourceRef === null ? 'manual' : 'email',
+            'source_ref'      => $sourceRef,
             'source_label'    => null,
-            'source_position' => null,
+            'source_position' => $position,
             'metadata'        => null,
             'active'          => 1,
             'expires_at'      => null,
@@ -392,6 +479,36 @@ final class DbalShortLinkStoreTest extends TestCase
             'created_by'      => null,
             'updated_by'      => null,
         ];
+    }
+
+    private function link(string $tenant, ?string $sourceRef, ?int $position): StoredLink
+    {
+        $now = new DateTimeImmutable('2026-11-12 10:00:00');
+
+        return new StoredLink(
+            ShortLinkId::fromString(self::ID),
+            TenantKey::fromString($tenant),
+            ShortCode::random('mine123'),
+            TargetUrl::fromString('https://example.com/'),
+            null,
+            $sourceRef === null ? LinkKind::manual() : LinkKind::email(),
+            $sourceRef === null ? null : new LinkSource($sourceRef, null, $position),
+            null,
+            true,
+            null,
+            null,
+            $now,
+            $now,
+            null,
+            null,
+            null,
+        );
+    }
+
+    private function duplicate(): UniqueConstraintViolationException
+    {
+        return new UniqueConstraintViolationException(new class('Duplicate entry', '23000', 1062) extends AbstractException {
+        }, null);
     }
 
     private static function lost(): ConnectionLost

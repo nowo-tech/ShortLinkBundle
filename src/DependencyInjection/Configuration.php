@@ -88,7 +88,7 @@ final class Configuration implements ConfigurationInterface
                             ->scalarPrototype()->end()
                         ->end()
                         ->integerNode('lock_timeout')
-                            ->info('Seconds a counted create (and a createMany() with sources) waits for the tenant\'s database lock (MySQL / MariaDB GET_LOCK, PostgreSQL advisory lock) before answering a lock conflict (409 CONFLICT_001)')
+                            ->info('Seconds a counted create waits for the tenant\'s database lock (MySQL / MariaDB GET_LOCK, PostgreSQL advisory lock) before answering a lock conflict (409 CONFLICT_001)')
                             ->defaultValue(10)
                             ->min(1)
                             ->max(300)

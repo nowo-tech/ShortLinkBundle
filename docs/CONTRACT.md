@@ -328,6 +328,7 @@ CREATE TABLE nowo_short_link (
   source_ref       VARCHAR(64)   DEFAULT NULL COLLATE utf8mb4_bin,
   source_label     VARCHAR(128)  DEFAULT NULL,
   source_position  SMALLINT      DEFAULT NULL,
+  source_slot      SMALLINT      DEFAULT NULL,                   -- 0.6.0: position (-1 = none) while live + sourced, else NULL
   metadata         JSON          DEFAULT NULL,
   active           BOOLEAN       NOT NULL DEFAULT TRUE,
   expires_at       DATETIME      DEFAULT NULL,                   -- UTC (datetime_immutable)
@@ -339,8 +340,8 @@ CREATE TABLE nowo_short_link (
   updated_by       VARCHAR(128)  DEFAULT NULL COLLATE utf8mb4_bin,
   PRIMARY KEY (id),
   UNIQUE INDEX uniq_short_link_code (code),
+  UNIQUE INDEX uniq_short_link_live_source (tenant_key, kind, source_ref, source_slot),  -- 0.6.0 (UK-SL-2)
   INDEX idx_short_link_tenant_list (tenant_key, kind, deleted_at, created_at),
-  INDEX idx_short_link_tenant_source (tenant_key, kind, source_ref),
   INDEX idx_short_link_deleted (deleted_at),
   INDEX idx_short_link_target_host (target_host)
 );
@@ -353,6 +354,10 @@ CREATE TABLE nowo_short_link (
 - The hot-path lookup is a DBAL `SELECT id, tenant_key, code, target_url, kind, active, expires_at, deleted_at FROM
   nowo_short_link WHERE code = ?` on `uniq_short_link_code`, then `$row['code'] === $code` in PHP. No ORM hydration.
 - `metadata` is never queried; only `source_ref` is.
+- One live generated link per (tenant, kind, source ref, position) (0.6.0, audit UK-SL-2): `source_slot` holds the
+  position (-1 without one) while the row is live and has a source, NULL otherwise. NULLs never collide in a unique
+  index, so the key binds live rows only, on every platform (MySQL / MariaDB have no partial indexes). The unique key
+  also serves the source lookups (`idx_short_link_tenant_source` until 0.5.x).
 
 ### 5.2 Click tables (DBAL, created by a `postGenerateSchema` listener; no ORM entity)
 

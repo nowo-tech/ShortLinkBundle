@@ -187,7 +187,7 @@ final class ShortLinkManagerTest extends TestCase
         self::assertInstanceOf(ShortLinkDeletedEvent::class, $events[0]);
     }
 
-    public function testCountedCreatesAndSourcedBatchesTakeTheTenantDatabaseLock(): void
+    public function testOnlyCountedCreatesTakeTheTenantDatabaseLock(): void
     {
         $tenant  = TenantKey::default();
         $store   = new RacingStore();
@@ -199,7 +199,27 @@ final class ShortLinkManagerTest extends TestCase
         $manager->createMany($tenant, [new CreateShortLink('https://example.com', kind: LinkKind::email())]);
         $manager->createMany($tenant, [new CreateShortLink('https://example.com')]);
 
-        self::assertEquals([$tenant, null, $tenant, null, $tenant], $store->locks, 'counted kind, uncounted, sourced batch, unsourced batch, counted batch');
+        self::assertEquals([$tenant, null, null, null, $tenant], $store->locks, 'counted kind, uncounted, sourced batch (the unique key decides, UK-SL-2), unsourced batch, counted batch');
+    }
+
+    /**
+     * Audit UK-SL-2: the live-source unique key refused the insert because another connection committed the same source
+     * first; the store answers that link, and create() / createMany() return it and announce nothing.
+     */
+    public function testALostSourceRaceReturnsTheWinnerAndAnnouncesNothing(): void
+    {
+        $tenant        = TenantKey::default();
+        $at            = new DateTimeImmutable('2026-11-12 10:00:00');
+        $store         = new RacingStore();
+        $store->winner = new StoredLink(ShortLinkId::fromString('0190a6d0-0000-7000-8000-000000000077'), $tenant, ShortCode::random('win1234'), TargetUrl::fromString('https://example.com/won'), null, LinkKind::email(), new LinkSource('send-1', null, 1), null, true, null, null, $at, $at, null, null, null);
+        $events        = new ArrayObject();
+        $manager       = $this->manager($store, new ManagerSettings(enforceAccess: false), null, null, $events);
+        $command       = new CreateShortLink('https://example.com/mine', kind: LinkKind::email(), source: new LinkSource('send-1', null, 1));
+
+        self::assertSame('win1234', $manager->create($tenant, $command)->code->value);
+        $views = $manager->createMany($tenant, [$command, $command]);
+        self::assertSame(['win1234', 'win1234'], [$views[0]->code->value, $views[1]->code->value]);
+        self::assertCount(0, $events, 'the winner announced its link');
     }
 
     private function link(bool $active, ?string $title): StoredLink

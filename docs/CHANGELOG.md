@@ -16,6 +16,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- `nowo_short_link.source_slot` column and unique index `uniq_short_link_live_source (tenant_key, kind, source_ref, source_slot)`: one live generated link per tenant, kind, source ref and position on MySQL, MariaDB, PostgreSQL and SQLite (audit UK-SL-2). Migration, duplicate check and backfill per database in UPGRADING.
+
+### Changed
+
+- `createMany()` with sources and no counted kind no longer takes the tenant database lock: the unique key decides the race, and the call can join a host transaction on every platform. The loser of the race gets the winner's link (inside a savepoint, so the host transaction survives on PostgreSQL), never a `CONFLICT_*` code.
+- `create()` with a source that already has a live link returns that link without an event, as `createMany()` does.
+- The tenant database lock (`transactional()` with a tenant) is refused inside an open transaction; only counted creates take it, and those were already refused inside host transactions. A failed MySQL / MariaDB `RELEASE_LOCK` therefore always closes the connection, never inside a host transaction; the deferred release added in 0.5.0 is removed.
+- The index `idx_short_link_tenant_source` is dropped; the new unique index serves the source lookups.
+
+### Fixed
+
+- MySQL / MariaDB: two `createMany()` calls with the same source inside two host transactions could both insert it, because the `GET_LOCK` session lock was released before the host committed (audit UK-SL-2, the residual risk documented in 0.5.0). PostgreSQL was not affected.
+
 ## [0.5.0] - 2026-11-19
 
 ### Added

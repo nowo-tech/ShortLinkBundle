@@ -46,8 +46,9 @@ class ScriptedStore implements ShortLinkStoreInterface
         return ++$this->probes <= $this->collisions;
     }
 
-    public function insert(StoredLink $link): void
+    public function insert(StoredLink $link): StoredLink
     {
+        return $link;
     }
 
     public function update(StoredLink $link): void

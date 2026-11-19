@@ -80,6 +80,12 @@ final readonly class DbalShortLinkStore implements ShortLinkStoreInterface
     /** Prefix of the MySQL / MariaDB user-level lock names (+ 40 hex characters: 58 of the 64 allowed). */
     private const LOCK_NAME_PREFIX = 'nowo_short_link_q_';
 
+    /** Savepoint around the insert of a generated link inside a transaction (a unique violation keeps the transaction). */
+    private const SOURCE_SAVEPOINT = 'nowo_short_link_source';
+
+    /** `source_slot` of a live generated link without a position (positions are 0–999). */
+    private const NO_POSITION_SLOT = -1;
+
     private const COLUMNS = 'id, tenant_key, code, code_custom, target_url, target_host, title, kind, source_ref, source_label, source_position, metadata, active, expires_at, disabled_reason, created_at, updated_at, deleted_at, created_by, updated_by';
 
     private string $table;
@@ -106,7 +112,12 @@ final readonly class DbalShortLinkStore implements ShortLinkStoreInterface
     {
         $connection = $this->connection();
         $joined     = $connection->isTransactionActive();
-        $unit       = $lockTenant instanceof TenantKey ? function () use ($connection, $lockTenant, $work): mixed {
+        if ($joined && $lockTenant instanceof TenantKey) {
+            // The MySQL / MariaDB lock is a session lock released when the unit returns, before a host commit: it
+            // would not cover the host's commit (audit UK-SL-2), and a failed release could not close the connection.
+            throw new LogicException('The tenant database lock is taken only outside an open transaction.');
+        }
+        $unit = $lockTenant instanceof TenantKey ? function () use ($connection, $lockTenant, $work): mixed {
             $this->lockTenant($connection, $lockTenant);
 
             return $work();
@@ -155,13 +166,40 @@ final readonly class DbalShortLinkStore implements ShortLinkStoreInterface
     /**
      * {@inheritDoc}
      */
-    public function insert(StoredLink $link): void
+    public function insert(StoredLink $link): StoredLink
     {
-        try {
-            $this->connection()->insert($this->table, $this->row($link), $this->types());
-        } catch (UniqueConstraintViolationException $exception) {
-            throw new CodeTakenException(previous: $exception);
+        $connection = $this->connection();
+        $source     = $link->source;
+        if (!$source instanceof LinkSource || $link->deletedAt instanceof DateTimeImmutable) {
+            try {
+                $connection->insert($this->table, $this->row($link), $this->types());
+            } catch (UniqueConstraintViolationException $exception) {
+                throw new CodeTakenException(previous: $exception);
+            }
+
+            return $link;
         }
+
+        // A generated link: the live-source unique key decides a race (audit UK-SL-2). Inside a transaction the insert
+        // runs in a savepoint, so its unique violation never aborts the transaction (PostgreSQL) or the host's work.
+        $savepoint = $connection->isTransactionActive();
+        if ($savepoint) {
+            $connection->createSavepoint(self::SOURCE_SAVEPOINT);
+        }
+        try {
+            $connection->insert($this->table, $this->row($link), $this->types());
+        } catch (UniqueConstraintViolationException $exception) {
+            if ($savepoint) {
+                $connection->rollbackSavepoint(self::SOURCE_SAVEPOINT);
+            }
+
+            return $this->committedSource($connection, $link, $source) ?? throw new CodeTakenException(previous: $exception);
+        }
+        if ($savepoint) {
+            $connection->releaseSavepoint(self::SOURCE_SAVEPOINT);
+        }
+
+        return $link;
     }
 
     /**
@@ -171,6 +209,11 @@ final readonly class DbalShortLinkStore implements ShortLinkStoreInterface
     {
         $row = $this->row($link);
         unset($row['id'], $row['tenant_key'], $row['code'], $row['code_custom'], $row['kind'], $row['created_at'], $row['created_by']);
+        if (!$link->deletedAt instanceof DateTimeImmutable) {
+            // The live-source slot is set by insert() and only ever cleared (tombstone): an edit never claims it, so a
+            // duplicate left without a slot by the 0.6.0 backfill stays editable (UPGRADING).
+            unset($row['source_slot']);
+        }
         $this->connection()->update($this->table, $row, ['id' => $link->id->value, 'tenant_key' => $link->tenant->value], $this->types());
     }
 
@@ -364,6 +407,27 @@ final readonly class DbalShortLinkStore implements ShortLinkStoreInterface
     }
 
     /**
+     * The live link of the same source that another connection committed while this one inserted (the unique violation
+     * of the "only one" race), or null when the violation was the code. MySQL / MariaDB read it with a shared lock: a
+     * locking read sees the latest committed row even under REPEATABLE READ, and a shared lock (unlike FOR UPDATE) needs
+     * no upgrade of the shared lock the refused insert already holds on the duplicate key. PostgreSQL READ COMMITTED and
+     * SQLite see it with a plain read.
+     */
+    private function committedSource(Connection $connection, StoredLink $link, LinkSource $source): ?StoredLink
+    {
+        $lock = $connection->getDatabasePlatform() instanceof AbstractMySQLPlatform ? ' LOCK IN SHARE MODE' : '';
+        $sql  = sprintf('SELECT %s FROM %s WHERE tenant_key = ? AND kind = ? AND source_ref = ? AND source_slot = ? AND deleted_at IS NULL%s', self::COLUMNS, $this->table, $lock);
+        $rows = $connection->fetchAllAssociative($sql, [$link->tenant->value, $link->kind->value, $source->ref, $source->position ?? self::NO_POSITION_SLOT], [ParameterType::STRING, ParameterType::STRING, ParameterType::STRING, ParameterType::INTEGER]);
+        foreach (array_map($this->hydrate(...), $rows) as $existing) {
+            if ($existing->tenant->equals($link->tenant) && $existing->source?->ref === $source->ref && $existing->source->position === $source->position) {
+                return $existing;
+            }
+        }
+
+        return null;
+    }
+
+    /**
      * @param list<mixed> $params
      *
      * @return list<StoredLink>
@@ -430,6 +494,7 @@ final readonly class DbalShortLinkStore implements ShortLinkStoreInterface
             'source_ref'      => $link->source?->ref,
             'source_label'    => $link->source?->label,
             'source_position' => $link->source?->position,
+            'source_slot'     => $link->source instanceof LinkSource && !$link->deletedAt instanceof DateTimeImmutable ? ($link->source->position ?? self::NO_POSITION_SLOT) : null,
             'metadata'        => $link->metadata?->toJson(),
             'active'          => $link->active,
             'expires_at'      => $link->expiry instanceof Expiry ? $this->utc($link->expiry->at) : null,
@@ -447,7 +512,7 @@ final readonly class DbalShortLinkStore implements ShortLinkStoreInterface
      */
     private function types(): array
     {
-        return ['code_custom' => Types::BOOLEAN, 'active' => Types::BOOLEAN, 'source_position' => ParameterType::INTEGER];
+        return ['code_custom' => Types::BOOLEAN, 'active' => Types::BOOLEAN, 'source_position' => ParameterType::INTEGER, 'source_slot' => ParameterType::INTEGER];
     }
 
     /**
@@ -542,41 +607,17 @@ final readonly class DbalShortLinkStore implements ShortLinkStoreInterface
 
     /**
      * Releases the MySQL / MariaDB user-level lock of {@see self::lockTenant()} (PostgreSQL's ends with the
-     * transaction). A failed release outside a transaction closes the connection, which drops the lock with the
-     * session: a worker never keeps a tenant locked. Inside an open host transaction the connection is never closed
-     * (that would lose the host's work): the release is retried after the outermost commit or rollback.
+     * transaction). The lock is only ever taken outside an open transaction ({@see self::transactional()} refuses it
+     * inside one), so the bundle's own unit has ended here: a failed release closes the connection, which drops the
+     * lock with the session (a worker never keeps a tenant locked) and never loses a host's work.
      */
     private function unlockTenant(Connection $connection, TenantKey $tenant): void
     {
         if (!$connection->getDatabasePlatform() instanceof AbstractMySQLPlatform) {
             return;
         }
-        $name = self::LOCK_NAME_PREFIX . substr(hash('sha256', $tenant->value), 0, 40);
         try {
-            $connection->fetchOne('SELECT RELEASE_LOCK(?)', [$name]);
-        } catch (Throwable $exception) {
-            $native = $connection->isTransactionActive() ? $connection->getNativeConnection() : null;
-            if (is_object($native)) {
-                $this->logger?->warning('nowo_short_link: tenant lock release failed inside a host transaction, retried after it ends: {class}', ['class' => $exception::class]);
-                // @igor-ignore - Closure held at most until the host transaction ends or the request / message boundary (AfterCommitQueue reset), never across requests.
-                $this->afterCommit->holdUntilEnd($native, function () use ($connection, $name): void {
-                    $this->releaseOrClose($connection, $name);
-                });
-
-                return;
-            }
-            $this->logger?->warning('nowo_short_link: tenant lock release failed, closing the connection: {class}', ['class' => $exception::class]);
-            $connection->close();
-        }
-    }
-
-    /**
-     * A deferred release, outside any transaction: on failure the connection is closed (the lock goes with the session).
-     */
-    private function releaseOrClose(Connection $connection, string $name): void
-    {
-        try {
-            $connection->fetchOne('SELECT RELEASE_LOCK(?)', [$name]);
+            $connection->fetchOne('SELECT RELEASE_LOCK(?)', [self::LOCK_NAME_PREFIX . substr(hash('sha256', $tenant->value), 0, 40)]);
         } catch (Throwable $exception) {
             $this->logger?->warning('nowo_short_link: tenant lock release failed, closing the connection: {class}', ['class' => $exception::class]);
             $connection->close();
