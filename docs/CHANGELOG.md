@@ -8,12 +8,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ## Table of contents
 
 - [[Unreleased]](#unreleased)
+- [[0.5.0] - 2026-11-19](#050---2026-11-19)
 - [[0.4.0] - 2026-11-18](#040---2026-11-18)
 - [[0.3.0] - 2026-11-17](#030---2026-11-17)
 - [[0.2.0] - 2026-11-12](#020---2026-11-12)
 - [[0.1.0] - 2026-11-12](#010---2026-11-12)
 
 ## [Unreleased]
+
+## [0.5.0] - 2026-11-19
 
 ### Added
 
@@ -35,6 +38,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Lost updates (0.1.0–0.4.0, security advisory, Low): `update()`, `disable()` / `enable()` and `delete()` wrote back a snapshot of the row read before the transaction, so an edit racing a disable or a delete could re-enable or undelete the link, and a delete could revert a concurrent edit. The row is now read again with `SELECT … FOR UPDATE` inside the transaction and only the changed fields are written; a link already in the requested state or deleted meanwhile is left as it is, with no event.
 - A write unit (0.1.0–0.4.0, security advisory, Low) whose connection was lost during `COMMIT` (outcome unknown) was replayed once on a new connection, which could create a second link; it is now rethrown. A connection lost before the work finished is still replayed once (nothing was committed).
 - Messenger click writes (0.1.0–0.4.0, security advisory, Low; `click_log.write: messenger`): a lock conflict of the insert or of the liveness check (also a raw DBAL lock error of the liveness read) is rethrown so the transport retries the message, instead of the click being dropped with a warning (rule 8). The `sync` and `terminate` modes keep logging every failure after the response.
+
+[0.5.0]: https://github.com/nowo-tech/ShortLinkBundle/releases/tag/v0.5.0
 
 ## [0.4.0] - 2026-11-18
 
@@ -248,5 +253,5 @@ First release: slices S1 (domain + persistence), S2 (public redirect) and S3 (st
 - Docs set, Spec Kit baseline, Flex recipe, demos `symfony7` (Symfony 7.4) and `symfony8` (Symfony 8.1) on FrankenPHP
   worker mode with MySQL, UiKit's admin layout and default theme (REQ-DEMO-014) and FormKit (REQ-DEMO-015).
 
-[Unreleased]: https://github.com/nowo-tech/ShortLinkBundle/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/nowo-tech/ShortLinkBundle/compare/v0.5.0...HEAD
 [0.1.0]: https://github.com/nowo-tech/ShortLinkBundle/releases/tag/v0.1.0
