@@ -23,6 +23,7 @@ use Nowo\ShortLinkBundle\Infrastructure\Persistence\DbalShortLinkStore;
 use Nowo\ShortLinkBundle\Tests\Fixtures\MemoryLogger;
 use Nowo\TransactionContract\TransientStorageFailure;
 use PHPUnit\Framework\TestCase;
+use stdClass;
 
 use function str_ends_with;
 use function str_starts_with;
@@ -189,6 +190,75 @@ final class DbalShortLinkStoreTest extends TestCase
 
         self::assertSame(1, $this->store($this->registry($connection), $logger)->transactional(static fn (): int => 1, null, TenantKey::default()));
         self::assertCount(1, $logger->records);
+    }
+
+    /**
+     * Audit UK-SL-3: inside an open host transaction a failed release never closes the connection (the host's work
+     * would be lost); the release is retried when the outermost transaction ends, and closes only if it fails again.
+     */
+    public function testAFailedReleaseInsideAHostTransactionIsDeferredToTheEndOfIt(): void
+    {
+        foreach ([true, false] as $commits) {
+            $native     = new stdClass();
+            $connection = $this->createMock(Connection::class);
+            $connection->method('getDatabasePlatform')->willReturn(new MySQL80Platform());
+            $connection->method('getNativeConnection')->willReturn($native);
+            $active = true;
+            $connection->method('isTransactionActive')->willReturnCallback(static function () use (&$active): bool {
+                return $active;
+            });
+            $releases = new class {
+                public int $count = 0;
+            };
+            $connection->method('fetchOne')->willReturnCallback(static function (string $query) use ($releases): string {
+                if ($query === 'SELECT RELEASE_LOCK(?)' && ++$releases->count === 1) {
+                    throw self::lost();
+                }
+
+                return '1';
+            });
+            $connection->expects(self::never())->method('close');
+            $queue  = new AfterCommitQueue();
+            $logger = new MemoryLogger();
+
+            self::assertSame(1, (new DbalShortLinkStore($this->registry($connection), $queue, null, '', $logger))->transactional(static fn (): int => 1, null, TenantKey::default()));
+            self::assertSame(1, $releases->count);
+            self::assertCount(1, $logger->records);
+
+            $active = false;
+            $commits ? $queue->committed($native) : $queue->rolledBack($native);
+            self::assertSame(2, $releases->count, 'released once the host transaction ended');
+            $queue->committed($native);
+            self::assertSame(2, $releases->count, 'only once');
+        }
+    }
+
+    public function testADeferredReleaseThatFailsAgainClosesTheConnectionAndABoundaryRunsIt(): void
+    {
+        $native     = new stdClass();
+        $connection = $this->createMock(Connection::class);
+        $connection->method('getDatabasePlatform')->willReturn(new MySQL80Platform());
+        $connection->method('getNativeConnection')->willReturn($native);
+        $active = true;
+        $connection->method('isTransactionActive')->willReturnCallback(static function () use (&$active): bool {
+            return $active;
+        });
+        $connection->method('fetchOne')->willReturnCallback(static function (string $query): string {
+            if ($query === 'SELECT RELEASE_LOCK(?)') {
+                throw self::lost();
+            }
+
+            return '1';
+        });
+        $connection->expects(self::once())->method('close');
+        $queue  = new AfterCommitQueue();
+        $logger = new MemoryLogger();
+
+        (new DbalShortLinkStore($this->registry($connection), $queue, null, '', $logger))->transactional(static fn (): int => 1, null, TenantKey::default());
+        $active = false;
+        $queue->reset();
+        self::assertCount(2, $logger->records, 'deferred, then closed at the request boundary');
+        $queue->reset();
     }
 
     public function testPostgreSqlTenantLockIsATransactionAdvisoryLockUnderATransactionLocalLockTimeout(): void

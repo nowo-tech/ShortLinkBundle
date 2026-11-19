@@ -77,7 +77,7 @@ nowo_short_link:
         provider: null               # ShortLinkQuotaInterface service id; null = default_limit
         default_limit: null          # integer >= 0; null (or ~) = unlimited
         counted_kinds: [manual]      # only configured kinds
-        lock_timeout: 10             # seconds a counted create waits for the tenant's database lock (1..300)
+        lock_timeout: 10             # seconds a counted create waits for the tenant's database lock (1..300); the quota provider runs under it: no slow I/O
     kinds:                           # manual and email are built in; add yours (^[a-z][a-z0-9_]{0,31}$)
         email: { allow_custom_code: false, show_in_ui: false, counted: false }
     ui:

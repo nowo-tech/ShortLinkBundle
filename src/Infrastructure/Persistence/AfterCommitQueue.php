@@ -28,12 +28,16 @@ final class AfterCommitQueue implements ResetInterface
     /** @var WeakMap<object, list<Closure(): void>> */
     private WeakMap $held;
 
+    /** @var WeakMap<object, list<Closure(): void>> work run when the outermost transaction ends either way */
+    private WeakMap $untilEnd;
+
     /**
      * @param LoggerInterface|null $logger failures of after-commit work are logged here, never thrown
      */
     public function __construct(private readonly ?LoggerInterface $logger = null)
     {
-        $this->held = new WeakMap();
+        $this->held     = new WeakMap();
+        $this->untilEnd = new WeakMap();
     }
 
     /**
@@ -47,6 +51,17 @@ final class AfterCommitQueue implements ResetInterface
     }
 
     /**
+     * Holds work until the outermost transaction of this native connection ends, committed or rolled back (a tenant
+     * lock release deferred out of a host transaction); at a request / message boundary it runs too.
+     *
+     * @param Closure(): void $work
+     */
+    public function holdUntilEnd(object $nativeConnection, Closure $work): void
+    {
+        $this->untilEnd[$nativeConnection] = [...($this->untilEnd[$nativeConnection] ?? []), $work];
+    }
+
+    /**
      * The outermost transaction of this connection committed: runs and forgets its held work.
      */
     public function committed(object $nativeConnection): void
@@ -56,6 +71,7 @@ final class AfterCommitQueue implements ResetInterface
         foreach ($work as $item) {
             $this->run($item);
         }
+        $this->ended($nativeConnection);
     }
 
     /**
@@ -64,6 +80,19 @@ final class AfterCommitQueue implements ResetInterface
     public function rolledBack(object $nativeConnection): void
     {
         unset($this->held[$nativeConnection]);
+        $this->ended($nativeConnection);
+    }
+
+    /**
+     * Runs and forgets the work held until the end of this connection's transaction.
+     */
+    private function ended(object $nativeConnection): void
+    {
+        $work = $this->untilEnd[$nativeConnection] ?? [];
+        unset($this->untilEnd[$nativeConnection]);
+        foreach ($work as $item) {
+            $this->run($item);
+        }
     }
 
     /**
@@ -104,5 +133,13 @@ final class AfterCommitQueue implements ResetInterface
             ($this->logger ?? new NullLogger())->warning('nowo_short_link: dropped {count} after-commit item(s) of a transaction that did not commit through the bundle middleware.', ['count' => $count]);
         }
         $this->held = new WeakMap();
+        // Work held until the end of a transaction (lock releases) runs anyway: a worker must never keep a lock.
+        $untilEnd       = $this->untilEnd;
+        $this->untilEnd = new WeakMap();
+        foreach ($untilEnd as $work) {
+            foreach ($work as $item) {
+                $this->run($item);
+            }
+        }
     }
 }

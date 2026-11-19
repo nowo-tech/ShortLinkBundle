@@ -234,4 +234,30 @@ final class ClickInfrastructureTest extends TestCase
         $this->expectException(TransientStorageFailure::class);
         (new RecordShortLinkClickHandler(new ClickRecorder($clicks, new NullCountryResolver(), $events, links: $links)))(new RecordShortLinkClick($click));
     }
+
+    /**
+     * Audit UK-SL-4: a raw DBAL lock error of the liveness read (not wrapped by a runner) is retried by the transport too.
+     */
+    public function testARawDbalLockErrorOfTheLivenessReadIsRethrownForMessenger(): void
+    {
+        $deadlock = new DeadlockException(new class('Deadlock found', '40001', 1213) extends AbstractException {
+        }, null);
+        $links = new class($deadlock) extends ScriptedStore {
+            public function __construct(private readonly DeadlockException $deadlock)
+            {
+                parent::__construct();
+            }
+
+            public function isLive(ShortLinkId $id, TenantKey $tenant): bool
+            {
+                throw $this->deadlock;
+            }
+        };
+        $clicks = $this->createMock(ClickStoreInterface::class);
+        $clicks->expects(self::never())->method('insert');
+        $click = new ClickPayload(ShortLinkId::fromString('0190a6d0-0000-7000-8000-000000000001'), TenantKey::default(), LinkKind::manual(), null, new DateTimeImmutable(), null, UserAgentFamily::Unknown, null, false);
+
+        $this->expectExceptionObject($deadlock);
+        (new RecordShortLinkClickHandler(new ClickRecorder($clicks, new NullCountryResolver(), $this->createStub(EventDispatcherInterface::class), links: $links)))(new RecordShortLinkClick($click));
+    }
 }

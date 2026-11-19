@@ -542,16 +542,41 @@ final readonly class DbalShortLinkStore implements ShortLinkStoreInterface
 
     /**
      * Releases the MySQL / MariaDB user-level lock of {@see self::lockTenant()} (PostgreSQL's ends with the
-     * transaction). A failed release closes the connection, which drops the lock with the session: a worker never
-     * keeps a tenant locked.
+     * transaction). A failed release outside a transaction closes the connection, which drops the lock with the
+     * session: a worker never keeps a tenant locked. Inside an open host transaction the connection is never closed
+     * (that would lose the host's work): the release is retried after the outermost commit or rollback.
      */
     private function unlockTenant(Connection $connection, TenantKey $tenant): void
     {
         if (!$connection->getDatabasePlatform() instanceof AbstractMySQLPlatform) {
             return;
         }
+        $name = self::LOCK_NAME_PREFIX . substr(hash('sha256', $tenant->value), 0, 40);
         try {
-            $connection->fetchOne('SELECT RELEASE_LOCK(?)', [self::LOCK_NAME_PREFIX . substr(hash('sha256', $tenant->value), 0, 40)]);
+            $connection->fetchOne('SELECT RELEASE_LOCK(?)', [$name]);
+        } catch (Throwable $exception) {
+            $native = $connection->isTransactionActive() ? $connection->getNativeConnection() : null;
+            if (is_object($native)) {
+                $this->logger?->warning('nowo_short_link: tenant lock release failed inside a host transaction, retried after it ends: {class}', ['class' => $exception::class]);
+                // @igor-ignore - Closure held at most until the host transaction ends or the request / message boundary (AfterCommitQueue reset), never across requests.
+                $this->afterCommit->holdUntilEnd($native, function () use ($connection, $name): void {
+                    $this->releaseOrClose($connection, $name);
+                });
+
+                return;
+            }
+            $this->logger?->warning('nowo_short_link: tenant lock release failed, closing the connection: {class}', ['class' => $exception::class]);
+            $connection->close();
+        }
+    }
+
+    /**
+     * A deferred release, outside any transaction: on failure the connection is closed (the lock goes with the session).
+     */
+    private function releaseOrClose(Connection $connection, string $name): void
+    {
+        try {
+            $connection->fetchOne('SELECT RELEASE_LOCK(?)', [$name]);
         } catch (Throwable $exception) {
             $this->logger?->warning('nowo_short_link: tenant lock release failed, closing the connection: {class}', ['class' => $exception::class]);
             $connection->close();

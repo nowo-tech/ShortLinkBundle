@@ -104,6 +104,9 @@ connection.
 
 ## Residual risks
 
+- **Release of the MySQL / MariaDB lock.** A failed `RELEASE_LOCK` outside a transaction closes the connection (the
+  session lock goes with it). Inside an open host transaction the connection is never closed; the release is retried
+  after the outermost commit or rollback (or at the request / message boundary).
 - **MySQL / MariaDB inside a host transaction.** `createMany()` with sources and no counted kind may run inside an open
   host transaction; `GET_LOCK` is a session lock, released when the bundle's unit returns, before the host commits. Two
   such batches with the same source in two host transactions can both insert it. Counted creates are refused inside host
@@ -114,5 +117,8 @@ connection.
 - **After-commit listeners.** Events are dispatched after the commit; a listener failure is logged, never thrown (the
   link exists; a rethrow would invite a retry that creates a second link). Listeners that write must be idempotent and
   handle their own retries.
+- **Quota port under the lock.** `ShortLinkQuotaInterface::limitFor()` runs while the tenant's database lock is held.
+  A host implementation must answer fast (memory, cache, one local query), never with HTTP or other slow I/O: every
+  counted create of the tenant waits for it and gives up after `quota.lock_timeout`.
 - **`symfony/lock` store.** The default `flock` store serialises one host only; the database lock is what makes the plan
   limit exact across servers.

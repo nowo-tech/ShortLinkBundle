@@ -10,6 +10,7 @@ use Nowo\ShortLinkBundle\Domain\Event\ShortLinkClickedEvent;
 use Nowo\ShortLinkBundle\Domain\Model\CountryCode;
 use Nowo\ShortLinkBundle\Domain\Port\ClickCountryResolverInterface;
 use Nowo\TransactionContract\TransientStorageFailure;
+use Nowo\TransactionDoctrine\TransientFailureClassifier;
 use Psr\EventDispatcher\EventDispatcherInterface;
 use Psr\Log\LoggerInterface;
 use SensitiveParameter;
@@ -107,6 +108,10 @@ final readonly class ClickRecorder
             if ($current instanceof TransientStorageFailure) {
                 throw $exception;
             }
+        }
+        // A raw DBAL lock error (deadlock, lock wait timeout, serialization failure), e.g. of the liveness read.
+        if ((new TransientFailureClassifier())->isTransient($exception)) {
+            throw $exception;
         }
     }
 

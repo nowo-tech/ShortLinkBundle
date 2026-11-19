@@ -46,7 +46,15 @@ fields. A disable or delete is no longer undone by an edit saved at the same tim
 is a no-op without an event.
 
 **Scoped DBAL middlewares.** The bundle's DBAL middlewares now wrap only the connection of `doctrine.entity_manager`
-(else the default entity manager), never your other connections.
+(else the default entity manager), never your other connections. Note:
+
+- transaction-doctrine's `CommitTrackingMiddleware` is **new**. With the default `conflict_response.commit_tracking:
+  bundle` it wraps the bundle's connection, which in most applications is your default connection as well.
+- On **DBAL 3**, `Connection::commit()` on that connection then returns `null` instead of `true` (the middleware's
+  driver connection returns nothing). Code that checks the return value of `commit()` must not rely on `true`.
+- If that matters to you, set `conflict_response.commit_tracking: off` (no middleware; `CONFLICT_002` is then decided by
+  the failure itself and transaction-doctrine's watermark), or register `NowoTransactionDoctrineBundle` with
+  `commit_detection: true`, whose single middleware is then reused and the bundle adds none.
 
 See [CONCURRENCY.md](CONCURRENCY.md).
 
