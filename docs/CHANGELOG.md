@@ -16,6 +16,27 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- `Nowo\ShortLinkBundle\Application\HostTransactionLostException` (a `TransientStorageFailure`): a bundle write that joined a host transaction was the deadlock victim and the database (MySQL / MariaDB) rolled back the whole host transaction. The connection is left in a rollback-only transaction at the host's nesting level, so the host's later statements can never autocommit; the host must roll back and retry its whole unit (audit UY-1).
+- `nowo_short_link.source_slot` column and unique index `uniq_short_link_live_source (tenant_key, kind, source_ref, source_slot)`: one live generated link per tenant, kind, source ref and position on MySQL, MariaDB, PostgreSQL and SQLite (audit UK-SL-2). Migration, duplicate check and backfill per database in UPGRADING.
+
+### Changed
+
+- `createMany()` with sources and no counted kind no longer takes the tenant database lock: the unique key decides the race, and the call can join a host transaction on every platform. The loser of the race gets the winner's link (inside a savepoint, so the host transaction survives on PostgreSQL), never a `CONFLICT_*` code.
+- `create()` with a source that already has a live link returns that link without an event, as `createMany()` does, and looks it up before the plan limit: a tenant at its limit gets its existing link (audit UY-5).
+- `createMany()` inserts its sourced links in a fixed order (kind, ref, position), so two batches with the same sources never lock crosswise (audit UY-2).
+- The tenant database lock (`transactional()` with a tenant) is refused inside an open transaction; only counted creates take it, and those were already refused inside host transactions. A failed MySQL / MariaDB `RELEASE_LOCK` therefore always closes the connection, never inside a host transaction; the deferred release added in 0.5.0 is removed.
+- The index `idx_short_link_tenant_source` is dropped; the new unique index serves the source lookups.
+- Requires `doctrine/dbal` ^4 (audit UY2-1).
+- `transactional()` and the click store refuse to write into a transaction that is already rollback-only (`HostTransactionLostException`), so a host that caught the exception and carried on never loses later links or clicks silently (audit UY2-4). When reopening the lost host transaction fails after DBAL raised the level, that level is still marked rollback-only (audit UY2-3).
+- `findBySource()` and the race re-read also re-check the kind in PHP (audits UY-6, UY2-6).
+
+### Fixed
+
+- Known issue of 0.5.0: it declared `doctrine/dbal` `^3.8.2 || ^4.0` but did not work on DBAL 3 (a `ParameterType` return type in the store is a TypeError there). 0.6.0 requires DBAL ^4 (audit UY2-2).
+- MySQL / MariaDB: two `createMany()` calls with the same source inside two host transactions could both insert it, because the `GET_LOCK` session lock was released before the host committed (audit UK-SL-2, the residual risk documented in 0.5.0). PostgreSQL was not affected.
+
 ## [0.5.0] - 2026-11-19
 
 ### Added

@@ -12,12 +12,13 @@
     <entity name="Nowo\ShortLinkBundle\Infrastructure\Doctrine\Entity\ShortLinkRecord" table="nowo_short_link">
         <indexes>
             <index name="idx_short_link_tenant_list" columns="tenant_key,kind,deleted_at,created_at"/>
-            <index name="idx_short_link_tenant_source" columns="tenant_key,kind,source_ref"/>
             <index name="idx_short_link_deleted" columns="deleted_at"/>
             <index name="idx_short_link_target_host" columns="target_host"/>
         </indexes>
         <unique-constraints>
             <unique-constraint name="uniq_short_link_code" columns="code"/>
+            <!-- Audit UK-SL-2: one live generated link per source; source_slot is NULL on tombstones and unsourced rows. -->
+            <unique-constraint name="uniq_short_link_live_source" columns="tenant_key,kind,source_ref,source_slot"/>
         </unique-constraints>
 
         <id name="id" type="string" column="id" length="36"/>
@@ -32,6 +33,7 @@
         <field name="sourceRef" type="string" column="source_ref" length="64" nullable="true"/>
         <field name="sourceLabel" type="string" column="source_label" length="128" nullable="true"/>
         <field name="sourcePosition" type="smallint" column="source_position" nullable="true"/>
+        <field name="sourceSlot" type="smallint" column="source_slot" nullable="true"/>
         <field name="metadata" type="json" column="metadata" nullable="true"/>
         <field name="active" type="boolean" column="active"/>
         <field name="expiresAt" type="datetime_immutable" column="expires_at" nullable="true"/>

@@ -45,7 +45,7 @@ the answers are recorded in §17. The slices of §13 build the bundle; `docs/ROA
 | Namespace / class | `Nowo\ShortLinkBundle` / `NowoShortLinkBundle`; config root `nowo_short_link`; Twig namespace `@NowoShortLink` (REQ-TWIG-002); translation domain `NowoShortLinkBundle` (REQ-I18N-003) |
 | First tag | 0.x per slice for Beacon integration, **1.0.0** after audit (Q-O2) |
 | PHP / Symfony | `>=8.2 <8.6`; `^7.4 \|\| ^8.0` (REQ-SF-001); demos Symfony 7.4 + 8.1 on FrankenPHP worker (REQ-DEMO-002/010/012) |
-| Runtime deps | `doctrine/dbal ^3.8.2 \|\| ^4.0`, `doctrine/orm ^3.7`, `doctrine/doctrine-bundle ^2.8 \|\| ^3.0`, `symfony/{framework-bundle,http-kernel,routing,config,dependency-injection,event-dispatcher,clock,console,form,validator,translation,twig-bundle,rate-limiter,uid}`, `symfony/security-bundle` (default role-based access), `twig/extra-bundle ^3.12`, `nowo-tech/ui-kit-bundle ^2.49` and `nowo-tech/form-kit-bundle ^2.22` (Q-O4), `nowo-tech/outbound-url-guard-bundle ^1.5` (Q-O3), `psr/log`, `psr/clock` |
+| Runtime deps | `doctrine/dbal ^4.0` (0.6.0; DBAL 3 dropped), `doctrine/orm ^3.7`, `doctrine/doctrine-bundle ^2.8 \|\| ^3.0`, `symfony/{framework-bundle,http-kernel,routing,config,dependency-injection,event-dispatcher,clock,console,form,validator,translation,twig-bundle,rate-limiter,uid}`, `symfony/security-bundle` (default role-based access), `twig/extra-bundle ^3.12`, `nowo-tech/ui-kit-bundle ^2.49` and `nowo-tech/form-kit-bundle ^2.22` (Q-O4), `nowo-tech/outbound-url-guard-bundle ^1.5` (Q-O3), `psr/log`, `psr/clock` |
 | Suggest | `symfony/messenger` (click write mode `messenger`), `symfony/lock` (exact plan limit under concurrency) |
 | Not used | No HTTP client (the bundle never fetches a target), no GeoIP library (country via port), no UA-parser library (own small classifier, §7.3), no JS build (REQ-ASSETS-* N/A unless UiKit lacks a copy button, §11) |
 
@@ -328,6 +328,7 @@ CREATE TABLE nowo_short_link (
   source_ref       VARCHAR(64)   DEFAULT NULL COLLATE utf8mb4_bin,
   source_label     VARCHAR(128)  DEFAULT NULL,
   source_position  SMALLINT      DEFAULT NULL,
+  source_slot      SMALLINT      DEFAULT NULL,                   -- 0.6.0: position (-1 = none) while live + sourced, else NULL
   metadata         JSON          DEFAULT NULL,
   active           BOOLEAN       NOT NULL DEFAULT TRUE,
   expires_at       DATETIME      DEFAULT NULL,                   -- UTC (datetime_immutable)
@@ -339,8 +340,8 @@ CREATE TABLE nowo_short_link (
   updated_by       VARCHAR(128)  DEFAULT NULL COLLATE utf8mb4_bin,
   PRIMARY KEY (id),
   UNIQUE INDEX uniq_short_link_code (code),
+  UNIQUE INDEX uniq_short_link_live_source (tenant_key, kind, source_ref, source_slot),  -- 0.6.0 (UK-SL-2)
   INDEX idx_short_link_tenant_list (tenant_key, kind, deleted_at, created_at),
-  INDEX idx_short_link_tenant_source (tenant_key, kind, source_ref),
   INDEX idx_short_link_deleted (deleted_at),
   INDEX idx_short_link_target_host (target_host)
 );
@@ -353,6 +354,10 @@ CREATE TABLE nowo_short_link (
 - The hot-path lookup is a DBAL `SELECT id, tenant_key, code, target_url, kind, active, expires_at, deleted_at FROM
   nowo_short_link WHERE code = ?` on `uniq_short_link_code`, then `$row['code'] === $code` in PHP. No ORM hydration.
 - `metadata` is never queried; only `source_ref` is.
+- One live generated link per (tenant, kind, source ref, position) (0.6.0, audit UK-SL-2): `source_slot` holds the
+  position (-1 without one) while the row is live and has a source, NULL otherwise. NULLs never collide in a unique
+  index, so the key binds live rows only, on every platform (MySQL / MariaDB have no partial indexes). The unique key
+  also serves the source lookups (`idx_short_link_tenant_source` until 0.5.x).
 
 ### 5.2 Click tables (DBAL, created by a `postGenerateSchema` listener; no ORM entity)
 

@@ -42,6 +42,7 @@ use Nowo\ShortLinkBundle\Tests\Fixtures\ScriptedStore;
 use PHPUnit\Framework\TestCase;
 use Psr\EventDispatcher\EventDispatcherInterface;
 
+use function array_map;
 use function sprintf;
 use function strlen;
 
@@ -187,7 +188,7 @@ final class ShortLinkManagerTest extends TestCase
         self::assertInstanceOf(ShortLinkDeletedEvent::class, $events[0]);
     }
 
-    public function testCountedCreatesAndSourcedBatchesTakeTheTenantDatabaseLock(): void
+    public function testOnlyCountedCreatesTakeTheTenantDatabaseLock(): void
     {
         $tenant  = TenantKey::default();
         $store   = new RacingStore();
@@ -199,7 +200,53 @@ final class ShortLinkManagerTest extends TestCase
         $manager->createMany($tenant, [new CreateShortLink('https://example.com', kind: LinkKind::email())]);
         $manager->createMany($tenant, [new CreateShortLink('https://example.com')]);
 
-        self::assertEquals([$tenant, null, $tenant, null, $tenant], $store->locks, 'counted kind, uncounted, sourced batch, unsourced batch, counted batch');
+        self::assertEquals([$tenant, null, null, null, $tenant], $store->locks, 'counted kind, uncounted, sourced batch (the unique key decides, UK-SL-2), unsourced batch, counted batch');
+    }
+
+    /**
+     * Audit UK-SL-2: the live-source unique key refused the insert because another connection committed the same source
+     * first; the store answers that link, and create() / createMany() return it and announce nothing.
+     */
+    public function testALostSourceRaceReturnsTheWinnerAndAnnouncesNothing(): void
+    {
+        $tenant        = TenantKey::default();
+        $at            = new DateTimeImmutable('2026-11-12 10:00:00');
+        $store         = new RacingStore();
+        $store->winner = new StoredLink(ShortLinkId::fromString('0190a6d0-0000-7000-8000-000000000077'), $tenant, ShortCode::random('win1234'), TargetUrl::fromString('https://example.com/won'), null, LinkKind::email(), new LinkSource('send-1', null, 1), null, true, null, null, $at, $at, null, null, null);
+        $events        = new ArrayObject();
+        $manager       = $this->manager($store, new ManagerSettings(enforceAccess: false), null, null, $events);
+        $command       = new CreateShortLink('https://example.com/mine', kind: LinkKind::email(), source: new LinkSource('send-1', null, 1));
+
+        self::assertSame('win1234', $manager->create($tenant, $command)->code->value);
+        $views = $manager->createMany($tenant, [$command, $command]);
+        self::assertSame(['win1234', 'win1234'], [$views[0]->code->value, $views[1]->code->value]);
+        self::assertCount(0, $events, 'the winner announced its link');
+    }
+
+    /**
+     * Audit UY-2: a batch inserts its sourced links in a fixed order (kind, ref in byte order, position), whatever the
+     * order of the commands, so two batches with the same sources never lock crosswise; unsourced links come last.
+     */
+    public function testABatchInsertsInAFixedLockOrder(): void
+    {
+        $store   = new RacingStore();
+        $manager = $this->manager($store, new ManagerSettings(enforceAccess: false));
+        $email   = static fn (string $ref, ?int $position): CreateShortLink => new CreateShortLink('https://example.com/' . $ref, kind: LinkKind::email(), source: new LinkSource($ref, null, $position));
+
+        $views = $manager->createMany(TenantKey::default(), [
+            $email('s2', 1),
+            new CreateShortLink('https://example.com/plain', kind: LinkKind::email()),
+            $email('s10', 0),
+            $email('s1', 2),
+            new CreateShortLink('https://example.com/manual', source: new LinkSource('s0', null, 0)),
+            $email('s1', null),
+            $email('s1', 0),
+        ]);
+
+        $order = array_map(static fn (StoredLink $link): string => $link->kind->value . ':' . ($link->source instanceof LinkSource ? $link->source->ref . '@' . ($link->source->position ?? 'none') : '-'), $store->inserted);
+        self::assertSame(['email:s1@none', 'email:s1@0', 'email:s1@2', 'email:s10@0', 'email:s2@1', 'manual:s0@0', 'email:-'], $order);
+        self::assertSame('https://example.com/s2', $views[0]->target->toString(), 'the answer keeps the command order');
+        self::assertSame('https://example.com/s1', $views[6]->target->toString());
     }
 
     private function link(bool $active, ?string $title): StoredLink

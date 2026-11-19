@@ -28,7 +28,9 @@ interface ShortLinkManagerInterface
 {
     /**
      * Creates one link. Each custom-code lookup counts against the caller's `code.custom_code_rate_limit` (people
-     * only, not `system` callers); over the limit no code is looked up.
+     * only, not `system` callers); over the limit no code is looked up. A command whose source (kind, ref, position)
+     * already has a live link returns that link instead and announces nothing (one live link per source, enforced by a
+     * unique key, so two callers at the same time get the same link), also for a tenant at its plan limit.
      *
      * @throws AccessDeniedException|CodeAttemptsExceededException|CodeTakenException|InvalidShortLinkArgumentException|QuotaExceededException|TargetRefusedException
      */
@@ -36,7 +38,15 @@ interface ShortLinkManagerInterface
 
     /**
      * Creates generated links in bulk (e-mail sends): one transaction, random codes only, the quota checked once for
-     * the batch. A command whose source (kind, ref, position) already has a live link returns that link instead.
+     * the batch. A command whose source (kind, ref, position) already has a live link returns that link instead, also
+     * when another process creates it at the same time, inside a host transaction too (a unique key decides). Links
+     * are inserted in a fixed order (sourced ones by kind, ref and position) so two batches never lock crosswise.
+     *
+     * Inside an open host transaction: a lock conflict (deadlock, lock wait timeout) is a `TransientStorageFailure`
+     * (nowo-tech/transaction-contract). When the database rolled back the **whole** host transaction (an InnoDB deadlock
+     * victim on MySQL / MariaDB), it is the subclass `Nowo\ShortLinkBundle\Application\HostTransactionLostException`:
+     * nothing of the host transaction was committed and the connection is left rollback-only. In both cases roll back
+     * and retry the whole unit of work; never catch the failure and carry on with the same transaction.
      *
      * @param list<CreateShortLink> $commands at most 200
      *

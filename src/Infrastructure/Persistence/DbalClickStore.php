@@ -11,6 +11,7 @@ use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\Persistence\ManagerRegistry;
 use LogicException;
+use Nowo\ShortLinkBundle\Application\HostTransactionLostException;
 use Nowo\ShortLinkBundle\Application\Store\ClickStoreInterface;
 use Nowo\ShortLinkBundle\Domain\Model\ShortLinkId;
 use Nowo\ShortLinkBundle\Domain\Model\TenantKey;
@@ -47,8 +48,13 @@ final readonly class DbalClickStore implements ClickStoreInterface
      */
     public function insert(ShortLinkId $linkId, TenantKey $tenant, DateTimeImmutable $clickedAt, ?string $ipPrefix, ?string $uaFamily, ?string $referrerHost, ?string $country, bool $machine): void
     {
+        $connection = $this->connection();
+        if ($connection->isTransactionActive() && $connection->isRollbackOnly()) {
+            // A host transaction left rollback-only (audit UY2-4): the click would be lost silently with it.
+            throw new HostTransactionLostException(1);
+        }
         try {
-            $this->write($linkId, $tenant, $clickedAt, $ipPrefix, $uaFamily, $referrerHost, $country, $machine);
+            $this->write($connection, $linkId, $tenant, $clickedAt, $ipPrefix, $uaFamily, $referrerHost, $country, $machine);
         } catch (Throwable $exception) {
             // A lock conflict is told apart from other failures (REQ-RUNTIME-003 rule 8: Messenger retries it).
             if ((new TransientFailureClassifier())->isTransient($exception)) {
@@ -59,9 +65,9 @@ final readonly class DbalClickStore implements ClickStoreInterface
         }
     }
 
-    private function write(ShortLinkId $linkId, TenantKey $tenant, DateTimeImmutable $clickedAt, ?string $ipPrefix, ?string $uaFamily, ?string $referrerHost, ?string $country, bool $machine): void
+    private function write(Connection $connection, ShortLinkId $linkId, TenantKey $tenant, DateTimeImmutable $clickedAt, ?string $ipPrefix, ?string $uaFamily, ?string $referrerHost, ?string $country, bool $machine): void
     {
-        $this->connection()->insert($this->table, [
+        $connection->insert($this->table, [
             'link_id'       => $linkId->value,
             'tenant_key'    => $tenant->value,
             'clicked_at'    => $clickedAt->setTimezone(new DateTimeZone('UTC'))->format('Y-m-d H:i:s'),

@@ -23,8 +23,8 @@ use Nowo\ShortLinkBundle\Infrastructure\Persistence\DbalShortLinkStore;
 #[ORM\Entity]
 #[ORM\Table(name: 'nowo_short_link')]
 #[ORM\UniqueConstraint(name: 'uniq_short_link_code', columns: ['code'])]
+#[ORM\UniqueConstraint(name: 'uniq_short_link_live_source', columns: ['tenant_key', 'kind', 'source_ref', 'source_slot'])]
 #[ORM\Index(name: 'idx_short_link_tenant_list', columns: ['tenant_key', 'kind', 'deleted_at', 'created_at'])]
-#[ORM\Index(name: 'idx_short_link_tenant_source', columns: ['tenant_key', 'kind', 'source_ref'])]
 #[ORM\Index(name: 'idx_short_link_deleted', columns: ['deleted_at'])]
 #[ORM\Index(name: 'idx_short_link_target_host', columns: ['target_host'])]
 class ShortLinkRecord
@@ -62,6 +62,14 @@ class ShortLinkRecord
 
     #[ORM\Column(name: 'source_position', type: Types::SMALLINT, nullable: true)]
     public ?int $sourcePosition = null;
+
+    /**
+     * Key of the live-source unique constraint (audit UK-SL-2): the source position (-1 without one) while the row is a
+     * live generated link, NULL otherwise (no source, or a tombstone). NULLs never collide, so the constraint holds only
+     * for live rows on every platform (MySQL / MariaDB have no partial indexes). Written by the bundle, never by hand.
+     */
+    #[ORM\Column(name: 'source_slot', type: Types::SMALLINT, nullable: true)]
+    public ?int $sourceSlot = null;
 
     /** @var array<string, scalar|null>|null */
     #[ORM\Column(name: 'metadata', type: Types::JSON, nullable: true)]

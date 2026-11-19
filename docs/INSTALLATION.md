@@ -12,7 +12,7 @@
 
 - PHP 8.2 to 8.5 (Symfony 8.x needs PHP 8.4+).
 - Symfony 7.4, 8.0 or 8.1 (CI covers 7.4 and 8.1).
-- DoctrineBundle with the ORM (`doctrine/orm` ^3.7, `doctrine/dbal` ^3.8.2 or ^4).
+- DoctrineBundle with the ORM (`doctrine/orm` ^3.7, `doctrine/dbal` ^4; 0.6.0 dropped DBAL 3).
 - `nowo-tech/ui-kit-bundle` ^2.49, `nowo-tech/form-kit-bundle` ^2.22 and `nowo-tech/outbound-url-guard-bundle` ^1.5
   (installed with the package; the UI stays off until `ui.enabled: true`).
 - Optional: `symfony/messenger` (click write mode `messenger`), `symfony/lock` (exact plan limits under concurrency).

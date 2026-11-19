@@ -27,8 +27,9 @@ interface ShortLinkStoreInterface
      * back); the after-commit work runs after the outermost commit and never when it rolls back.
      *
      * With `$lockTenant`, the work first takes the tenant's database lock (MySQL / MariaDB `GET_LOCK`, PostgreSQL
-     * transaction advisory lock; SQLite serialises writers itself), so a count-then-insert or a find-then-insert of that
-     * tenant is exact across processes and servers. A lock not obtained in time is a transient failure.
+     * transaction advisory lock; SQLite serialises writers itself), so a count-then-insert of that tenant is exact
+     * across processes and servers. A lock not obtained in time is a transient failure. The lock is refused (a
+     * LogicException) inside an open transaction: the MySQL / MariaDB session lock would end before the host commits.
      *
      * A lock conflict (deadlock, lock wait timeout, serialization failure) is rethrown as a
      * {@see TransientStorageFailure} with the storage error as previous.
@@ -53,11 +54,16 @@ interface ShortLinkStoreInterface
     public function codeExists(string $code): bool;
 
     /**
-     * Inserts a new row.
+     * Inserts a new row and returns it. A live generated link (with a source) whose (tenant, kind, source ref, position)
+     * another connection committed meanwhile is refused by the live-source unique key (audit UK-SL-2): that link is
+     * returned instead and nothing is written (the "only one" race, never a conflict). Inside a transaction the insert
+     * runs in a savepoint, so the refusal leaves the transaction usable.
      *
      * @throws CodeTakenException when the unique code index refuses the row
+     *
+     * @return StoredLink the inserted link, or the live link of the same source that won the race
      */
-    public function insert(StoredLink $link): void;
+    public function insert(StoredLink $link): StoredLink;
 
     /**
      * Writes the mutable columns of an existing row.

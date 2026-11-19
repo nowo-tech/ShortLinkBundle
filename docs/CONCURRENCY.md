@@ -24,8 +24,8 @@ conflict is rethrown as a `TransientStorageFailure`. Events go out after the out
 | Path | Transaction | Concurrency control | Conflict answer |
 |------|-------------|---------------------|-----------------|
 | `create()` of a counted kind (UI form, API) | One unit; refused inside an open host transaction (the tenant lock must cover the commit) | Tenant **database lock** taken first in the unit (MySQL / MariaDB `GET_LOCK`, PostgreSQL `pg_advisory_xact_lock`; SQLite serialises writers), then count + insert; plus `symfony/lock` per tenant when the host has a lock factory | Lock not obtained within `quota.lock_timeout`, deadlock, lock wait timeout: 409 `CONFLICT_001` |
-| `create()` of an uncounted kind | One unit | Unique `code` index + catch: a custom code taken at the same time answers the domain result `CodeTakenException` ("code taken" on the form), never a conflict code | 409 `CONFLICT_001` |
-| `createMany()` (generated links) | One unit for the whole batch | Tenant database lock when the batch is counted or has sources, so the find-by-source idempotency ("one generated link per source") is exact; unique `code` index | 409 `CONFLICT_001` |
+| `create()` of an uncounted kind | One unit | Unique `code` index + catch: a custom code taken at the same time answers the domain result `CodeTakenException` ("code taken" on the form), never a conflict code. With a source: the live-source unique key, as `createMany()` | 409 `CONFLICT_001` |
+| `createMany()` (generated links) | One unit for the whole batch; may join a host transaction unless counted (a deadlock victim that lost the whole host transaction: `HostTransactionLostException`, connection left rollback-only) | Tenant database lock only when the batch is counted (plan limit). Sourced links are inserted in a fixed order (kind, ref, position). "One live link per source" is the unique key `uniq_short_link_live_source (tenant_key, kind, source_ref, source_slot)` on every platform: each sourced insert runs in a savepoint inside a transaction; a duplicate waits for the other transaction, and on its commit the unique violation rolls back to the savepoint and the batch answers the other link (read with a shared lock on MySQL / MariaDB). Never a conflict code. Unique `code` index | 409 `CONFLICT_001` (lock conflicts only) |
 | `update()` (edit) | One unit | The row is read again with `SELECT … FOR UPDATE` inside the unit and only the edited fields change: a concurrent disable, delete or edit is never reverted | 409 `CONFLICT_001` |
 | `disable()` / `enable()` | One unit | `SELECT … FOR UPDATE`; a link already in the state, or deleted meanwhile, is left as it is and nothing is announced | 409 `CONFLICT_001` |
 | `delete()` (tombstone) | One unit | `SELECT … FOR UPDATE`; the tombstone keeps a concurrent edit; a link deleted meanwhile is announced once | 409 `CONFLICT_001` |
@@ -50,7 +50,8 @@ A lock conflict, deadlock, lock wait timeout or serialization failure (MySQL 121
 
 - The message is fixed and client-safe; the storage error stays as the previous exception for the logs.
 - Unique violations are not conflicts. A custom code taken at the same time is the domain answer "code taken" on the form
-  (the unique index decides); any other unique violation is a real error.
+  (the unique index decides); a generated link whose source another transaction committed meanwhile answers that link
+  (the "only one" race, audit UK-SL-2); any other unique violation is a real error.
 - A lost connection is not a conflict either. A write unit whose connection was lost **before its work finished** is
   replayed once on a new connection (the server dropped the uncommitted transaction); lost **during COMMIT** the outcome
   is unknown and the error is rethrown, never replayed (a replay could create a second link).
@@ -93,6 +94,13 @@ connection.
   - an edit waits for the row lock of another connection and fails instead of overwriting the row;
   - ten processes create at once against a limit of three: exactly three succeed (standard host with symfony/lock and
     the database lock, DDD host with the database lock only);
+  - another process inserts a source inside its host transaction and holds it open; `createMany()` with the same source
+    inside a host transaction on this connection waits, then answers the other link: one row, no conflict, the host
+    transaction still commits; six processes in host transactions create the same three sources at once: three rows,
+    every process that commits answers the same links, an InnoDB deadlock victim answers a lock conflict (audit
+    UK-SL-2); a real deadlock whose victim is `createMany()` inside a host transaction: on MySQL / MariaDB
+    `HostTransactionLostException`, the edit made before and the write made after are never committed; on
+    PostgreSQL the host transaction survives and commits (audit UY-1);
   - the UI edit blocked by a row lock answers 409 + `Retry-After` + `CONFLICT_001`, nothing saved, and the retry on the
     same connection succeeds; with a write committed earlier in the request it answers `CONFLICT_002` without
     `Retry-After`.
@@ -104,13 +112,40 @@ connection.
 
 ## Residual risks
 
-- **Release of the MySQL / MariaDB lock.** A failed `RELEASE_LOCK` outside a transaction closes the connection (the
-  session lock goes with it). Inside an open host transaction the connection is never closed; the release is retried
-  after the outermost commit or rollback (or at the request / message boundary).
-- **MySQL / MariaDB inside a host transaction.** `createMany()` with sources and no counted kind may run inside an open
-  host transaction; `GET_LOCK` is a session lock, released when the bundle's unit returns, before the host commits. Two
-  such batches with the same source in two host transactions can both insert it. Counted creates are refused inside host
-  transactions, so plan limits stay exact. PostgreSQL holds its advisory lock until the host commits.
+- **Release of the MySQL / MariaDB lock.** The tenant lock is taken only outside an open transaction (counted creates;
+  `transactional()` refuses it inside one). A failed `RELEASE_LOCK` closes the connection, so the session lock goes
+  with it; no host transaction can be open at that point.
+- **PostgreSQL under `REPEATABLE READ` / `SERIALIZABLE`.** The loser of a source race cannot see the winner's link in
+  its snapshot and gets `CodeTakenException`; nothing is duplicated or written. The default `READ COMMITTED` answers the
+  winner's link. MySQL / MariaDB read it with a locking read, so `REPEATABLE READ` answers it too.
+- **Deadlocks on every platform.** A batch inserts its sourced links in a fixed order (kind, ref, position), so two
+  batches never wait for each other crosswise (audit UY-2). Deadlocks are still possible on MySQL, MariaDB and
+  PostgreSQL: a refused insert leaves InnoDB gap locks behind (inherited from the rolled-back row) until its
+  transaction ends, so three or more racers can deadlock, and so can the host's own locks combined with the bundle's.
+  The victim answers a lock conflict (409 `CONFLICT_001` on a route, a `TransientStorageFailure` from the PHP API;
+  nothing of the bundle's work is committed and a retry answers the existing links). It is never a duplicate. Two
+  racers (the usual case: a retried send) get the existing link. Keep host transactions around `createMany()` short:
+  until they end, other inserts into the table may wait for those gap locks.
+- **A deadlock victim inside a host transaction (audit UY-1).** On MySQL / MariaDB InnoDB rolls back the **whole**
+  host transaction, not only the bundle's savepoint; `ROLLBACK TO SAVEPOINT` then fails (1305) and the connection is
+  reopened. The bundle never leaves DBAL at a lower nesting level on that fresh session (the host's next statements
+  would autocommit: a partial host commit): it opens the host's levels again, marks them rollback-only and throws
+  `HostTransactionLostException` (a `TransientStorageFailure`). Whatever the host runs afterwards is never committed;
+  its `commit()` fails and its `rollBack()` balances. The host must roll back and retry its whole unit of work, never
+  continue it. On PostgreSQL a deadlock aborts only the savepoint and the host transaction survives. When the database
+  cannot be reached again, no guard can be installed (there is no session to mark rollback-only): the host's next
+  statement reconnects and would autocommit, so the host must not carry on in that case either.
+- **A host that catches `HostTransactionLostException` and continues without rolling back** leaves the worker's
+  connection stuck in the rollback-only transaction. transaction-doctrine's repair does not cover this in general: it
+  runs only at `kernel.terminate`, after a request or message that **failed with a database exception**, and only with
+  its `worker_hygiene` on; a request that caught the exception and answered normally is not repaired. Later writes on
+  that connection would join the doomed transaction and be lost; the bundle's own writes refuse to: `transactional()`
+  (links) and the click store throw `HostTransactionLostException` while the transaction is rollback-only, so the
+  failure stays visible until the host rolls back.
+- **Rows created before 0.6.0, and by 0.5.x nodes during a rolling deploy.** The UPGRADING backfill gives the slot to
+  the live link with the smallest id (the oldest with the default UUIDv7 generator) of each source; other duplicates
+  stay live without one (their codes may be in sent e-mails) and `createMany()` answers the oldest. The backfill is
+  re-runnable and is run again after the deploy, with a statement that clears the slot of rows 0.5.x nodes deleted.
 - **Other platforms.** The tenant database lock exists on MySQL, MariaDB and PostgreSQL. On SQLite the database serialises
   writers (the loser of a race gets a lock error, 409 `CONFLICT_001`). Other platforms rely on `symfony/lock` with a
   shared store.
