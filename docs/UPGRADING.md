@@ -17,6 +17,10 @@
 
 From **0.5.x**: `composer update nowo-tech/short-link-bundle`, then migrate the `nowo_short_link` table (below).
 
+**doctrine/dbal ^4 only.** 0.6.0 requires `doctrine/dbal` ^4.0. 0.5.x declared `^3.8.2 || ^4.0` but never worked on
+DBAL 3 (a `ParameterType` return type in the store is a TypeError there), and on DBAL 3 without savepoints the
+lost-transaction guard below could not work. Hosts on DBAL 3 must upgrade DBAL first.
+
 **What changes.** A generated link (one with a `LinkSource`) is unique per tenant, kind, source ref and position while
 it is live, on MySQL, MariaDB, PostgreSQL and SQLite. Before, on MySQL / MariaDB, two `createMany()` calls with the same
 source inside two host transactions could both insert it (the `GET_LOCK` session lock ended before the host commit).
@@ -41,7 +45,10 @@ expected "only one" result, never a `CONFLICT_*` code and never a lock conflict.
   `commit()` fails, your `rollBack()` works as usual. On PostgreSQL only the savepoint is lost. In every case: on a
   `TransientStorageFailure` from the bundle inside your transaction, **roll back and retry your whole unit of work**;
   never catch it and carry on. A lost connection inside your transaction is rethrown as it is, with the same
-  rollback-only guard.
+  rollback-only guard. When the database cannot be reached again, no guard can be installed (there is no session to
+  mark): your next statement reconnects and would autocommit, so **you must not carry on** in that case either.
+  While a transaction is left rollback-only, every later write of the bundle on that connection (links, clicks)
+  throws `HostTransactionLostException` instead of joining it and being lost.
 - `create()` looks up the source before the plan limit: a tenant at its limit gets its existing link instead of a
   `QuotaExceededException`.
 - PostgreSQL under `REPEATABLE READ` or `SERIALIZABLE` (not the default): the other transaction's link is not visible
@@ -137,6 +144,9 @@ table and both index names carry the prefix.
    UPDATE nowo_short_link SET source_slot = NULL WHERE source_slot IS NOT NULL AND deleted_at IS NOT NULL;
    -- then step 3 again (your platform's form)
    ```
+
+   Under live 0.6.0 traffic, step 3 may fail on the unique index (a link was created for the same source in between):
+   nothing is half done, run it again.
 
 NULLs never collide in a unique index on these platforms, so the key binds only live generated links (MySQL and MariaDB
 have no partial indexes; the same plain index is used on PostgreSQL so `doctrine:schema:update` stays empty). Run

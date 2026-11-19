@@ -9,7 +9,10 @@ namespace Nowo\ShortLinkBundle\Tests\Fixtures;
  */
 final class NestingState
 {
-    public function __construct(public int $level, public bool $reopenFails = false)
+    /**
+     * @param bool $raiseThenFail a failing reopen raises the level first (BEGIN / SAVEPOINT SQL failed after DBAL counted it)
+     */
+    public function __construct(public int $level, public bool $reopenFails = false, public bool $raiseThenFail = false)
     {
     }
 }

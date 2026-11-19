@@ -206,6 +206,57 @@ final class DbalShortLinkStoreTest extends TestCase
         }
     }
 
+    /**
+     * Audit UY2-3: the reopen failed after DBAL already raised the level (BEGIN or the savepoint SQL failed): the open
+     * level is still marked rollback-only.
+     */
+    public function testAReopenThatFailsAfterRaisingTheLevelStillMarksItRollbackOnly(): void
+    {
+        $state      = new NestingState(2, true, true);
+        $connection = $this->nestingConnection(new MySQL80Platform(), $state);
+        $connection->expects(self::once())->method('setRollbackOnly');
+        $deadlock = new DeadlockException(new class('Deadlock found', '40001', 1213) extends AbstractException {
+        }, null);
+        $logger = new MemoryLogger();
+
+        $caught = null;
+        try {
+            $this->store($this->registry($connection), $logger)->transactional(static function () use ($state, $deadlock): never {
+                $state->level = 0;
+
+                throw $deadlock;
+            });
+        } catch (HostTransactionLostException $exception) {
+            $caught = $exception;
+        }
+        self::assertSame(HostTransactionLostException::MESSAGE, $caught->getMessage());
+        self::assertSame(1, $state->level);
+        self::assertSame(['warning', 'error'], $this->bundleLogLevels($logger));
+    }
+
+    /**
+     * Audit UY2-4: a unit never joins a host transaction that is already rollback-only; nothing runs.
+     */
+    public function testAUnitNeverJoinsARollbackOnlyTransaction(): void
+    {
+        $connection = $this->createMock(Connection::class);
+        $connection->method('getDatabasePlatform')->willReturn(new SQLitePlatform());
+        $connection->method('isTransactionActive')->willReturn(true);
+        $connection->method('isRollbackOnly')->willReturn(true);
+        $connection->expects(self::never())->method('beginTransaction');
+        $ran = false;
+
+        try {
+            $this->store($this->registry($connection))->transactional(static function () use (&$ran): void {
+                $ran = true;
+            });
+            self::fail('expected HostTransactionLostException');
+        } catch (HostTransactionLostException $exception) {
+            self::assertNull($exception->getPrevious());
+        }
+        self::assertFalse($ran);
+    }
+
     public function testMySqlTenantLockIsTakenInsideTheUnitAndReleasedAfterIt(): void
     {
         $connection = $this->createMock(Connection::class);
@@ -518,6 +569,10 @@ final class DbalShortLinkStoreTest extends TestCase
         $connection->method('getTransactionNestingLevel')->willReturnCallback(static fn (): int => $state->level);
         $connection->method('beginTransaction')->willReturnCallback(static function () use ($state): void {
             if ($state->reopenFails && $state->level === 0) {
+                if ($state->raiseThenFail) {
+                    ++$state->level;
+                }
+
                 throw self::lost();
             }
             ++$state->level;

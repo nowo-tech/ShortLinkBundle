@@ -20,6 +20,7 @@ use Nowo\ShortLinkBundle\Application\Default\BuiltInUserAgentClassifier;
 use Nowo\ShortLinkBundle\Application\Default\ConfigDenylist;
 use Nowo\ShortLinkBundle\Application\Default\NullCountryResolver;
 use Nowo\ShortLinkBundle\Application\Guard\DenylistGuard;
+use Nowo\ShortLinkBundle\Application\HostTransactionLostException;
 use Nowo\ShortLinkBundle\Application\Store\ClickStoreInterface;
 use Nowo\ShortLinkBundle\Domain\Event\ShortLinkTargetRefusedEvent;
 use Nowo\ShortLinkBundle\Domain\Model\ClickWriteMode;
@@ -71,6 +72,28 @@ final class ClickInfrastructureTest extends TestCase
 
         (new DbalClickStore($registry, 'clicks', null, 'p_'))->insert(ShortLinkId::fromString('0190a6d0-0000-7000-8000-000000000001'), TenantKey::default(), new DateTimeImmutable('2026-11-12 11:00:00+01:00'), null, null, null, null, true);
         self::assertSame('2026-11-12 10:00:00', $connection->fetchOne('SELECT clicked_at FROM p_nowo_short_link_click'));
+    }
+
+    /**
+     * Audit UY2-4: a click never joins a host transaction that is already rollback-only (it would be lost with it).
+     */
+    public function testTheClickStoreRefusesARollbackOnlyTransaction(): void
+    {
+        $connection = DriverManager::getConnection(['driver' => 'pdo_sqlite', 'memory' => true]);
+        $connection->executeStatement('CREATE TABLE nowo_short_link_click (id INTEGER PRIMARY KEY AUTOINCREMENT, link_id VARCHAR(36), tenant_key VARCHAR(64), clicked_at VARCHAR(20), ip_prefix VARCHAR(43), ua_family VARCHAR(16), referrer_host VARCHAR(253), country VARCHAR(2), machine BOOLEAN)');
+        $registry = $this->createStub(ManagerRegistry::class);
+        $registry->method('getConnection')->willReturn($connection);
+        $connection->beginTransaction();
+        $connection->setRollbackOnly();
+
+        try {
+            (new DbalClickStore($registry, 'clicks'))->insert(ShortLinkId::fromString('0190a6d0-0000-7000-8000-000000000001'), TenantKey::default(), new DateTimeImmutable(), null, null, null, null, false);
+            self::fail('expected HostTransactionLostException');
+        } catch (HostTransactionLostException $exception) {
+            self::assertSame(1, $exception->retryAfterSeconds());
+        }
+        $connection->rollBack();
+        self::assertEquals(0, $connection->fetchOne('SELECT COUNT(*) FROM nowo_short_link_click'));
     }
 
     public function testTheClickStoreRefusesWrongNames(): void

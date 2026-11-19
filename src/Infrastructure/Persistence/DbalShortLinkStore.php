@@ -118,6 +118,10 @@ final readonly class DbalShortLinkStore implements ShortLinkStoreInterface
             // would not cover the host's commit (audit UK-SL-2), and a failed release could not close the connection.
             throw new LogicException('The tenant database lock is taken only outside an open transaction.');
         }
+        if ($joined && $connection->isRollbackOnly()) {
+            // A host transaction left rollback-only (audit UY2-4): nothing written into it could ever commit.
+            throw new HostTransactionLostException(1);
+        }
         $unit = $lockTenant instanceof TenantKey ? function () use ($connection, $lockTenant, $work): mixed {
             $this->lockTenant($connection, $lockTenant);
 
@@ -339,7 +343,7 @@ final readonly class DbalShortLinkStore implements ShortLinkStoreInterface
             $params[] = $position;
         }
         foreach ($this->select($sql . ' ORDER BY id', $params) as $link) {
-            if ($link->tenant->equals($tenant) && $link->source?->ref === $ref) {
+            if ($link->tenant->equals($tenant) && $link->kind->equals($kind) && $link->source?->ref === $ref) {
                 return $link;
             }
         }
@@ -599,6 +603,10 @@ final readonly class DbalShortLinkStore implements ShortLinkStoreInterface
                 $connection->setRollbackOnly();
             } catch (Throwable $restore) {
                 $this->logger?->error('nowo_short_link: could not reopen the lost host transaction as rollback-only: {class}', ['class' => $restore::class]);
+                // BEGIN or the savepoint SQL may have failed after DBAL raised the level (audit UY2-3): still guard it.
+                if ($connection->getTransactionNestingLevel() > 0) {
+                    $connection->setRollbackOnly();
+                }
             }
             if ($failure instanceof TransientStorageFailure) {
                 throw new HostTransactionLostException($failure->retryAfterSeconds(), $failure);

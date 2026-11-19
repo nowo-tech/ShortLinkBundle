@@ -132,9 +132,16 @@ connection.
   would autocommit: a partial host commit): it opens the host's levels again, marks them rollback-only and throws
   `HostTransactionLostException` (a `TransientStorageFailure`). Whatever the host runs afterwards is never committed;
   its `commit()` fails and its `rollBack()` balances. The host must roll back and retry its whole unit of work, never
-  continue it. On PostgreSQL a deadlock aborts only the savepoint and the host transaction survives. A host that
-  leaves the rollback-only transaction open in a worker keeps its connection unusable until it rolls back (or
-  transaction-doctrine's between-requests repair does).
+  continue it. On PostgreSQL a deadlock aborts only the savepoint and the host transaction survives. When the database
+  cannot be reached again, no guard can be installed (there is no session to mark rollback-only): the host's next
+  statement reconnects and would autocommit, so the host must not carry on in that case either.
+- **A host that catches `HostTransactionLostException` and continues without rolling back** leaves the worker's
+  connection stuck in the rollback-only transaction. transaction-doctrine's repair does not cover this in general: it
+  runs only at `kernel.terminate`, after a request or message that **failed with a database exception**, and only with
+  its `worker_hygiene` on; a request that caught the exception and answered normally is not repaired. Later writes on
+  that connection would join the doomed transaction and be lost; the bundle's own writes refuse to: `transactional()`
+  (links) and the click store throw `HostTransactionLostException` while the transaction is rollback-only, so the
+  failure stays visible until the host rolls back.
 - **Rows created before 0.6.0, and by 0.5.x nodes during a rolling deploy.** The UPGRADING backfill gives the slot to
   the live link with the smallest id (the oldest with the default UUIDv7 generator) of each source; other duplicates
   stay live without one (their codes may be in sent e-mails) and `createMany()` answers the oldest. The backfill is

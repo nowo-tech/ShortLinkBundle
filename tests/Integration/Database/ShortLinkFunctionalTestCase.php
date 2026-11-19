@@ -613,6 +613,12 @@ abstract class ShortLinkFunctionalTestCase extends KernelTestCase
         if ($mysql) {
             self::assertInstanceOf(HostTransactionLostException::class, $failure);
             self::assertTrue($connection->isTransactionActive(), 'the host\'s level is open again, rollback-only');
+            try {
+                $this->manager()->create($this->tenant, new CreateShortLink('https://example.com/refused', kind: LinkKind::email(), system: true));
+                self::fail('a bundle write never joins a rollback-only transaction');
+            } catch (HostTransactionLostException) {
+                $this->addToAssertionCount(1);
+            }
             $now   = new DateTimeImmutable(Host::NOW);
             $after = new StoredLink(ShortLinkId::fromString('0190a6d0-0000-7000-8000-0000000000d1'), $this->tenant, ShortCode::random('after12'), TargetUrl::fromString('https://example.com/after'), null, LinkKind::email(), null, null, true, null, null, $now, $now, null, null, null);
             $this->store()->insert($after);
