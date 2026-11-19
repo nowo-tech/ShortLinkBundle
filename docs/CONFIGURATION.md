@@ -77,6 +77,7 @@ nowo_short_link:
         provider: null               # ShortLinkQuotaInterface service id; null = default_limit
         default_limit: null          # integer >= 0; null (or ~) = unlimited
         counted_kinds: [manual]      # only configured kinds
+        lock_timeout: 10             # seconds a counted create waits for the tenant's database lock (1..300); the quota provider runs under it: no slow I/O
     kinds:                           # manual and email are built in; add yours (^[a-z][a-z0-9_]{0,31}$)
         email: { allow_custom_code: false, show_in_ui: false, counted: false }
     ui:
@@ -92,6 +93,10 @@ nowo_short_link:
         connection: null             # DBAL connection of the click tables; null = the EntityManager's
         table_prefix: ''             # '' or [a-z][a-z0-9_]{0,29}
         mapping: xml                 # xml | attribute
+    conflict_response:               # REQ-RUNTIME-003: lock conflicts on the bundle's routes (docs/CONCURRENCY.md)
+        status: null                 # 409 | 503; null = transaction-doctrine's conflict_response, else 409
+        retry_after: null            # Retry-After seconds of CONFLICT_001; null = transaction-doctrine's, else 1
+        commit_tracking: bundle      # bundle (the bundle's connection only) | off
 ```
 
 A host entry for a built-in kind keeps the built-in values of the flags it leaves out (`kinds: {email: {show_in_ui:

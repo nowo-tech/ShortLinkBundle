@@ -11,6 +11,8 @@ use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\Exception\ConnectionLost;
 use Doctrine\DBAL\Exception\UniqueConstraintViolationException;
 use Doctrine\DBAL\ParameterType;
+use Doctrine\DBAL\Platforms\AbstractMySQLPlatform;
+use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\Persistence\ManagerRegistry;
@@ -33,11 +35,15 @@ use Nowo\ShortLinkBundle\Domain\Model\ShortLinkState;
 use Nowo\ShortLinkBundle\Domain\Model\TargetUrl;
 use Nowo\ShortLinkBundle\Domain\Model\TenantKey;
 use Nowo\ShortLinkBundle\Infrastructure\Doctrine\ShortLinkMetadataListener;
+use Nowo\TransactionContract\TransientStorageFailure;
+use Nowo\TransactionDoctrine\DoctrineTransactionRunner;
 use Psr\Log\LoggerInterface;
 use Throwable;
 
 use function array_map;
 use function count;
+use function hash;
+use function hexdec;
 use function implode;
 use function in_array;
 use function is_array;
@@ -45,21 +51,35 @@ use function is_int;
 use function is_object;
 use function is_scalar;
 use function json_decode;
+use function max;
 use function mb_strtolower;
 use function sprintf;
 use function str_replace;
+use function substr;
 
 /**
  * DBAL store of the links (contract §5.1): plain SQL on the entity manager's connection, never the ORM unit of work,
- * so the host's EntityManager is never flushed (rule 6). Writes join an open host transaction and hold their
- * after-commit work until the outermost commit ({@see AfterCommitQueue}). Every tenant-scoped read filters on the
- * tenant and re-checks tenant, id and code with `===` in PHP (rule LQ). Stateless (worker mode); a lost connection is
- * reopened once outside a transaction.
+ * so the host's EntityManager is never flushed (rule 6). Writes run through transaction-doctrine's DBAL runner
+ * (REQ-RUNTIME-003 rules 1 and 3: one transaction per write unit, a failed nested unit rolls back to its savepoint, a
+ * lock conflict is rethrown as a TransientStorageFailure), join an open host transaction and hold their after-commit
+ * work until the outermost commit ({@see AfterCommitQueue}). Every tenant-scoped read filters on the tenant and
+ * re-checks tenant, id and code with `===` in PHP (rule LQ). Stateless (worker mode); a lost connection is reopened
+ * once outside a transaction, and a write unit is replayed on it only when the connection was lost before the work
+ * finished (a connection lost during COMMIT has an unknown outcome and is rethrown, never replayed).
  *
  * @internal
  */
 final readonly class DbalShortLinkStore implements ShortLinkStoreInterface
 {
+    /** Seconds a write waits for the tenant's database lock before answering a lock conflict (rule 9). */
+    public const TENANT_LOCK_TIMEOUT = 10;
+
+    /** Message of the transient failure thrown when the tenant's database lock is not obtained in time. */
+    public const TENANT_LOCK_MESSAGE = 'Another link of this tenant is being created at the same time. Retry in a moment.';
+
+    /** Prefix of the MySQL / MariaDB user-level lock names (+ 40 hex characters: 58 of the 64 allowed). */
+    private const LOCK_NAME_PREFIX = 'nowo_short_link_q_';
+
     private const COLUMNS = 'id, tenant_key, code, code_custom, target_url, target_host, title, kind, source_ref, source_label, source_position, metadata, active, expires_at, disabled_reason, created_at, updated_at, deleted_at, created_by, updated_by';
 
     private string $table;
@@ -74,6 +94,7 @@ final readonly class DbalShortLinkStore implements ShortLinkStoreInterface
         private ?string $entityManager = null,
         string $tablePrefix = '',
         private ?LoggerInterface $logger = null,
+        private int $tenantLockTimeout = self::TENANT_LOCK_TIMEOUT,
     ) {
         $this->table = $tablePrefix . ShortLinkMetadataListener::TABLE;
     }
@@ -81,11 +102,22 @@ final readonly class DbalShortLinkStore implements ShortLinkStoreInterface
     /**
      * {@inheritDoc}
      */
-    public function transactional(Closure $work, ?Closure $afterCommit = null): mixed
+    public function transactional(Closure $work, ?Closure $afterCommit = null, ?TenantKey $lockTenant = null): mixed
     {
         $connection = $this->connection();
         $joined     = $connection->isTransactionActive();
-        $result     = $joined ? $connection->transactional($work) : $this->retrying($connection, static fn (Connection $c): mixed => $c->transactional($work));
+        $unit       = $lockTenant instanceof TenantKey ? function () use ($connection, $lockTenant, $work): mixed {
+            $this->lockTenant($connection, $lockTenant);
+
+            return $work();
+        } : $work;
+        try {
+            $result = $joined ? $this->runner($connection)->run($unit) : $this->outermost($connection, $unit);
+        } finally {
+            if ($lockTenant instanceof TenantKey) {
+                $this->unlockTenant($connection, $lockTenant);
+            }
+        }
         if (!$afterCommit instanceof Closure) {
             return $result;
         }
@@ -226,6 +258,24 @@ final readonly class DbalShortLinkStore implements ShortLinkStoreInterface
     public function find(TenantKey $tenant, ShortLinkId $id): ?StoredLink
     {
         foreach ($this->select('tenant_key = ? AND id = ? AND deleted_at IS NULL', [$tenant->value, $id->value]) as $link) {
+            if ($link->tenant->equals($tenant) && $link->id->equals($id)) {
+                return $link;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public function findForUpdate(TenantKey $tenant, ShortLinkId $id): ?StoredLink
+    {
+        $connection = $this->connection();
+        $platform   = $connection->getDatabasePlatform();
+        $lock       = $platform instanceof AbstractMySQLPlatform || $platform instanceof PostgreSQLPlatform ? ' FOR UPDATE' : '';
+        $rows       = $connection->fetchAllAssociative(sprintf('SELECT %s FROM %s WHERE tenant_key = ? AND id = ? AND deleted_at IS NULL%s', self::COLUMNS, $this->table, $lock), [$tenant->value, $id->value]);
+        foreach (array_map($this->hydrate(...), $rows) as $link) {
             if ($link->tenant->equals($tenant) && $link->id->equals($id)) {
                 return $link;
             }
@@ -417,10 +467,122 @@ final readonly class DbalShortLinkStore implements ShortLinkStoreInterface
     /**
      * @template T
      *
-     * @param Closure(Connection): T $operation
+     * @return T
+     */
+    /**
+     * One outermost write unit through the runner. A connection lost before the work returned rolled nothing in
+     * (the server drops an uncommitted transaction with the session), so the unit runs once more on a new connection;
+     * lost after it (during COMMIT) the outcome is unknown and the failure is rethrown: replaying could duplicate rows.
+     *
+     * @template T
+     *
+     * @param Closure(): T $work
      *
      * @return T
      */
+    private function outermost(Connection $connection, Closure $work): mixed
+    {
+        $done = false;
+        $unit = static function () use ($work, &$done): mixed {
+            $result = $work();
+            $done   = true;
+
+            return $result;
+        };
+        try {
+            return $this->runner($connection)->run($unit);
+        } catch (ConnectionLost $exception) {
+            if ($done || $connection->isTransactionActive()) {
+                throw $exception;
+            }
+            $this->logger?->info('nowo_short_link: database connection lost before the write finished, reconnecting once.');
+            $connection->close();
+
+            return $this->runner($connection)->run($work);
+        }
+    }
+
+    private function runner(Connection $connection): DoctrineTransactionRunner
+    {
+        return DoctrineTransactionRunner::forConnection($connection, 1, $this->logger);
+    }
+
+    /**
+     * Takes the tenant's database lock inside the current transaction (rule 4: count-then-insert and find-then-insert
+     * of one tenant are serialised on every app server). PostgreSQL: a transaction advisory lock, released by the
+     * commit or rollback, waited for under a transaction-local `lock_timeout`; MySQL / MariaDB: `GET_LOCK` with a timeout, released by
+     * {@see self::unlockTenant()} after the unit; SQLite: nothing (the database serialises writers: the loser of a race
+     * gets a lock error, never a stale count).
+     *
+     * @throws TransientStorageFailure when the MySQL / MariaDB lock is not obtained within the timeout (PostgreSQL: a
+     *                                 lock timeout, rethrown by the runner as a TransientStorageFailure)
+     */
+    private function lockTenant(Connection $connection, TenantKey $tenant): void
+    {
+        $platform = $connection->getDatabasePlatform();
+        $hash     = hash('sha256', $tenant->value);
+        if ($platform instanceof AbstractMySQLPlatform) {
+            $got = $connection->fetchOne('SELECT GET_LOCK(?, ?)', [self::LOCK_NAME_PREFIX . substr($hash, 0, 40), $this->tenantLockTimeout], [ParameterType::STRING, ParameterType::INTEGER]);
+            if ($this->text($got) !== '1') {
+                throw new TransientStorageFailure(1, self::TENANT_LOCK_MESSAGE);
+            }
+
+            return;
+        }
+        if (!$platform instanceof PostgreSQLPlatform) {
+            return;
+        }
+        // A bounded wait (rule 9): lock_timeout for this transaction only. A timeout (55P03) aborts the transaction or
+        // the savepoint, whose rollback also restores the setting; on success it is restored at once.
+        $previous = $connection->fetchOne("SELECT current_setting('lock_timeout')");
+        $connection->fetchOne("SELECT set_config('lock_timeout', ?, true)", [(max(1, $this->tenantLockTimeout) * 1000) . 'ms']);
+        $connection->fetchOne('SELECT pg_advisory_xact_lock(CAST(? AS BIGINT))', [(int) hexdec(substr($hash, 0, 15))], [ParameterType::INTEGER]);
+        $connection->fetchOne("SELECT set_config('lock_timeout', ?, true)", [$this->text($previous)]);
+    }
+
+    /**
+     * Releases the MySQL / MariaDB user-level lock of {@see self::lockTenant()} (PostgreSQL's ends with the
+     * transaction). A failed release outside a transaction closes the connection, which drops the lock with the
+     * session: a worker never keeps a tenant locked. Inside an open host transaction the connection is never closed
+     * (that would lose the host's work): the release is retried after the outermost commit or rollback.
+     */
+    private function unlockTenant(Connection $connection, TenantKey $tenant): void
+    {
+        if (!$connection->getDatabasePlatform() instanceof AbstractMySQLPlatform) {
+            return;
+        }
+        $name = self::LOCK_NAME_PREFIX . substr(hash('sha256', $tenant->value), 0, 40);
+        try {
+            $connection->fetchOne('SELECT RELEASE_LOCK(?)', [$name]);
+        } catch (Throwable $exception) {
+            $native = $connection->isTransactionActive() ? $connection->getNativeConnection() : null;
+            if (is_object($native)) {
+                $this->logger?->warning('nowo_short_link: tenant lock release failed inside a host transaction, retried after it ends: {class}', ['class' => $exception::class]);
+                // @igor-ignore - Closure held at most until the host transaction ends or the request / message boundary (AfterCommitQueue reset), never across requests.
+                $this->afterCommit->holdUntilEnd($native, function () use ($connection, $name): void {
+                    $this->releaseOrClose($connection, $name);
+                });
+
+                return;
+            }
+            $this->logger?->warning('nowo_short_link: tenant lock release failed, closing the connection: {class}', ['class' => $exception::class]);
+            $connection->close();
+        }
+    }
+
+    /**
+     * A deferred release, outside any transaction: on failure the connection is closed (the lock goes with the session).
+     */
+    private function releaseOrClose(Connection $connection, string $name): void
+    {
+        try {
+            $connection->fetchOne('SELECT RELEASE_LOCK(?)', [$name]);
+        } catch (Throwable $exception) {
+            $this->logger?->warning('nowo_short_link: tenant lock release failed, closing the connection: {class}', ['class' => $exception::class]);
+            $connection->close();
+        }
+    }
+
     private function retrying(Connection $connection, Closure $operation): mixed
     {
         try {

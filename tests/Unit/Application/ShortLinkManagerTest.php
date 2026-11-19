@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Nowo\ShortLinkBundle\Tests\Unit\Application;
 
 use ArrayObject;
+use DateTimeImmutable;
 use Nowo\ShortLinkBundle\Application\CodeGenerator;
 use Nowo\ShortLinkBundle\Application\Default\ConfigDenylist;
 use Nowo\ShortLinkBundle\Application\Default\ConfigQuota;
@@ -13,19 +14,30 @@ use Nowo\ShortLinkBundle\Application\Guard\DenylistGuard;
 use Nowo\ShortLinkBundle\Application\ManagerSettings;
 use Nowo\ShortLinkBundle\Application\ShortLinkManager;
 use Nowo\ShortLinkBundle\Application\ShortUrlBuilderInterface;
+use Nowo\ShortLinkBundle\Application\Store\StoredLink;
+use Nowo\ShortLinkBundle\Domain\Event\ShortLinkDeletedEvent;
+use Nowo\ShortLinkBundle\Domain\Event\ShortLinkUpdatedEvent;
 use Nowo\ShortLinkBundle\Domain\Exception\CodeAttemptsExceededException;
+use Nowo\ShortLinkBundle\Domain\Exception\ShortLinkNotFoundException;
 use Nowo\ShortLinkBundle\Domain\Model\ActorRef;
 use Nowo\ShortLinkBundle\Domain\Model\CreateShortLink;
+use Nowo\ShortLinkBundle\Domain\Model\LinkKind;
+use Nowo\ShortLinkBundle\Domain\Model\LinkSource;
+use Nowo\ShortLinkBundle\Domain\Model\LinkTitle;
 use Nowo\ShortLinkBundle\Domain\Model\ShortCode;
 use Nowo\ShortLinkBundle\Domain\Model\ShortLinkId;
 use Nowo\ShortLinkBundle\Domain\Model\ShortLinkListQuery;
 use Nowo\ShortLinkBundle\Domain\Model\ShortLinkPermission;
+use Nowo\ShortLinkBundle\Domain\Model\ShortLinkState;
+use Nowo\ShortLinkBundle\Domain\Model\TargetUrl;
 use Nowo\ShortLinkBundle\Domain\Model\TenantKey;
+use Nowo\ShortLinkBundle\Domain\Model\UpdateShortLink;
 use Nowo\ShortLinkBundle\Domain\Port\CustomCodeLimiterInterface;
 use Nowo\ShortLinkBundle\Domain\Port\ShortLinkAccessInterface;
 use Nowo\ShortLinkBundle\Domain\Port\ShortLinkIdGeneratorInterface;
 use Nowo\ShortLinkBundle\Infrastructure\Lock\NoTenantLock;
 use Nowo\ShortLinkBundle\Tests\Fixtures\MemoryLogger;
+use Nowo\ShortLinkBundle\Tests\Fixtures\RacingStore;
 use Nowo\ShortLinkBundle\Tests\Fixtures\ScriptedStore;
 use PHPUnit\Framework\TestCase;
 use Psr\EventDispatcher\EventDispatcherInterface;
@@ -111,7 +123,96 @@ final class ShortLinkManagerTest extends TestCase
         self::assertSame(['lookup system-code'], $log->getArrayCopy(), 'system commands are never limited');
     }
 
-    private function manager(ScriptedStore $store, ManagerSettings $settings, ?MemoryLogger $logger = null, ?CustomCodeLimiterInterface $limiter = null): ShortLinkManager
+    public function testAnEditAppliesToTheRowReadUnderItsLockAndNeverRevertsAConcurrentChange(): void
+    {
+        $before = $this->link(true, 'Old');
+        $fresh  = $before->withActive(false, 'manual', new DateTimeImmutable('2026-11-12 10:00:01'), null);
+        $store  = new RacingStore($before, $fresh);
+        /** @var ArrayObject<int, object> $events */
+        /** @var ArrayObject<int, object> $events */
+        $events = new ArrayObject();
+
+        $view = $this->manager($store, new ManagerSettings(enforceAccess: false), null, null, $events)->update(TenantKey::default(), $before->id, new UpdateShortLink('https://example.com/new', 'Old'));
+
+        self::assertCount(1, $store->updated);
+        self::assertFalse($store->updated[0]->active, 'the disable committed in between is kept');
+        self::assertSame('https://example.com/new', $store->updated[0]->target->toString());
+        self::assertSame(ShortLinkState::Disabled, $view->state);
+        self::assertCount(1, $events);
+        $event = $events[0];
+        self::assertInstanceOf(ShortLinkUpdatedEvent::class, $event);
+        self::assertSame(['target'], $event->changedFields);
+        self::assertSame([null], $store->locks, 'an edit takes the row lock, not the tenant lock');
+    }
+
+    public function testAnEditAlreadyAppliedOrOfADeletedLinkWritesNothing(): void
+    {
+        $before = $this->link(true, 'Old');
+        $fresh  = $before->withEdit(TargetUrl::fromString('https://example.com/new'), LinkTitle::fromString('Old'), null, new DateTimeImmutable('2026-11-12 10:00:01'), null);
+        $store  = new RacingStore($before, $fresh);
+        /** @var ArrayObject<int, object> $events */
+        /** @var ArrayObject<int, object> $events */
+        $events = new ArrayObject();
+        $view   = $this->manager($store, new ManagerSettings(enforceAccess: false), null, null, $events)->update(TenantKey::default(), $before->id, new UpdateShortLink('https://example.com/new', 'Old'));
+        self::assertSame([], $store->updated, 'the same edit committed in between');
+        self::assertCount(0, $events);
+        self::assertSame('https://example.com/new', $view->target->toString());
+
+        $store = new RacingStore($before);
+        $this->expectException(ShortLinkNotFoundException::class);
+        $this->manager($store, new ManagerSettings(enforceAccess: false))->update(TenantKey::default(), $before->id, new UpdateShortLink('https://example.com/new', 'Old'));
+    }
+
+    public function testADeleteOrStateChangeRacedByAnotherOneWritesAndAnnouncesNothing(): void
+    {
+        $before = $this->link(true, 'Old');
+        /** @var ArrayObject<int, object> $events */
+        /** @var ArrayObject<int, object> $events */
+        $events = new ArrayObject();
+
+        $store = new RacingStore($before);
+        $this->manager($store, new ManagerSettings(enforceAccess: false), null, null, $events)->delete(TenantKey::default(), $before->id);
+        $this->manager($store, new ManagerSettings(enforceAccess: false), null, null, $events)->disable(TenantKey::default(), $before->id);
+        $store = new RacingStore($before, $before->withActive(false, 'manual', new DateTimeImmutable('2026-11-12 10:00:01'), null));
+        $this->manager($store, new ManagerSettings(enforceAccess: false), null, null, $events)->disable(TenantKey::default(), $before->id);
+        self::assertSame([], $store->updated);
+        self::assertCount(0, $events);
+
+        $edited = $before->withEdit(TargetUrl::fromString('https://example.com/edited'), null, null, new DateTimeImmutable('2026-11-12 10:00:01'), null);
+        $store  = new RacingStore($before, $edited);
+        $this->manager($store, new ManagerSettings(enforceAccess: false), null, null, $events)->delete(TenantKey::default(), $before->id);
+        self::assertCount(1, $store->updated);
+        self::assertSame('https://example.com/edited', $store->updated[0]->target->toString(), 'the tombstone keeps the concurrent edit');
+        self::assertNotNull($store->updated[0]->deletedAt);
+        self::assertInstanceOf(ShortLinkDeletedEvent::class, $events[0]);
+    }
+
+    public function testCountedCreatesAndSourcedBatchesTakeTheTenantDatabaseLock(): void
+    {
+        $tenant  = TenantKey::default();
+        $store   = new RacingStore();
+        $manager = $this->manager($store, new ManagerSettings(enforceAccess: false));
+
+        $manager->create($tenant, new CreateShortLink('https://example.com'));
+        $manager->create($tenant, new CreateShortLink('https://example.com', kind: LinkKind::email()));
+        $manager->createMany($tenant, [new CreateShortLink('https://example.com', kind: LinkKind::email(), source: new LinkSource('send-1', null, 1))]);
+        $manager->createMany($tenant, [new CreateShortLink('https://example.com', kind: LinkKind::email())]);
+        $manager->createMany($tenant, [new CreateShortLink('https://example.com')]);
+
+        self::assertEquals([$tenant, null, $tenant, null, $tenant], $store->locks, 'counted kind, uncounted, sourced batch, unsourced batch, counted batch');
+    }
+
+    private function link(bool $active, ?string $title): StoredLink
+    {
+        $at = new DateTimeImmutable('2026-11-12 10:00:00');
+
+        return new StoredLink(ShortLinkId::fromString('0190a6d0-0000-7000-8000-000000000099'), TenantKey::default(), ShortCode::random('abc1234'), TargetUrl::fromString('https://example.com/old'), LinkTitle::fromString($title), LinkKind::manual(), null, null, $active, null, null, $at, $at, null, null, null);
+    }
+
+    /**
+     * @param ArrayObject<int, object>|null $recorded
+     */
+    private function manager(ScriptedStore $store, ManagerSettings $settings, ?MemoryLogger $logger = null, ?CustomCodeLimiterInterface $limiter = null, ?ArrayObject $recorded = null): ShortLinkManager
     {
         $deny = new class implements ShortLinkAccessInterface {
             public function isGranted(ShortLinkPermission $permission, TenantKey $tenant): bool
@@ -138,9 +239,16 @@ final class ShortLinkManagerTest extends TestCase
                 return 'https://s.example/' . $code->value;
             }
         };
-        $events = new class implements EventDispatcherInterface {
+        $events = new class($recorded ?? new ArrayObject()) implements EventDispatcherInterface {
+            /** @param ArrayObject<int, object> $recorded */
+            public function __construct(private readonly ArrayObject $recorded)
+            {
+            }
+
             public function dispatch(object $event): object
             {
+                $this->recorded->append($event);
+
                 return $event;
             }
         };

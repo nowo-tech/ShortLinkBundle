@@ -11,6 +11,53 @@
 
 ## Unreleased
 
+```bash
+composer update nowo-tech/short-link-bundle
+```
+
+The update installs `nowo-tech/transaction-contract` ^1.0 and `nowo-tech/transaction-doctrine` ^1.6 (libraries; you do
+not have to register `NowoTransactionDoctrineBundle`).
+
+**Lock conflicts answer 409 (REQ-RUNTIME-003).** A deadlock, lock wait timeout or serialization failure on the bundle's
+UI or redirect routes now answers 409 with `X-Conflict-Code: CONFLICT_001` and `Retry-After` (nothing saved, retry is
+safe) or `CONFLICT_002` without `Retry-After` (part of the request may be saved: reload before trying again), through
+your error page, instead of a 500. To answer 503 instead:
+
+```yaml
+nowo_short_link:
+    conflict_response:
+        status: 503
+```
+
+When `NowoTransactionDoctrineBundle` is registered, unset options follow its `conflict_response`. Your own routes are
+not affected. Cross-origin API clients that read the code need `X-Conflict-Code` in `Access-Control-Expose-Headers`.
+
+**`TransientStorageFailure` from the PHP API.** A lock conflict inside `ShortLinkManagerInterface` now reaches your code
+as `Nowo\TransactionContract\TransientStorageFailure` (the DBAL exception is its previous). Code that caught
+`Doctrine\DBAL\Exception\DeadlockException` or `LockWaitTimeoutException` around the manager should catch
+`TransientStorageFailure` (nothing was committed by the bundle: the call can be retried).
+
+**Plan limits use a database lock.** Counted creates take a tenant lock on the bundle's database connection (MySQL /
+MariaDB `GET_LOCK`, PostgreSQL advisory lock) in addition to symfony/lock, so the limit is exact on every server. A
+create that waits longer than `quota.lock_timeout` (default 10 s) answers a lock conflict. Nothing to migrate.
+
+**Concurrent edits.** Edits, state changes and deletes lock the row (`SELECT … FOR UPDATE`) and change only their own
+fields. A disable or delete is no longer undone by an edit saved at the same time; a disable of a link deleted meanwhile
+is a no-op without an event.
+
+**Scoped DBAL middlewares.** The bundle's DBAL middlewares now wrap only the connection of `doctrine.entity_manager`
+(else the default entity manager), never your other connections. Note:
+
+- transaction-doctrine's `CommitTrackingMiddleware` is **new**. With the default `conflict_response.commit_tracking:
+  bundle` it wraps the bundle's connection, which in most applications is your default connection as well.
+- On **DBAL 3**, `Connection::commit()` on that connection then returns `null` instead of `true` (the middleware's
+  driver connection returns nothing). Code that checks the return value of `commit()` must not rely on `true`.
+- If that matters to you, set `conflict_response.commit_tracking: off` (no middleware; `CONFLICT_002` is then decided by
+  the failure itself and transaction-doctrine's watermark), or register `NowoTransactionDoctrineBundle` with
+  `commit_detection: true`, whose single middleware is then reused and the bundle adds none.
+
+See [CONCURRENCY.md](CONCURRENCY.md).
+
 ## To 0.4.0
 
 From **0.3.0**:

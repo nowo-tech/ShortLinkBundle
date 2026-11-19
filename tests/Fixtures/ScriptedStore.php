@@ -26,7 +26,7 @@ class ScriptedStore implements ShortLinkStoreInterface
     {
     }
 
-    public function transactional(Closure $work, ?Closure $afterCommit = null): mixed
+    public function transactional(Closure $work, ?Closure $afterCommit = null, ?TenantKey $lockTenant = null): mixed
     {
         $result = $work();
         if ($afterCommit instanceof Closure) {
@@ -77,6 +77,11 @@ class ScriptedStore implements ShortLinkStoreInterface
     public function find(TenantKey $tenant, ShortLinkId $id): ?StoredLink
     {
         return null;
+    }
+
+    public function findForUpdate(TenantKey $tenant, ShortLinkId $id): ?StoredLink
+    {
+        return $this->find($tenant, $id);
     }
 
     public function findBySource(TenantKey $tenant, LinkKind $kind, string $ref, ?int $position): ?StoredLink

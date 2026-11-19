@@ -27,6 +27,7 @@ use Nowo\ShortLinkBundle\Application\ShortLinkManager;
 use Nowo\ShortLinkBundle\Application\ShortUrlBuilderInterface;
 use Nowo\ShortLinkBundle\Application\Store\ClickStoreInterface;
 use Nowo\ShortLinkBundle\Application\Store\ShortLinkStoreInterface;
+use Nowo\ShortLinkBundle\DependencyInjection\Compiler\ShortLinkCommitTrackingPass;
 use Nowo\ShortLinkBundle\Domain\Model\ClickWriteMode;
 use Nowo\ShortLinkBundle\Domain\Port\ClickCountryResolverInterface;
 use Nowo\ShortLinkBundle\Domain\Port\CodeBlocklistInterface;
@@ -51,6 +52,7 @@ use Nowo\ShortLinkBundle\Infrastructure\Doctrine\ShortLinkMetadataListener;
 use Nowo\ShortLinkBundle\Infrastructure\Guard\OutboundUrlGuardBridge;
 use Nowo\ShortLinkBundle\Infrastructure\Http\ClickTerminateListener;
 use Nowo\ShortLinkBundle\Infrastructure\Http\RedirectController;
+use Nowo\ShortLinkBundle\Infrastructure\Http\ShortLinkConflictListener;
 use Nowo\ShortLinkBundle\Infrastructure\Lock\NoTenantLock;
 use Nowo\ShortLinkBundle\Infrastructure\Messenger\RecordShortLinkClickHandler;
 use Nowo\ShortLinkBundle\Infrastructure\Persistence\AfterCommitMiddleware;
@@ -74,6 +76,9 @@ use Nowo\ShortLinkBundle\Presentation\Form\ShortLinkFilterType;
 use Nowo\ShortLinkBundle\Presentation\Form\ShortLinkType;
 use Nowo\ShortLinkBundle\Presentation\Form\StatsRangeType;
 use Nowo\ShortLinkBundle\Presentation\Routing\UiRouteLoader;
+use Nowo\TransactionDoctrine\Symfony\Conflict\ConflictResponsePolicy;
+use Nowo\TransactionDoctrine\WriteUnit\CommitLedger;
+use Nowo\TransactionDoctrine\WriteUnit\Dbal\CommitTrackingMiddleware;
 use Symfony\Component\Config\Definition\Exception\InvalidConfigurationException;
 use Symfony\Component\DependencyInjection\ContainerBuilder;
 use Symfony\Component\DependencyInjection\ContainerInterface;
@@ -81,6 +86,7 @@ use Symfony\Component\DependencyInjection\Definition;
 use Symfony\Component\DependencyInjection\Extension\Extension;
 use Symfony\Component\DependencyInjection\Extension\PrependExtensionInterface;
 use Symfony\Component\DependencyInjection\Reference;
+use Symfony\Component\HttpKernel\KernelEvents;
 use Symfony\Component\RateLimiter\RateLimiterFactory;
 use Symfony\Component\RateLimiter\Storage\CacheStorage;
 
@@ -104,6 +110,15 @@ final class NowoShortLinkExtension extends Extension implements PrependExtension
 {
     /** Configuration root and extension alias. */
     public const ALIAS = 'nowo_short_link';
+
+    /** Real commits counted by {@see self::COMMIT_TRACKING_MIDDLEWARE}, read by the conflict answer (REQ-RUNTIME-003). */
+    public const COMMIT_LEDGER_SERVICE = 'nowo_short_link.commit_ledger';
+
+    /** transaction-doctrine's commit-tracking DBAL middleware (scoped by {@see ShortLinkCommitTrackingPass}). */
+    public const COMMIT_TRACKING_MIDDLEWARE = 'nowo_short_link.commit_tracking_middleware';
+
+    /** Container parameter holding the bundle's entity manager name (`doctrine.entity_manager`, null = default). */
+    public const ENTITY_MANAGER_PARAMETER = 'nowo_short_link.entity_manager';
 
     /** Doctrine mapping name of the bundle's entity. */
     public const MAPPING_NAME = 'NowoShortLinkBundle';
@@ -208,7 +223,7 @@ final class NowoShortLinkExtension extends Extension implements PrependExtension
      */
     public function load(array $configs, ContainerBuilder $container): void
     {
-        /** @var array{public_base_url: string|null, redirect: array{path_prefix: string, status: int, not_found_template: string, rate_limit: array{enabled: bool, cache_pool: string, ipv6_prefix: int, misses: array{limit: int, interval: string}, hits: array{limit: int, interval: string}, over_limit_hits: string}}, code: array{random_length: int, allow_custom: bool, reserved: list<string>, blocklist: bool, max_attempts: int, quarantine: string|null, custom_code_rate_limit: array{enabled: bool, limit: int, interval: string, limiter: string|null}}, target: array{max_length: int, guard: string, recheck_max_unresolvable_percent: int, recheck_min_sample: int, save_resolve_dns: bool, self_paths: list<string>, own_hosts: list<string>, allow_own_host: bool, denylist: array{hosts: list<string>, provider: string|null}}, tenancy: array{context: string|null}, access: array{provider: string|null, view_role: string, manage_role: string, enforce_in_manager: bool}, quota: array{provider: string|null, default_limit: int|null, counted_kinds: list<string>}, kinds: array<string, array{allow_custom_code: bool, show_in_ui: bool, counted: bool}>, ui: array{enabled: bool, path_prefix: string, tenant_route_parameter: string|null, page_size: int, stats_default_days: int, csv_max_days: int, layout_template: string|null}, doctrine: array{entity_manager: string|null, connection: string|null, table_prefix: string}, click_log: array{enabled: bool, write: string, store: array{ip_prefix: bool, user_agent_family: bool, referrer_host: bool, country: bool}, ipv4_prefix: int, ipv6_prefix: int, honour_gpc: bool, country_resolver: string|null, retention: string|null, rollup: array{lag_days: int, referrer_top_n: int, retention: string|null}}} $config */
+        /** @var array{public_base_url: string|null, redirect: array{path_prefix: string, status: int, not_found_template: string, rate_limit: array{enabled: bool, cache_pool: string, ipv6_prefix: int, misses: array{limit: int, interval: string}, hits: array{limit: int, interval: string}, over_limit_hits: string}}, code: array{random_length: int, allow_custom: bool, reserved: list<string>, blocklist: bool, max_attempts: int, quarantine: string|null, custom_code_rate_limit: array{enabled: bool, limit: int, interval: string, limiter: string|null}}, target: array{max_length: int, guard: string, recheck_max_unresolvable_percent: int, recheck_min_sample: int, save_resolve_dns: bool, self_paths: list<string>, own_hosts: list<string>, allow_own_host: bool, denylist: array{hosts: list<string>, provider: string|null}}, tenancy: array{context: string|null}, access: array{provider: string|null, view_role: string, manage_role: string, enforce_in_manager: bool}, quota: array{provider: string|null, default_limit: int|null, counted_kinds: list<string>, lock_timeout: int}, kinds: array<string, array{allow_custom_code: bool, show_in_ui: bool, counted: bool}>, ui: array{enabled: bool, path_prefix: string, tenant_route_parameter: string|null, page_size: int, stats_default_days: int, csv_max_days: int, layout_template: string|null}, doctrine: array{entity_manager: string|null, connection: string|null, table_prefix: string}, click_log: array{enabled: bool, write: string, store: array{ip_prefix: bool, user_agent_family: bool, referrer_host: bool, country: bool}, ipv4_prefix: int, ipv6_prefix: int, honour_gpc: bool, country_resolver: string|null, retention: string|null, rollup: array{lag_days: int, referrer_top_n: int, retention: string|null}}, conflict_response: array{status: int|null, retry_after: int|null, commit_tracking: string}} $config */
         $config = $this->processConfiguration(new Configuration(), $configs);
         $this->assertPlaceholders($container, $config);
         $container->setParameter(self::ALIAS . '.redirect_path_prefix', $config['redirect']['path_prefix']);
@@ -232,9 +247,12 @@ final class NowoShortLinkExtension extends Extension implements PrependExtension
         foreach (['Symfony\Component\Messenger\Event\WorkerMessageHandledEvent', 'Symfony\Component\Messenger\Event\WorkerMessageFailedEvent'] as $event) {
             $reset->addTag('kernel.event_listener', ['event' => $event, 'method' => 'onBoundary', 'priority' => -1024]);
         }
+        // Scoped to the bundle's connection by ShortLinkCommitTrackingPass (audit UE-CF-1: never every host connection).
         $container->register(AfterCommitMiddleware::class, AfterCommitMiddleware::class)
             ->setArguments([new Reference(AfterCommitQueue::class)])
             ->addTag('doctrine.middleware');
+        $container->setParameter(self::ENTITY_MANAGER_PARAMETER, $config['doctrine']['entity_manager']);
+        $this->registerConflictAnswer($container, $config['conflict_response']);
         $container->register(ShortLinkMetadataListener::class, ShortLinkMetadataListener::class)
             ->setArguments([$prefix])
             ->addTag('doctrine.event_listener', ['event' => 'loadClassMetadata']);
@@ -244,7 +262,7 @@ final class NowoShortLinkExtension extends Extension implements PrependExtension
                 ->addTag('doctrine.event_listener', ['event' => 'postGenerateSchema']);
         }
         $container->register(DbalShortLinkStore::class, DbalShortLinkStore::class)
-            ->setArguments([new Reference('doctrine'), new Reference(AfterCommitQueue::class), $config['doctrine']['entity_manager'], $prefix, $logger]);
+            ->setArguments([new Reference('doctrine'), new Reference(AfterCommitQueue::class), $config['doctrine']['entity_manager'], $prefix, $logger, $config['quota']['lock_timeout']]);
         $container->setAlias(ShortLinkStoreInterface::class, DbalShortLinkStore::class);
 
         if ($config['tenancy']['context'] !== null && $config['access']['provider'] === null) {
@@ -548,5 +566,41 @@ final class NowoShortLinkExtension extends Extension implements PrependExtension
         $id = (string) $default->getClass();
         $container->setDefinition($id, $default);
         $container->setAlias($interface, $id)->setPublic(true);
+    }
+
+    /**
+     * REQ-RUNTIME-003 rule 6: 409 (or 503) + CONFLICT_001 / CONFLICT_002 instead of a 500 for lock conflicts on the
+     * bundle's routes. Unset options follow transaction-doctrine's policy service when its bundle is registered.
+     *
+     * Commit tracking (`conflict_response.commit_tracking`): `bundle` (default) registers transaction-doctrine's
+     * commit-tracking middleware; {@see ShortLinkCommitTrackingPass} scopes it to the bundle's connection, or drops it and
+     * reuses transaction-doctrine's own ledger when that bundle's `commit_detection` is on. `off` registers neither the
+     * ledger nor the middleware.
+     *
+     * @param array{status: int|null, retry_after: int|null, commit_tracking: string} $conflictResponse
+     */
+    private function registerConflictAnswer(ContainerBuilder $container, array $conflictResponse): void
+    {
+        $tracking = $conflictResponse['commit_tracking'] !== 'off';
+        if ($tracking) {
+            $container->setDefinition(self::COMMIT_LEDGER_SERVICE, new Definition(CommitLedger::class));
+            $container->setDefinition(self::COMMIT_TRACKING_MIDDLEWARE, (new Definition(CommitTrackingMiddleware::class, [new Reference(self::COMMIT_LEDGER_SERVICE)]))
+                ->addTag('doctrine.middleware'));
+        }
+
+        $policy = $conflictResponse['status'] === null && $conflictResponse['retry_after'] === null
+            ? new Reference(ConflictResponsePolicy::class, ContainerInterface::NULL_ON_INVALID_REFERENCE)
+            : new Definition(ConflictResponsePolicy::class, [
+                $conflictResponse['status'] ?? ConflictResponsePolicy::STATUS_CONFLICT,
+                $conflictResponse['retry_after'] ?? ConflictResponsePolicy::DEFAULT_RETRY_AFTER,
+            ]);
+
+        $container->setDefinition(ShortLinkConflictListener::class, (new Definition(ShortLinkConflictListener::class, [
+            $policy,
+            $tracking ? new Reference(self::COMMIT_LEDGER_SERVICE) : null,
+            new Reference('request_stack', ContainerInterface::NULL_ON_INVALID_REFERENCE),
+        ]))
+            ->addTag('kernel.event_listener', ['event' => KernelEvents::REQUEST, 'method' => 'onRequest', 'priority' => ShortLinkConflictListener::REQUEST_PRIORITY])
+            ->addTag('kernel.event_listener', ['event' => KernelEvents::EXCEPTION, 'method' => 'onException', 'priority' => ShortLinkConflictListener::PRIORITY]));
     }
 }

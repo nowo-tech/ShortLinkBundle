@@ -19,11 +19,13 @@ use Nowo\ShortLinkBundle\Domain\Model\TargetUrl;
 use Nowo\ShortLinkBundle\Domain\Model\TenantKey;
 use Nowo\ShortLinkBundle\Domain\Service\ShortLinkManagerInterface;
 use Nowo\ShortLinkBundle\Infrastructure\Doctrine\ClickTablesSchemaListener;
+use Nowo\ShortLinkBundle\Tests\Fixtures\ConcurrencyProbe;
 use Nowo\ShortLinkBundle\Tests\Fixtures\QueryCounter;
 use Nowo\ShortLinkBundle\Tests\Fixtures\RecordingListener;
 use Nowo\ShortLinkBundle\Tests\Integration\Kernel\Host;
 use Nowo\ShortLinkBundle\Tests\Integration\Kernel\KernelTestCase;
 use Nowo\ShortLinkBundle\Tests\Integration\Kernel\TestKernel;
+use Nowo\TransactionDoctrine\ConflictCode;
 use Symfony\Bundle\FrameworkBundle\KernelBrowser;
 use Symfony\Component\Clock\MockClock;
 use Symfony\Component\DependencyInjection\ContainerInterface;
@@ -37,7 +39,9 @@ use function is_numeric;
 use function preg_match;
 use function str_contains;
 use function str_repeat;
+use function str_starts_with;
 use function substr;
+use function Symfony\Component\DependencyInjection\Loader\Configurator\service;
 use function trim;
 
 /**
@@ -85,6 +89,10 @@ abstract class UiTestCase extends KernelTestCase
             static function (ContainerConfigurator $container, string $url) use ($configure): void {
                 $configure($container, $url);
                 $container->services()->set(QueryCounter::class)->public()->tag('doctrine.middleware');
+                $container->services()->set(ConcurrencyProbe::class)
+                    ->args([service('doctrine'), '%nowo_short_link.entity_manager%', '%nowo_short_link.table_prefix%' . ClickTablesSchemaListener::CLICK_TABLE])
+                    ->tag('kernel.event_listener', ['event' => 'kernel.request', 'method' => 'onRequest', 'priority' => ConcurrencyProbe::REQUEST_PRIORITY])
+                    ->tag('kernel.event_listener', ['event' => 'kernel.controller', 'method' => 'onController']);
                 // A pool that survives the per-request service reset (the array pool of cache.app is cleared).
                 $container->extension('framework', ['cache' => ['pools' => ['cache.short_link_test' => ['adapter' => 'cache.adapter.filesystem']]]]);
             },
@@ -310,6 +318,81 @@ abstract class UiTestCase extends KernelTestCase
         self::assertSame(404, $this->httpStatus());
         $this->client->request('GET', self::BASE . '/NOT-A-UUID/edit');
         self::assertSame(404, $this->httpStatus());
+    }
+
+    /**
+     * REQ-RUNTIME-003 rule 6, real lock: another connection holds the row; the edit waits, gives up after the session's
+     * lock wait timeout and answers 409 + Retry-After + CONFLICT_001 with nothing saved; once the row is free the same
+     * edit succeeds on the same connection.
+     */
+    public function testAnEditBlockedByARowLockAnswers409Conflict001AndTheConnectionStaysUsable(): void
+    {
+        $this->skipOnSqlite();
+        $this->boot();
+        $link    = $this->create('https://example.com/old', 'Old');
+        $crawler = $this->client->request('GET', self::BASE . '/' . $link->id->value . '/edit');
+        $token   = $this->token($crawler, 'short_link[_token]');
+        $holder  = $this->holdRow($link->id);
+
+        try {
+            $this->client->request('POST', self::BASE . '/' . $link->id->value . '/edit', ['short_link' => ['target' => 'https://example.com/new', 'title' => 'New', 'expiresAt' => '', '_token' => $token]], [], ['HTTP_X_TEST_LOCK_TIMEOUT' => '1']);
+        } finally {
+            $holder->rollBack();
+        }
+
+        self::assertSame(409, $this->httpStatus());
+        self::assertSame(ConflictCode::RETRY_SAFE, $this->client->getResponse()->headers->get('X-Conflict-Code'));
+        self::assertSame('1', $this->client->getResponse()->headers->get('Retry-After'));
+        self::assertSame('https://example.com/old', $this->manager()->find($this->tenant, $link->id)?->target->toString(), 'nothing saved');
+
+        $this->client->request('POST', self::BASE . '/' . $link->id->value . '/edit', ['short_link' => ['target' => 'https://example.com/new', 'title' => 'New', 'expiresAt' => '', '_token' => $token]], [], ['HTTP_X_TEST_LOCK_TIMEOUT' => '1']);
+        self::assertSame(303, $this->httpStatus(), 'the retry succeeds on the same worker connection');
+        self::assertSame('https://example.com/new', $this->manager()->find($this->tenant, $link->id)?->target->toString());
+    }
+
+    /**
+     * REQ-RUNTIME-003 rule 6, request-level detection: a write committed earlier in the same request on the bundle's
+     * connection turns the conflict into CONFLICT_002 (read again, do not repeat), without Retry-After.
+     */
+    public function testAConflictAfterACommitEarlierInTheRequestAnswersConflict002(): void
+    {
+        $this->skipOnSqlite();
+        $this->boot();
+        $link    = $this->create('https://example.com', 'Toggle');
+        $crawler = $this->client->request('GET', self::BASE);
+        $token   = (string) $crawler->filter('form[action="' . self::BASE . '/' . $link->id->value . '/disable"] input[name="_token"]')->first()->attr('value');
+        $holder  = $this->holdRow($link->id);
+
+        try {
+            $this->client->request('POST', self::BASE . '/' . $link->id->value . '/disable', ['confirm' => '1', '_token' => $token], [], ['HTTP_X_TEST_LOCK_TIMEOUT' => '1', 'HTTP_X_TEST_COMMIT' => '1']);
+        } finally {
+            $holder->rollBack();
+        }
+
+        self::assertSame(409, $this->httpStatus());
+        self::assertSame(ConflictCode::COMMITTED, $this->client->getResponse()->headers->get('X-Conflict-Code'));
+        self::assertFalse($this->client->getResponse()->headers->has('Retry-After'), 'no retry invitation');
+        self::assertSame(ShortLinkState::Active, $this->manager()->find($this->tenant, $link->id)?->state);
+    }
+
+    /**
+     * A second kernel (its own connection) that locks the link's row until the caller rolls back.
+     */
+    protected function holdRow(ShortLinkId $id): Connection
+    {
+        $other  = $this->bootKernel($this->host()->bundleConfig(), TestKernel::defaultDatabaseUrl(), $this->host()->configure(), $this->host()->kind === Host::STANDARD);
+        $holder = $this->host()->connection($other);
+        $holder->beginTransaction();
+        $holder->fetchAllAssociative('SELECT id FROM ' . $this->host()->tablePrefix() . 'nowo_short_link WHERE id = ? FOR UPDATE', [$id->value]);
+
+        return $holder;
+    }
+
+    protected function skipOnSqlite(): void
+    {
+        if (str_starts_with(TestKernel::defaultDatabaseUrl(), 'sqlite')) {
+            self::markTestSkipped('Two connections and row locks need a server database (MySQL / MariaDB / PostgreSQL job).');
+        }
     }
 
     public function testStateChangesNeedPostAndTheirCsrfToken(): void

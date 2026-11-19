@@ -114,7 +114,7 @@ registers no service, route, listener or table, whatever the configuration says;
 | FR-MANAGE-001 | Manager create / update / disable / enable / delete (tombstone) / find / list (keyset, filters) / shortUrl. |
 | FR-BULK-001 | `createMany()` ≤ 200, random codes only, quota once per batch, dedupe by (kind, ref, position). |
 | FR-ACCESS-001 | Access port checked per action unless `system` or `enforce_in_manager: false`; default role-based, deny without a token. |
-| FR-QUOTA-001 | Quota on counted kinds only; exact under concurrency with symfony/lock. |
+| FR-QUOTA-001 | Quota on counted kinds only; exact under concurrency: count and insert under a tenant database lock (MySQL / MariaDB `GET_LOCK`, PostgreSQL advisory lock, SQLite writer serialisation), plus symfony/lock when a lock factory exists. |
 | FR-EVENT-001 | Events after the outermost commit, none on rollback, ids / VOs / target host only. |
 | FR-DB-002 | DBAL store on the entity manager's connection; never flushes the host EntityManager; XML mapping default + attribute twin; table and index prefix; binary collation on MySQL / MariaDB; click tables by schema listener. |
 | FR-URL-001 | Absolute short URLs from `public_base_url` (re-checked at runtime) or the router request context. |
@@ -130,6 +130,7 @@ registers no service, route, listener or table, whatever the configuration says;
 | FR-UI-001 | Management UI (S4, contract §11): `ShortLinkUiController` list / create / edit / disable / enable / delete / statistics / CSV behind `UiRouteLoader` (`routes/ui.php`, host prefix); `ShortLinkPages` builds UiKit list / form / show view models (`ShortLinkRow`, `DailyChart` SVG, `StatsCsv`); views `ui/list`, `ui/form`, `ui/stats` extend the UiKit page scaffolds. |
 | FR-UI-002 | UI forms are FormKit Types: `ShortLinkType` (create / edit), `ShortLinkActionType` (CSRF-only row actions, one token id per action), `ShortLinkFilterType` and `StatsRangeType` (GET, bookmarkable keys). |
 | FR-ERROR-001 | Every deliberate exception implements `ShortLinkExceptionInterface`. |
+| FR-CONCURRENCY-001 | REQ-RUNTIME-003: one transaction per write unit through transaction-doctrine's DBAL runner; read-modify-write paths lock the row; a lock conflict on the bundle's routes answers 409 (or 503) with `X-Conflict-Code` `CONFLICT_001` + `Retry-After` or `CONFLICT_002`; commit tracking scoped to the bundle's connection or transaction-doctrine's ledger ([docs/CONCURRENCY.md](../../docs/CONCURRENCY.md)). |
 
 ## Success criteria
 

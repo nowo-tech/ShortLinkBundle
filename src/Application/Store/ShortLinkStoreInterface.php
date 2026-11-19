@@ -12,6 +12,7 @@ use Nowo\ShortLinkBundle\Domain\Model\ResolvedLink;
 use Nowo\ShortLinkBundle\Domain\Model\ShortLinkId;
 use Nowo\ShortLinkBundle\Domain\Model\ShortLinkListQuery;
 use Nowo\ShortLinkBundle\Domain\Model\TenantKey;
+use Nowo\TransactionContract\TransientStorageFailure;
 
 /**
  * Persistence of the links (DBAL in the bundle). Every tenant-scoped read filters on the tenant and re-checks it in
@@ -22,8 +23,15 @@ use Nowo\ShortLinkBundle\Domain\Model\TenantKey;
 interface ShortLinkStoreInterface
 {
     /**
-     * Runs the work in a transaction (joining the host's one when open); the after-commit work runs after the
-     * outermost commit and never when it rolls back.
+     * Runs the work in one transaction (joining the host's one when open, through a savepoint that a failure rolls
+     * back); the after-commit work runs after the outermost commit and never when it rolls back.
+     *
+     * With `$lockTenant`, the work first takes the tenant's database lock (MySQL / MariaDB `GET_LOCK`, PostgreSQL
+     * transaction advisory lock; SQLite serialises writers itself), so a count-then-insert or a find-then-insert of that
+     * tenant is exact across processes and servers. A lock not obtained in time is a transient failure.
+     *
+     * A lock conflict (deadlock, lock wait timeout, serialization failure) is rethrown as a
+     * {@see TransientStorageFailure} with the storage error as previous.
      *
      * @template T
      *
@@ -32,7 +40,7 @@ interface ShortLinkStoreInterface
      *
      * @return T
      */
-    public function transactional(Closure $work, ?Closure $afterCommit = null): mixed;
+    public function transactional(Closure $work, ?Closure $afterCommit = null, ?TenantKey $lockTenant = null): mixed;
 
     /**
      * Whether a transaction is open on the store's connection (a host transaction the store would join).
@@ -84,6 +92,13 @@ interface ShortLinkStoreInterface
      * The live row of the tenant with this id, or null.
      */
     public function find(TenantKey $tenant, ShortLinkId $id): ?StoredLink;
+
+    /**
+     * The live row of the tenant with this id, locked until the end of the current transaction (`SELECT … FOR UPDATE`
+     * on MySQL / MariaDB / PostgreSQL; SQLite serialises writers itself), or null. Read-modify-write paths read the row
+     * they change through this, inside {@see self::transactional()}, so a concurrent change is never reverted.
+     */
+    public function findForUpdate(TenantKey $tenant, ShortLinkId $id): ?StoredLink;
 
     /**
      * The live row of a generated link (tenant, kind, source ref, position), or null.

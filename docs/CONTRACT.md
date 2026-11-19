@@ -548,7 +548,7 @@ array pool (a regression guard, not the production number).
 | Session / cookie on public path | `stateless: true`, no `Set-Cookie`, no security token needed | Assert no session, no cookie |
 | DoS by slow dependencies | No DNS on redirect, country resolver after the response with ≤ 50 ms timeout, limiter on a fast pool | Resolver that sleeps does not delay the 302 (terminate mode) |
 | Bots / scanners inflating stats | `machine` flag, shown apart, HEAD unlogged | UA fixtures (Slackbot, facebookexternalhit, Twitterbot, WhatsApp, Microsoft Office / Safe Links, Proofpoint, curl, python-requests) |
-| Plan-limit race | Count + insert in one transaction under a per-tenant `symfony/lock` key when available; without Lock, at most +N concurrent overshoot (documented) | Parallel create test with Lock → exactly the limit |
+| Plan-limit race | Count + insert in one transaction under a tenant database lock (MySQL / MariaDB `GET_LOCK`, PostgreSQL advisory lock; SQLite serialises writers), plus a per-tenant `symfony/lock` key when available ([CONCURRENCY.md](CONCURRENCY.md)) | Parallel create test (10 processes, standard host with Lock and DDD host without) → exactly the limit |
 
 Out of scope v1 (spec 230): custom domains per tenant, QR codes, UTM builder, A/B links, link preview page
 (`/s/{code}+`), abuse report form, password-protected links, click caps.

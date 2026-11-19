@@ -2,9 +2,9 @@
 
 **Baseline spec**: [`spec.md`](spec.md)  
 **Package**: `nowo-tech/short-link-bundle`  
-**Last audited**: 2026-11-18 (0.3.0 + Unreleased; OwnHostGuard mapped)
+**Last audited**: 2026-11-19 (0.4.0 + Unreleased; concurrency: conflict listener and commit-tracking pass mapped)
 
-Scope: every file under `src/`. Audit command: `find src -type f | wc -l` → **149**.
+Scope: every file under `src/`. Audit command: `find src -type f | wc -l` → **151**.
 
 | Source file | Spec section | Requirement IDs |
 | --- | --- | --- |
@@ -34,6 +34,7 @@ Scope: every file under `src/`. Audit command: `find src -type f | wc -l` → **
 | `src/Application/Store/ClickStoreInterface.php` | Redirect and click log | FR-REDIRECT-001, FR-CLICK-001 |
 | `src/Application/Store/ShortLinkStoreInterface.php` | Persistence | FR-DB-001, FR-DB-002, FR-EVENT-001 |
 | `src/Application/Store/StoredLink.php` | Persistence | FR-DB-001, FR-DB-002, FR-EVENT-001 |
+| `src/DependencyInjection/Compiler/ShortLinkCommitTrackingPass.php` | Concurrency | FR-CONCURRENCY-001, FR-WIRING-001 |
 | `src/DependencyInjection/Compiler/ShortLinkCompilerPass.php` | Configuration and wiring | FR-CONFIG-001, FR-CONFIG-002, FR-WIRING-001 |
 | `src/DependencyInjection/Compiler/TwigPathsPass.php` | Configuration and wiring | FR-CONFIG-001, FR-WIRING-001 |
 | `src/DependencyInjection/ConfigNodes.php` | Configuration and wiring | FR-CONFIG-001, FR-CONFIG-002, FR-WIRING-001 |
@@ -111,6 +112,7 @@ Scope: every file under `src/`. Audit command: `find src -type f | wc -l` → **
 | `src/Infrastructure/Guard/OutboundUrlGuardBridge.php` | Target guard | FR-TARGET-001, FR-GUARD-001 |
 | `src/Infrastructure/Http/ClickTerminateListener.php` | Redirect and click log | FR-REDIRECT-001, FR-CLICK-001 |
 | `src/Infrastructure/Http/RedirectController.php` | Redirect and click log | FR-REDIRECT-001, FR-CLICK-001 |
+| `src/Infrastructure/Http/ShortLinkConflictListener.php` | Concurrency | FR-CONCURRENCY-001 |
 | `src/Infrastructure/Lock/NoTenantLock.php` | Quota | FR-QUOTA-001 |
 | `src/Infrastructure/Lock/SymfonyTenantLock.php` | Quota | FR-QUOTA-001 |
 | `src/Infrastructure/Messenger/RecordShortLinkClick.php` | Redirect and click log | FR-REDIRECT-001, FR-CLICK-001 |

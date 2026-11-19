@@ -50,7 +50,8 @@ From contract §9. Each threat names the control and the slice that ships it.
 | CSRF, XSS, CSV injection | FormKit CSRF forms, Twig escaping, CSV cell prefixing | S4 |
 | Session / cookie on the public path | `stateless: true`, no `Set-Cookie` | S2 |
 | Log flooding, bots | Hit limiter, HEAD unlogged, machine flag, retention P90D | S2, S3 |
-| Plan-limit race | Count + insert under a per-tenant lock (`symfony/lock`) | S1 |
+| Plan-limit race | Count + insert under a tenant database lock in the same transaction (MySQL / MariaDB `GET_LOCK`, PostgreSQL advisory lock), plus `symfony/lock` when available; see [CONCURRENCY.md](CONCURRENCY.md) | S1, Unreleased |
+| Lost update (edit vs disable / delete) | Row read again with `SELECT … FOR UPDATE`, only changed fields written | Unreleased |
 
 ## Controls by slice
 
@@ -67,7 +68,8 @@ From contract §9. Each threat names the control and the slice that ships it.
   every anchored pattern; L5 counted creates refused inside a host transaction + a 10-process parallel test that
   creates exactly the limit (MySQL / MariaDB / PostgreSQL CI); L8 hidden kinds never listed for people; L9 no
   invisible / bidi characters, ASCII-only targets.
-- **Known gaps:** without symfony/lock, concurrent creates may overshoot a plan limit by a few links.
+- **Known gaps (closed, Unreleased):** up to 0.4.0, without symfony/lock (or with a lock store local to one server),
+  concurrent creates could overshoot a plan limit by a few links; the tenant database lock makes the limit exact.
 - **S2:** the redirect takes only `{code}` (query ignored, `Location` from the database, no CRLF possible); one
   neutral 404 for every reason after the same single query; miss limiter peeked before the lookup; hit limiter with
   redirect-unlogged / block; HEAD never logged; stateless route, no cookie; redirect guard on every answer (literals +

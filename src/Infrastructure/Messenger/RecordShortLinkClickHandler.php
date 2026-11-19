@@ -21,10 +21,10 @@ final readonly class RecordShortLinkClickHandler
     }
 
     /**
-     * Records the click.
+     * Records the click; a lock conflict is rethrown so the transport retries the message (nothing was written).
      */
     public function __invoke(RecordShortLinkClick $message): void
     {
-        $this->recorder->record($message->click);
+        $this->recorder->record($message->click, null, false, true);
     }
 }

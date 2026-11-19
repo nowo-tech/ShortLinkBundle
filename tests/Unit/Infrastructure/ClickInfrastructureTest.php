@@ -6,7 +6,10 @@ namespace Nowo\ShortLinkBundle\Tests\Unit\Infrastructure;
 
 use DateTimeImmutable;
 use Doctrine\DBAL\Connection;
+use Doctrine\DBAL\Driver\AbstractException;
 use Doctrine\DBAL\DriverManager;
+use Doctrine\DBAL\Exception\DeadlockException;
+use Doctrine\DBAL\Exception\DriverException;
 use Doctrine\Persistence\ManagerRegistry;
 use Doctrine\Persistence\ObjectManager;
 use LogicException;
@@ -32,9 +35,12 @@ use Nowo\ShortLinkBundle\Domain\Model\TenantKey;
 use Nowo\ShortLinkBundle\Domain\Model\UserAgentFamily;
 use Nowo\ShortLinkBundle\Infrastructure\Http\ClickTerminateListener;
 use Nowo\ShortLinkBundle\Infrastructure\Http\RedirectController;
+use Nowo\ShortLinkBundle\Infrastructure\Messenger\RecordShortLinkClick;
+use Nowo\ShortLinkBundle\Infrastructure\Messenger\RecordShortLinkClickHandler;
 use Nowo\ShortLinkBundle\Infrastructure\Persistence\DbalClickStore;
 use Nowo\ShortLinkBundle\Tests\Fixtures\MemoryLogger;
 use Nowo\ShortLinkBundle\Tests\Fixtures\ScriptedStore;
+use Nowo\TransactionContract\TransientStorageFailure;
 use PHPUnit\Framework\TestCase;
 use Psr\EventDispatcher\EventDispatcherInterface;
 use Psr\Log\AbstractLogger;
@@ -158,5 +164,100 @@ final class ClickInfrastructureTest extends TestCase
 
         $listener->onTerminate(new TerminateEvent($this->createStub(HttpKernelInterface::class), $request, new Response()));
         self::assertFalse($request->attributes->has(ClickTerminateListener::ATTRIBUTE));
+    }
+
+    public function testTheClickStoreTellsALockConflictApart(): void
+    {
+        $locked = DriverManager::getConnection(['driver' => 'pdo_sqlite', 'memory' => true]);
+        $locked->executeStatement('CREATE TABLE nowo_short_link_click (id INTEGER PRIMARY KEY)');
+        $registry = $this->createStub(ManagerRegistry::class);
+        $registry->method('getConnection')->willReturn($locked);
+        $store = new DbalClickStore($registry, 'clicks');
+
+        try {
+            $store->insert(ShortLinkId::fromString('0190a6d0-0000-7000-8000-000000000001'), TenantKey::default(), new DateTimeImmutable(), null, null, null, null, false);
+            self::fail('a missing column is a real error');
+        } catch (TransientStorageFailure) {
+            self::fail('not a lock conflict');
+        } catch (DriverException) {
+            $this->addToAssertionCount(1);
+        }
+
+        $deadlock = new DeadlockException(new class('Deadlock found', '40001', 1213) extends AbstractException {
+        }, null);
+        $connection = $this->createStub(Connection::class);
+        $connection->method('insert')->willThrowException($deadlock);
+        $registry = $this->createStub(ManagerRegistry::class);
+        $registry->method('getConnection')->willReturn($connection);
+
+        try {
+            (new DbalClickStore($registry, 'clicks'))->insert(ShortLinkId::fromString('0190a6d0-0000-7000-8000-000000000001'), TenantKey::default(), new DateTimeImmutable(), null, null, null, null, false);
+            self::fail('expected a transient failure');
+        } catch (TransientStorageFailure $failure) {
+            self::assertSame($deadlock, $failure->getPrevious());
+        }
+    }
+
+    public function testMessengerClicksRethrowALockConflictSoTheTransportRetries(): void
+    {
+        $events = $this->createStub(EventDispatcherInterface::class);
+        $click  = new ClickPayload(ShortLinkId::fromString('0190a6d0-0000-7000-8000-000000000001'), TenantKey::default(), LinkKind::manual(), null, new DateTimeImmutable(), null, UserAgentFamily::Unknown, null, false);
+        $busy   = TransientStorageFailure::fromPrevious(new RuntimeException('deadlock'), 1);
+
+        $clicks = $this->createStub(ClickStoreInterface::class);
+        $clicks->method('insert')->willThrowException(new RuntimeException('wrapped', 0, $busy));
+        $logger  = new MemoryLogger();
+        $handler = new RecordShortLinkClickHandler(new ClickRecorder($clicks, new NullCountryResolver(), $events, logger: $logger));
+        try {
+            $handler(new RecordShortLinkClick($click));
+            self::fail('expected the lock conflict');
+        } catch (RuntimeException $failure) {
+            self::assertSame($busy, $failure->getPrevious());
+        }
+        self::assertCount(1, $logger->records);
+
+        // The redirect paths (sync / terminate) keep logging: the answer is already sent.
+        (new ClickRecorder($clicks, new NullCountryResolver(), $events))->record($click, null, true);
+
+        // Other failures stay logged on the Messenger path too (a broken table must not loop the worker).
+        $broken = $this->createStub(ClickStoreInterface::class);
+        $broken->method('insert')->willThrowException(new RuntimeException('table down'));
+        (new RecordShortLinkClickHandler(new ClickRecorder($broken, new NullCountryResolver(), $events)))(new RecordShortLinkClick($click));
+
+        // The liveness check of a Messenger click: a lock conflict is rethrown too.
+        $links = new class extends ScriptedStore {
+            public function isLive(ShortLinkId $id, TenantKey $tenant): bool
+            {
+                throw TransientStorageFailure::fromPrevious(new RuntimeException('lock wait'), 1);
+            }
+        };
+        $this->expectException(TransientStorageFailure::class);
+        (new RecordShortLinkClickHandler(new ClickRecorder($clicks, new NullCountryResolver(), $events, links: $links)))(new RecordShortLinkClick($click));
+    }
+
+    /**
+     * Audit UK-SL-4: a raw DBAL lock error of the liveness read (not wrapped by a runner) is retried by the transport too.
+     */
+    public function testARawDbalLockErrorOfTheLivenessReadIsRethrownForMessenger(): void
+    {
+        $deadlock = new DeadlockException(new class('Deadlock found', '40001', 1213) extends AbstractException {
+        }, null);
+        $links = new class($deadlock) extends ScriptedStore {
+            public function __construct(private readonly DeadlockException $deadlock)
+            {
+                parent::__construct();
+            }
+
+            public function isLive(ShortLinkId $id, TenantKey $tenant): bool
+            {
+                throw $this->deadlock;
+            }
+        };
+        $clicks = $this->createMock(ClickStoreInterface::class);
+        $clicks->expects(self::never())->method('insert');
+        $click = new ClickPayload(ShortLinkId::fromString('0190a6d0-0000-7000-8000-000000000001'), TenantKey::default(), LinkKind::manual(), null, new DateTimeImmutable(), null, UserAgentFamily::Unknown, null, false);
+
+        $this->expectExceptionObject($deadlock);
+        (new RecordShortLinkClickHandler(new ClickRecorder($clicks, new NullCountryResolver(), $this->createStub(EventDispatcherInterface::class), links: $links)))(new RecordShortLinkClick($click));
     }
 }

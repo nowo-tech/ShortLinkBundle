@@ -103,6 +103,7 @@ FrankenPHP worker mode, MySQL, UiKit layout and FormKit forms, Web Profiler, Twi
 - [Architecture](docs/ARCHITECTURE.md)
 - [FrankenPHP worker audit](docs/FRANKENPHP-WORKER-AUDIT.md)
 - [Performance](docs/PERFORMANCE.md)
+- [Concurrency](docs/CONCURRENCY.md)
 - [Privacy](docs/PRIVACY.md)
 - [Demo with FrankenPHP](docs/DEMO-FRANKENPHP.md)
 - [PSR compliance](docs/PSR.md)
@@ -117,7 +118,7 @@ make test-with-db       # Database suite on MySQL 8.4
 make release-check      # every gate, demos included
 ```
 
-- PHP: 100 % of `src/` (gate in CI). Database suite on SQLite, MySQL 8.4, MariaDB 10.11 and PostgreSQL 17 in CI.
+- PHP: 100 % of `src/` (gate in CI). Database suite (with the two-connection concurrency tests, [docs/CONCURRENCY.md](docs/CONCURRENCY.md)) on SQLite, MySQL 8.4, MariaDB 11.4 and PostgreSQL 16 in CI.
 
 ## License
 
