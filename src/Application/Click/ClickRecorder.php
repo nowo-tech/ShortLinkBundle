@@ -9,6 +9,7 @@ use Nowo\ShortLinkBundle\Application\Store\ShortLinkStoreInterface;
 use Nowo\ShortLinkBundle\Domain\Event\ShortLinkClickedEvent;
 use Nowo\ShortLinkBundle\Domain\Model\CountryCode;
 use Nowo\ShortLinkBundle\Domain\Port\ClickCountryResolverInterface;
+use Nowo\TransactionContract\TransientStorageFailure;
 use Psr\EventDispatcher\EventDispatcherInterface;
 use Psr\Log\LoggerInterface;
 use SensitiveParameter;
@@ -40,10 +41,15 @@ final readonly class ClickRecorder
      * Records the click; `$clientIp` is the raw IP for the country resolver only (null in Messenger mode). `$resolved`
      * is true when the redirect resolved the live link in this same request (sync / terminate): the liveness check is
      * then skipped; Messenger clicks are always checked.
+     *
+     * `$rethrowTransient` (the Messenger handler): a lock conflict (deadlock, lock wait timeout, serialization failure)
+     * of the liveness check or of the insert is rethrown, so the transport retries the message (REQ-RUNTIME-003 rule 8;
+     * nothing was written, the click is one autocommit INSERT). The redirect paths keep logging every failure: the
+     * answer is already sent and must never break.
      */
-    public function record(ClickPayload $click, #[SensitiveParameter] ?string $clientIp = null, bool $resolved = false): void
+    public function record(ClickPayload $click, #[SensitiveParameter] ?string $clientIp = null, bool $resolved = false, bool $rethrowTransient = false): void
     {
-        if (!$resolved && !$this->isLive($click)) {
+        if (!$resolved && !$this->isLive($click, $rethrowTransient)) {
             return;
         }
         $private = $click->gpc && $this->honourGpc;
@@ -62,6 +68,7 @@ final readonly class ClickRecorder
             );
         } catch (Throwable $exception) {
             $this->warn('nowo_short_link: click of link {link} not recorded: {class}', ['link' => $click->linkId->value, 'class' => $exception::class]);
+            $this->rethrowTransient($exception, $rethrowTransient);
 
             return;
         }
@@ -76,14 +83,30 @@ final readonly class ClickRecorder
      * Whether the link is still live in the click's tenant: a late (Messenger) click of a deleted, erased or moved link
      * is dropped, so an erasure is never undone by a queued click (audit NY M4).
      */
-    private function isLive(ClickPayload $click): bool
+    private function isLive(ClickPayload $click, bool $rethrowTransient): bool
     {
         try {
             return !$this->links instanceof ShortLinkStoreInterface || $this->links->isLive($click->linkId, $click->tenant);
         } catch (Throwable $exception) {
             $this->warn('nowo_short_link: click of link {link} not recorded: {class}', ['link' => $click->linkId->value, 'class' => $exception::class]);
+            $this->rethrowTransient($exception, $rethrowTransient);
 
             return false;
+        }
+    }
+
+    /**
+     * Rethrows a lock conflict when asked (Messenger), so the message is retried instead of the click being lost.
+     */
+    private function rethrowTransient(Throwable $exception, bool $rethrow): void
+    {
+        if (!$rethrow) {
+            return;
+        }
+        for ($current = $exception; $current instanceof Throwable; $current = $current->getPrevious()) {
+            if ($current instanceof TransientStorageFailure) {
+                throw $exception;
+            }
         }
     }
 

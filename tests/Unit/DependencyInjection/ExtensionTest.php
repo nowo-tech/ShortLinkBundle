@@ -17,10 +17,13 @@ use Nowo\ShortLinkBundle\Domain\Port\TargetGuardInterface;
 use Nowo\ShortLinkBundle\Domain\Service\ShortLinkManagerInterface;
 use Nowo\ShortLinkBundle\Infrastructure\Doctrine\ClickTablesSchemaListener;
 use Nowo\ShortLinkBundle\Infrastructure\Http\RedirectController;
+use Nowo\ShortLinkBundle\Infrastructure\Http\ShortLinkConflictListener;
 use Nowo\ShortLinkBundle\Infrastructure\Messenger\RecordShortLinkClickHandler;
+use Nowo\ShortLinkBundle\Infrastructure\Persistence\DbalShortLinkStore;
 use Nowo\ShortLinkBundle\Infrastructure\Routing\RedirectRouteLoader;
 use Nowo\ShortLinkBundle\Presentation\Controller\ShortLinkUiController;
 use Nowo\ShortLinkBundle\Presentation\Routing\UiRouteLoader;
+use Nowo\TransactionDoctrine\Symfony\Conflict\ConflictResponsePolicy;
 use PHPUnit\Framework\TestCase;
 use stdClass;
 use Symfony\Component\DependencyInjection\ContainerBuilder;
@@ -67,6 +70,40 @@ final class ExtensionTest extends TestCase
         self::assertFalse($container->hasDefinition(ClickTablesSchemaListener::class), 'a separate click connection: the host creates those tables');
         self::assertFalse($this->bridge($container)->getArgument(1), 'basic guard never resolves DNS');
         self::assertNull($container->getDefinition(CodeGenerator::class)->getArgument(1));
+    }
+
+    public function testTheConflictAnswerFollowsTransactionDoctrineOrTheBundleOptions(): void
+    {
+        $container = new ContainerBuilder();
+        (new NowoShortLinkExtension())->load([], $container);
+        $listener = $container->getDefinition(ShortLinkConflictListener::class);
+        $policy   = $listener->getArgument(0);
+        self::assertInstanceOf(Reference::class, $policy, 'unset: transaction-doctrine\'s policy service when present');
+        self::assertSame(ConflictResponsePolicy::class, (string) $policy);
+        $ledger = $listener->getArgument(1);
+        self::assertInstanceOf(Reference::class, $ledger);
+        self::assertSame(NowoShortLinkExtension::COMMIT_LEDGER_SERVICE, (string) $ledger);
+        self::assertTrue($container->hasDefinition(NowoShortLinkExtension::COMMIT_TRACKING_MIDDLEWARE));
+        self::assertNull($container->getParameter(NowoShortLinkExtension::ENTITY_MANAGER_PARAMETER));
+        self::assertSame(10, $container->getDefinition(DbalShortLinkStore::class)->getArgument(5), 'quota.lock_timeout');
+
+        $container = new ContainerBuilder();
+        (new NowoShortLinkExtension())->load([['conflict_response' => ['status' => 503, 'commit_tracking' => 'off'], 'quota' => ['lock_timeout' => 3], 'doctrine' => ['entity_manager' => 'links']]], $container);
+        $listener = $container->getDefinition(ShortLinkConflictListener::class);
+        $policy   = $listener->getArgument(0);
+        self::assertInstanceOf(Definition::class, $policy);
+        self::assertSame([503, ConflictResponsePolicy::DEFAULT_RETRY_AFTER], $policy->getArguments());
+        self::assertNull($listener->getArgument(1), 'commit tracking off: no ledger');
+        self::assertFalse($container->hasDefinition(NowoShortLinkExtension::COMMIT_TRACKING_MIDDLEWARE));
+        self::assertFalse($container->hasDefinition(NowoShortLinkExtension::COMMIT_LEDGER_SERVICE));
+        self::assertSame('links', $container->getParameter(NowoShortLinkExtension::ENTITY_MANAGER_PARAMETER));
+        self::assertSame(3, $container->getDefinition(DbalShortLinkStore::class)->getArgument(5));
+
+        $container = new ContainerBuilder();
+        (new NowoShortLinkExtension())->load([['conflict_response' => ['retry_after' => 4]]], $container);
+        $policy = $container->getDefinition(ShortLinkConflictListener::class)->getArgument(0);
+        self::assertInstanceOf(Definition::class, $policy);
+        self::assertSame([ConflictResponsePolicy::STATUS_CONFLICT, 4], $policy->getArguments());
     }
 
     /**

@@ -15,6 +15,26 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- REQ-RUNTIME-003 rule 6: a lock conflict (deadlock, lock wait timeout, serialization failure: MySQL 1213 / 1205, MariaDB 1020, PostgreSQL 40001 / 40P01 / 55P03) on a route of the bundle answers **409** through the application's error page instead of a 500, with `X-Conflict-Code: CONFLICT_001` and `Retry-After` when nothing of the request was committed, or `CONFLICT_002` without `Retry-After` when part of it may be (a write committed earlier in the same request, a committed `ConcurrencyConflict`, a lost savepoint, a Messenger handler that already ran). New options `conflict_response.status` (409 or 503), `conflict_response.retry_after` and `conflict_response.commit_tracking` (`bundle` or `off`); unset, they follow nowo-tech/transaction-doctrine's `conflict_response`. Unique violations and lost connections are not mapped.
+- `quota.lock_timeout` (default 10 s): how long a counted create waits for the tenant's database lock before answering a lock conflict.
+- `docs/CONCURRENCY.md`: write paths, conflict codes, host options, commit tracking, tests and residual risks.
+- Dependencies `nowo-tech/transaction-contract` ^1.0 and `nowo-tech/transaction-doctrine` ^1.6.
+
+### Changed
+
+- Write units run through transaction-doctrine's DBAL runner (`DoctrineTransactionRunner::forConnection()`): a failed unit inside a host transaction rolls back to its savepoint (also after a MySQL nested deadlock), and a lock conflict reaches the caller of `ShortLinkManagerInterface` as `Nowo\TransactionContract\TransientStorageFailure` (with the DBAL exception as previous) instead of the raw DBAL exception.
+- Commit tracking and the after-commit middleware wrap only the connection of the bundle's entity manager, never the host's other connections (audit UE-CF-1); with transaction-doctrine's `commit_detection` its ledger is reused and the bundle adds no middleware.
+- CI: the required Databases job runs MariaDB 11.4 and PostgreSQL 16 (was 10.11 / 17), next to MySQL 8.4 and SQLite, with the two-connection race tests; new **Dependency floor (nowo-tech/transaction-\* lowest, demo lock)** job.
+
+### Fixed
+
+- Plan limit under concurrent creates (present up to 0.4.0): without symfony/lock (or with a lock store local to one server, such as the default `flock`), concurrent counted creates could pass the plan limit by a few links. The count and the insert now run under a tenant **database** lock in the same transaction (MySQL / MariaDB `GET_LOCK`, PostgreSQL `pg_advisory_xact_lock`; SQLite serialises writers), so the limit is exact across processes and servers. `createMany()` with sources takes the same lock, so two batches never both create the generated link of one source.
+- Lost updates (present up to 0.4.0): `update()`, `disable()` / `enable()` and `delete()` wrote back a snapshot of the row read before the transaction, so an edit racing a disable or a delete could re-enable or undelete the link, and a delete could revert a concurrent edit. The row is now read again with `SELECT … FOR UPDATE` inside the transaction and only the changed fields are written; a link already in the requested state or deleted meanwhile is left as it is, with no event.
+- A write unit whose connection was lost during `COMMIT` (outcome unknown) was replayed once on a new connection, which could create a second link; it is now rethrown. A connection lost before the work finished is still replayed once (nothing was committed).
+- Messenger click writes (`click_log.write: messenger`): a lock conflict of the insert or of the liveness check is rethrown so the transport retries the message, instead of the click being dropped with a warning (rule 8). The `sync` and `terminate` modes keep logging every failure after the response.
+
 ## [0.4.0] - 2026-11-18
 
 ### Added

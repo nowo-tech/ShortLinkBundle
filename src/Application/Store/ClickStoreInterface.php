@@ -7,6 +7,7 @@ namespace Nowo\ShortLinkBundle\Application\Store;
 use DateTimeImmutable;
 use Nowo\ShortLinkBundle\Domain\Model\ShortLinkId;
 use Nowo\ShortLinkBundle\Domain\Model\TenantKey;
+use Nowo\TransactionContract\TransientStorageFailure;
 
 /**
  * Writes raw click rows (DBAL, one statement, never the host's EntityManager).
@@ -17,6 +18,8 @@ interface ClickStoreInterface
 {
     /**
      * Inserts one click row; null columns were not stored (GPC or `click_log.store`).
+     *
+     * @throws TransientStorageFailure on a lock conflict (nothing was written)
      */
     public function insert(ShortLinkId $linkId, TenantKey $tenant, DateTimeImmutable $clickedAt, ?string $ipPrefix, ?string $uaFamily, ?string $referrerHost, ?string $country, bool $machine): void;
 }

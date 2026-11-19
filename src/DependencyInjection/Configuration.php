@@ -7,11 +7,13 @@ namespace Nowo\ShortLinkBundle\DependencyInjection;
 use DateInterval;
 use DateTimeImmutable;
 use DateTimeZone;
+use Nowo\TransactionDoctrine\Symfony\Conflict\ConflictResponsePolicy;
 use Symfony\Component\Config\Definition\Builder\ArrayNodeDefinition;
 use Symfony\Component\Config\Definition\Builder\TreeBuilder;
 use Symfony\Component\Config\Definition\ConfigurationInterface;
 use Symfony\Component\Config\Definition\Exception\InvalidConfigurationException;
 
+use function in_array;
 use function is_array;
 use function is_int;
 use function is_string;
@@ -85,11 +87,18 @@ final class Configuration implements ConfigurationInterface
                             ->defaultValue([self::KIND_MANUAL])
                             ->scalarPrototype()->end()
                         ->end()
+                        ->integerNode('lock_timeout')
+                            ->info('Seconds a counted create (and a createMany() with sources) waits for the tenant\'s database lock (MySQL / MariaDB GET_LOCK, PostgreSQL advisory lock) before answering a lock conflict (409 CONFLICT_001)')
+                            ->defaultValue(10)
+                            ->min(1)
+                            ->max(300)
+                        ->end()
                     ->end()
                 ->end()
                 ->append($this->kinds())
                 ->append($this->ui())
                 ->append($this->doctrine())
+                ->append($this->conflictResponse())
             ->end()
             ->validate()
                 ->ifTrue(static function (array $config): bool {
@@ -411,6 +420,35 @@ final class Configuration implements ConfigurationInterface
                 ->integerNode('csv_max_days')->defaultValue(366)->min(1)->max(366)->end()
                 ->scalarNode('layout_template')->defaultNull()
                     ->info('Layout of the UI pages (REQ-UI-003); null = the UiKit admin layout (nowo_ui_kit.layouts.admin)')
+                ->end()
+            ->end();
+
+        return $node;
+    }
+
+    private function conflictResponse(): ArrayNodeDefinition
+    {
+        $node = new ArrayNodeDefinition('conflict_response');
+        $node->info('REQ-RUNTIME-003: answer of a lock conflict (deadlock, lock wait timeout, serialization failure) on the bundle\'s routes. Unset: nowo-tech/transaction-doctrine\'s conflict_response when that bundle is registered, else 409 with Retry-After 1.')
+            ->addDefaultsIfNotSet()
+            ->children()
+                ->integerNode('status')
+                    ->info('409 (default, CONFLICT_001 / CONFLICT_002) or 503. Null: follow transaction-doctrine, else 409.')
+                    ->defaultNull()
+                    ->validate()
+                        ->ifTrue(static fn (mixed $value): bool => $value !== null && !in_array($value, ConflictResponsePolicy::STATUSES, true))
+                        ->thenInvalid('nowo_short_link.conflict_response.status must be 409 or 503, got %s.')
+                    ->end()
+                ->end()
+                ->integerNode('retry_after')
+                    ->info('Retry-After seconds of a CONFLICT_001 answer. Null: follow transaction-doctrine, else 1.')
+                    ->defaultNull()
+                    ->min(0)
+                ->end()
+                ->enumNode('commit_tracking')
+                    ->values(['bundle', 'off'])
+                    ->defaultValue('bundle')
+                    ->info('Commits counted for CONFLICT_002 when nowo-tech/transaction-doctrine\'s commit_detection is off: bundle (default, the connection of the bundle\'s entity manager only, never the host\'s other connections) or off (no middleware; only the failure itself and transaction-doctrine\'s request mark decide). With commit_detection on, transaction-doctrine\'s ledger is reused and the bundle adds no middleware.')
                 ->end()
             ->end();
 

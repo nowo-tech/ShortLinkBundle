@@ -56,13 +56,19 @@ final class ConfigurationTest extends TestCase
         ], $config['click_log']);
         self::assertSame(['context' => null], $config['tenancy']);
         self::assertSame(['provider' => null, 'view_role' => 'ROLE_ADMIN', 'manage_role' => 'ROLE_ADMIN', 'enforce_in_manager' => true], $config['access']);
-        self::assertSame(['provider' => null, 'default_limit' => null, 'counted_kinds' => ['manual']], $config['quota']);
+        self::assertSame(['provider' => null, 'default_limit' => null, 'counted_kinds' => ['manual'], 'lock_timeout' => 10], $config['quota']);
         self::assertSame([
             'manual' => ['allow_custom_code' => true, 'show_in_ui' => true, 'counted' => true],
             'email'  => ['allow_custom_code' => false, 'show_in_ui' => false, 'counted' => false],
         ], $config['kinds']);
         self::assertSame(['enabled' => false, 'path_prefix' => '/short-links', 'tenant_route_parameter' => null, 'page_size' => 25, 'stats_default_days' => 30, 'csv_max_days' => 366, 'layout_template' => null], $config['ui']);
         self::assertSame(['entity_manager' => null, 'connection' => null, 'table_prefix' => '', 'mapping' => 'xml'], $config['doctrine']);
+        self::assertSame(['status' => null, 'retry_after' => null, 'commit_tracking' => 'bundle'], $config['conflict_response']);
+    }
+
+    public function testTheConflictAnswerCanBe503(): void
+    {
+        self::assertSame(['status' => 503, 'retry_after' => 5, 'commit_tracking' => 'off'], $this->process(['conflict_response' => ['status' => 503, 'retry_after' => 5, 'commit_tracking' => 'off']])['conflict_response']);
     }
 
     public function testAnExplicitNullQuotaMeansUnlimited(): void
@@ -158,6 +164,10 @@ final class ConfigurationTest extends TestCase
         yield 'rollup retention with raw kept forever' => [['click_log' => ['retention' => null, 'rollup' => ['retention' => 'P1Y']]], 'rollup.retention'];
         yield 'recheck percent' => [['target' => ['recheck_max_unresolvable_percent' => 101]], 'recheck_max_unresolvable_percent'];
         yield 'mapping' => [['doctrine' => ['mapping' => 'yaml']], 'mapping'];
+        yield 'quota lock timeout' => [['quota' => ['lock_timeout' => 0]], 'lock_timeout'];
+        yield 'conflict status' => [['conflict_response' => ['status' => 500]], 'must be 409 or 503'];
+        yield 'conflict retry after' => [['conflict_response' => ['retry_after' => -1]], 'retry_after'];
+        yield 'commit tracking every connection' => [['conflict_response' => ['commit_tracking' => 'all']], 'commit_tracking'];
         yield 'unknown key' => [['enabled' => true], 'enabled'];
     }
 

@@ -131,8 +131,9 @@ final readonly class ShortLinkManager implements ShortLinkManagerInterface
             $this->events->dispatch($this->createdEvent($link, $command->system));
         };
 
+        // Counted: the store takes the tenant's database lock first, so the count and the insert are exact (rule 4).
         $link = $this->settings->isCounted($kind->value)
-            ? $this->countedOutsideTransaction($tenant, fn (): StoredLink => $this->store->transactional($insert, $created))
+            ? $this->countedOutsideTransaction($tenant, fn (): StoredLink => $this->store->transactional($insert, $created, $tenant))
             : $this->store->transactional($insert, $created);
 
         return $this->view($link, $now);
@@ -153,6 +154,7 @@ final readonly class ShortLinkManager implements ShortLinkManagerInterface
         $actor    = $this->access->currentActor();
         $prepared = [];
         $counted  = false;
+        $sourced  = false;
         foreach ($commands as $command) {
             $this->assertGranted(ShortLinkPermission::Manage, $tenant, $command->system);
             if ($command->customCode !== null) {
@@ -160,6 +162,7 @@ final readonly class ShortLinkManager implements ShortLinkManagerInterface
             }
             $kind       = $this->knownKind($command->kind());
             $counted    = $counted || $this->settings->isCounted($kind->value);
+            $sourced    = $sourced || $command->source !== null;
             $prepared[] = [
                 $command,
                 $kind,
@@ -221,10 +224,12 @@ final readonly class ShortLinkManager implements ShortLinkManagerInterface
             }
         };
 
+        // The tenant's database lock also makes the find-by-source idempotency exact: two batches with the same source
+        // never both insert it (rule 4, "only one" generated link per source).
         /** @var array<int, array{StoredLink, bool, bool}> $results */
         $results = $counted
-            ? $this->countedOutsideTransaction($tenant, fn (): array => $this->store->transactional($insert, $created))
-            : $this->store->transactional($insert, $created);
+            ? $this->countedOutsideTransaction($tenant, fn (): array => $this->store->transactional($insert, $created, $tenant))
+            : $this->store->transactional($insert, $created, $sourced ? $tenant : null);
 
         $views = [];
         foreach ($results as [$link]) {
@@ -240,38 +245,39 @@ final readonly class ShortLinkManager implements ShortLinkManagerInterface
     public function update(TenantKey $tenant, ShortLinkId $id, UpdateShortLink $command): ShortLinkView
     {
         $this->assertGranted(ShortLinkPermission::Manage, $tenant, $command->system);
-        $now     = $this->now();
-        $link    = $this->existing($tenant, $id);
-        $target  = $this->guardedTarget($tenant, $command->target, $id);
-        $expiry  = $this->futureExpiry($command->expiresAt, $now);
-        $title   = LinkTitle::fromString($command->title);
-        $changed = [];
-        if ($target->toString() !== $link->target->toString()) {
-            $changed[] = 'target';
-        }
-        if ($title?->value !== $link->title?->value) {
-            $changed[] = 'title';
-        }
-        if ($expiry?->at != $link->expiry?->at) {
-            $changed[] = 'expires_at';
-        }
-        if ($changed === []) {
+        $now    = $this->now();
+        $link   = $this->existing($tenant, $id);
+        $target = $this->guardedTarget($tenant, $command->target, $id);
+        $expiry = $this->futureExpiry($command->expiresAt, $now);
+        $title  = LinkTitle::fromString($command->title);
+        if ($this->editedFields($link, $target, $title, $expiry) === []) {
             return $this->view($link, $now);
         }
-        $actor   = $this->access->currentActor();
-        $updated = $link->withEdit($target, $title, $expiry, $now, $actor);
-        $this->store->transactional(
-            // @igor-ignore - Closure passed to one transactional() call; after-commit work is held at most until the host commit or the request boundary, never stored.
-            function () use ($updated): void {
-                $this->store->update($updated);
-            },
-            // @igor-ignore - Closure passed to one transactional() call; after-commit work is held at most until the host commit or the request boundary, never stored.
-            function () use ($id, $tenant, $changed, $link, $target, $actor): void {
-                $this->events->dispatch(new ShortLinkUpdatedEvent($id, $tenant, $changed, $link->target->host(), $target->host(), $actor));
-            },
-        );
+        $actor = $this->access->currentActor();
+        // Rule 4: the row is read again under its lock and only the edited fields change, so a concurrent disable,
+        // delete or edit committed in between is never reverted (no snapshot of a stale read is written back).
+        $edit = function () use ($tenant, $id, $target, $title, $expiry, $now, $actor): array {
+            $fresh   = $this->store->findForUpdate($tenant, $id) ?? throw new ShortLinkNotFoundException();
+            $changed = $this->editedFields($fresh, $target, $title, $expiry);
+            if ($changed === []) {
+                return [$fresh, $fresh, []];
+            }
+            $updated = $fresh->withEdit($target, $title, $expiry, $now, $actor);
+            $this->store->update($updated);
 
-        return $this->view($updated, $now);
+            return [$fresh, $updated, $changed];
+        };
+        $edited = function (array $result) use ($id, $tenant, $target, $actor): void {
+            /** @var array{StoredLink, StoredLink, list<string>} $typed */
+            $typed = $result;
+            if ($typed[2] !== []) {
+                $this->events->dispatch(new ShortLinkUpdatedEvent($id, $tenant, $typed[2], $typed[0]->target->host(), $target->host(), $actor));
+            }
+        };
+        /** @var array{StoredLink, StoredLink, list<string>} $result */
+        $result = $this->store->transactional($edit, $edited);
+
+        return $this->view($result[1], $now);
     }
 
     /**
@@ -296,18 +302,24 @@ final readonly class ShortLinkManager implements ShortLinkManagerInterface
     public function delete(TenantKey $tenant, ShortLinkId $id): void
     {
         $this->assertGranted(ShortLinkPermission::Manage, $tenant, false);
-        $link  = $this->existing($tenant, $id);
+        $this->existing($tenant, $id);
         $actor = $this->access->currentActor();
-        $this->store->transactional(
-            // @igor-ignore - Closure passed to one transactional() call; after-commit work is held at most until the host commit or the request boundary, never stored.
-            function () use ($link, $actor): void {
-                $this->store->update($link->asTombstone($this->now(), $actor));
-            },
-            // @igor-ignore - Closure passed to one transactional() call; after-commit work is held at most until the host commit or the request boundary, never stored.
-            function () use ($id, $tenant, $link, $actor): void {
-                $this->events->dispatch(new ShortLinkDeletedEvent($id, $tenant, $link->code, $actor));
-            },
-        );
+        // Rule 4: the tombstone is written from the row read under its lock (a concurrent edit is kept, never reverted);
+        // a link deleted in between is left as it is and announced once.
+        $tombstone = function () use ($tenant, $id, $actor): ?StoredLink {
+            $fresh = $this->store->findForUpdate($tenant, $id);
+            if ($fresh instanceof StoredLink) {
+                $this->store->update($fresh->asTombstone($this->now(), $actor));
+            }
+
+            return $fresh;
+        };
+        $deleted = function (?StoredLink $fresh) use ($id, $tenant, $actor): void {
+            if ($fresh instanceof StoredLink) {
+                $this->events->dispatch(new ShortLinkDeletedEvent($id, $tenant, $fresh->code, $actor));
+            }
+        };
+        $this->store->transactional($tombstone, $deleted);
     }
 
     /**
@@ -360,20 +372,47 @@ final readonly class ShortLinkManager implements ShortLinkManagerInterface
         if ($active) {
             $this->assertTargetAllowed($tenant, $link->target, $id);
         }
-        $now     = $this->now();
-        $actor   = $this->access->currentActor();
-        $from    = $link->stateAt($now);
-        $updated = $link->withActive($active, $active ? null : ShortLinkStateChangedEvent::REASON_MANUAL, $now, $actor);
-        $this->store->transactional(
-            // @igor-ignore - Closure passed to one transactional() call; after-commit work is held at most until the host commit or the request boundary, never stored.
-            function () use ($updated): void {
-                $this->store->update($updated);
-            },
-            // @igor-ignore - Closure passed to one transactional() call; after-commit work is held at most until the host commit or the request boundary, never stored.
-            function () use ($id, $tenant, $from, $updated, $now, $actor): void {
-                $this->events->dispatch(new ShortLinkStateChangedEvent($id, $tenant, $from, $updated->stateAt($now), ShortLinkStateChangedEvent::REASON_MANUAL, $actor));
-            },
-        );
+        $now   = $this->now();
+        $actor = $this->access->currentActor();
+        // Rule 4: the state is changed on the row read under its lock (a concurrent edit is kept); a link that reached
+        // the state in between, or was deleted, is left as it is and nothing is announced.
+        $change = function () use ($tenant, $id, $active, $now, $actor): ?ShortLinkStateChangedEvent {
+            $fresh = $this->store->findForUpdate($tenant, $id);
+            if (!$fresh instanceof StoredLink || $fresh->active === $active) {
+                return null;
+            }
+            $updated = $fresh->withActive($active, $active ? null : ShortLinkStateChangedEvent::REASON_MANUAL, $now, $actor);
+            $this->store->update($updated);
+
+            return new ShortLinkStateChangedEvent($id, $tenant, $fresh->stateAt($now), $updated->stateAt($now), ShortLinkStateChangedEvent::REASON_MANUAL, $actor);
+        };
+        $changed = function (?ShortLinkStateChangedEvent $event): void {
+            if ($event instanceof ShortLinkStateChangedEvent) {
+                $this->events->dispatch($event);
+            }
+        };
+        $this->store->transactional($change, $changed);
+    }
+
+    /**
+     * The fields an edit changes on this row (`target`, `title`, `expires_at`).
+     *
+     * @return list<string>
+     */
+    private function editedFields(StoredLink $link, TargetUrl $target, ?LinkTitle $title, ?Expiry $expiry): array
+    {
+        $changed = [];
+        if ($target->toString() !== $link->target->toString()) {
+            $changed[] = 'target';
+        }
+        if ($title?->value !== $link->title?->value) {
+            $changed[] = 'title';
+        }
+        if ($expiry?->at != $link->expiry?->at) {
+            $changed[] = 'expires_at';
+        }
+
+        return $changed;
     }
 
     /**

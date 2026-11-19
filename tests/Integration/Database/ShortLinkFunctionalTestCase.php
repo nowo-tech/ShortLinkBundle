@@ -42,22 +42,34 @@ use Nowo\ShortLinkBundle\Domain\Model\UpdateShortLink;
 use Nowo\ShortLinkBundle\Domain\Service\ShortLinkEraserInterface;
 use Nowo\ShortLinkBundle\Domain\Service\ShortLinkManagerInterface;
 use Nowo\ShortLinkBundle\Infrastructure\Doctrine\BinaryCollation;
+use Nowo\ShortLinkBundle\Tests\Fixtures\ConcurrencyProbe;
+use Nowo\ShortLinkBundle\Tests\Fixtures\Ddd\TestQuota;
 use Nowo\ShortLinkBundle\Tests\Fixtures\RecordingListener;
 use Nowo\ShortLinkBundle\Tests\Integration\Kernel\Host;
 use Nowo\ShortLinkBundle\Tests\Integration\Kernel\KernelTestCase;
 use Nowo\ShortLinkBundle\Tests\Integration\Kernel\TestKernel;
+use Nowo\TransactionContract\TransientStorageFailure;
 use Symfony\Component\Clock\MockClock;
 use Symfony\Component\DependencyInjection\ContainerInterface;
+use Symfony\Component\Process\Process;
 
 use function array_column;
 use function array_map;
+use function array_replace_recursive;
+use function dirname;
 use function gc_collect_cycles;
 use function is_scalar;
 use function memory_get_usage;
 use function preg_match;
 use function preg_replace;
+use function sort;
 use function sprintf;
+use function str_starts_with;
 use function strlen;
+use function touch;
+use function unlink;
+
+use const PHP_BINARY;
 
 /**
  * S1 functional suite, run once per host kind on the configured database (SQLite locally and in the coverage job;
@@ -130,6 +142,105 @@ abstract class ShortLinkFunctionalTestCase extends KernelTestCase
         self::assertCount(1, $page->items);
         self::assertNull($page->next);
         self::assertSame([], $this->manager()->list($this->otherTenant, new ShortLinkListQuery())->items);
+    }
+
+    /**
+     * REQ-RUNTIME-003 rule 4, plan-limit race across connections: while one connection holds the tenant's database lock
+     * (MySQL / MariaDB GET_LOCK, PostgreSQL advisory lock), a counted create on another connection waits and gives up
+     * after `quota.lock_timeout` with a transient failure (409 CONFLICT_001 on a route), nothing written; afterwards both
+     * connections together never pass the limit and both stay usable.
+     */
+    public function testTheTenantDatabaseLockKeepsThePlanLimitExactAcrossConnections(): void
+    {
+        $this->skipOnSqlite();
+        $this->setLimit(2);
+        $other   = $this->secondKernel(['quota' => ['lock_timeout' => 1]], 2);
+        $manager = $other->getContainer()->get(ShortLinkManagerInterface::class);
+        self::assertInstanceOf(ShortLinkManagerInterface::class, $manager);
+        $blocked = null;
+
+        $this->store()->transactional(function () use ($manager, &$blocked): void {
+            try {
+                $manager->create($this->tenant, new CreateShortLink('https://example.com/blocked', system: true));
+            } catch (TransientStorageFailure $failure) {
+                $blocked = $failure;
+            }
+        }, null, $this->tenant);
+
+        self::assertInstanceOf(TransientStorageFailure::class, $blocked, 'the other connection waited for the tenant lock, then gave up');
+        self::assertSame(0, $this->store()->countLive($this->tenant, LinkKind::manual()), 'nothing written');
+
+        $this->manager()->create($this->tenant, new CreateShortLink('https://example.com/a', system: true));
+        $manager->create($this->tenant, new CreateShortLink('https://example.com/b', system: true));
+        foreach ([$this->manager(), $manager] as $writer) {
+            try {
+                $writer->create($this->tenant, new CreateShortLink('https://example.com/over', system: true));
+                self::fail('Over the plan limit.');
+            } catch (QuotaExceededException) {
+                $this->addToAssertionCount(1);
+            }
+        }
+        self::assertSame(2, $this->store()->countLive($this->tenant, LinkKind::manual()));
+    }
+
+    /**
+     * REQ-RUNTIME-003 rule 4, read-modify-write: an edit reads the row again under its lock, so while another
+     * connection holds the row the edit waits (session lock wait timeout) and fails with a transient failure instead of
+     * overwriting it; once released, the edit applies.
+     */
+    public function testAnEditWaitsForTheRowLockOfAnotherConnection(): void
+    {
+        $this->skipOnSqlite();
+        $link    = $this->manager()->create($this->tenant, new CreateShortLink('https://example.com/old', system: true));
+        $other   = $this->secondKernel([], null);
+        $manager = $other->getContainer()->get(ShortLinkManagerInterface::class);
+        self::assertInstanceOf(ShortLinkManagerInterface::class, $manager);
+        ConcurrencyProbe::shortLockWaits($this->host()->connection($other));
+        $blocked = null;
+
+        $this->store()->transactional(function () use ($manager, $link, &$blocked): void {
+            self::assertNotNull($this->store()->findForUpdate($this->tenant, $link->id));
+            try {
+                $manager->update($this->tenant, $link->id, new UpdateShortLink('https://example.com/new', system: true));
+            } catch (TransientStorageFailure $failure) {
+                $blocked = $failure;
+            }
+        });
+
+        self::assertInstanceOf(TransientStorageFailure::class, $blocked);
+        self::assertSame('https://example.com/old', $this->manager()->find($this->tenant, $link->id)?->target->toString());
+        $manager->update($this->tenant, $link->id, new UpdateShortLink('https://example.com/new', system: true));
+        $after = $this->store()->find($this->tenant, $link->id);
+        self::assertNotNull($after);
+        self::assertSame('https://example.com/new', $after->target->toString(), 'the other connection is still usable');
+    }
+
+    /**
+     * REQ-RUNTIME-003 rule 4, plan limit under real parallel processes: ten kernels create at once against a limit of
+     * three; exactly three succeed. The standard host also has symfony/lock; the DDD host has only the database lock.
+     */
+    public function testTheQuotaIsExactUnderParallelCreates(): void
+    {
+        $this->skipOnSqlite();
+        $url   = TestKernel::defaultDatabaseUrl();
+        $start = TestKernel::baseDir() . '/parallel-start';
+        @unlink($start);
+        $children = [];
+        for ($i = 0; $i < 10; ++$i) {
+            $process = new Process([PHP_BINARY, dirname(__DIR__, 2) . '/Fixtures/bin/concurrent-create.php', $url, 'parallel_' . $i, $start, $this->host()->kind, $this->tenant->value], timeout: 120);
+            $process->start();
+            $children[] = $process;
+        }
+        touch($start);
+        $results = [];
+        foreach ($children as $process) {
+            $process->wait();
+            $results[] = $process->getOutput() . $process->getErrorOutput();
+        }
+        sort($results);
+
+        self::assertSame(['created', 'created', 'created', 'quota', 'quota', 'quota', 'quota', 'quota', 'quota', 'quota'], $results);
+        self::assertSame(3, $this->store()->countLive($this->tenant, LinkKind::manual()));
     }
 
     public function testCustomCodesAreLowercasedUniquePerInstanceAndNeutral(): void
@@ -602,6 +713,35 @@ abstract class ShortLinkFunctionalTestCase extends KernelTestCase
     }
 
     abstract protected function setLimit(int $limit): void;
+
+    /**
+     * A second kernel of the same host on the same database (its own connection), with this plan limit.
+     *
+     * @param array<string, mixed> $config
+     */
+    protected function secondKernel(array $config, ?int $limit): TestKernel
+    {
+        $host = $this->host();
+        if ($host->kind === Host::STANDARD && $limit !== null) {
+            /** @var array<string, mixed> $config */
+            $config = array_replace_recursive($config, ['quota' => ['default_limit' => $limit]]);
+        }
+        $kernel = $this->bootKernel($host->bundleConfig($config), TestKernel::defaultDatabaseUrl(), $host->configure(), $host->kind === Host::STANDARD);
+        if ($host->kind !== Host::STANDARD && $limit !== null) {
+            $quota = $kernel->getContainer()->get(TestQuota::class);
+            self::assertInstanceOf(TestQuota::class, $quota);
+            $quota->limits[$this->tenant->value] = $limit;
+        }
+
+        return $kernel;
+    }
+
+    protected function skipOnSqlite(): void
+    {
+        if (str_starts_with(TestKernel::defaultDatabaseUrl(), 'sqlite')) {
+            self::markTestSkipped('Two connections and real locks need a server database (MySQL / MariaDB / PostgreSQL job).');
+        }
+    }
 
     protected function container(): ContainerInterface
     {

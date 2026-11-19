@@ -15,6 +15,9 @@ use Nowo\ShortLinkBundle\Application\Store\ClickStoreInterface;
 use Nowo\ShortLinkBundle\Domain\Model\ShortLinkId;
 use Nowo\ShortLinkBundle\Domain\Model\TenantKey;
 use Nowo\ShortLinkBundle\Infrastructure\Doctrine\ClickTablesSchemaListener;
+use Nowo\TransactionContract\TransientStorageFailure;
+use Nowo\TransactionDoctrine\TransientFailureClassifier;
+use Throwable;
 
 /**
  * DBAL writer of the raw click table (contract §5.2): one INSERT on `doctrine.connection` (or the bundle entity
@@ -43,6 +46,20 @@ final readonly class DbalClickStore implements ClickStoreInterface
      * {@inheritDoc}
      */
     public function insert(ShortLinkId $linkId, TenantKey $tenant, DateTimeImmutable $clickedAt, ?string $ipPrefix, ?string $uaFamily, ?string $referrerHost, ?string $country, bool $machine): void
+    {
+        try {
+            $this->write($linkId, $tenant, $clickedAt, $ipPrefix, $uaFamily, $referrerHost, $country, $machine);
+        } catch (Throwable $exception) {
+            // A lock conflict is told apart from other failures (REQ-RUNTIME-003 rule 8: Messenger retries it).
+            if ((new TransientFailureClassifier())->isTransient($exception)) {
+                throw TransientStorageFailure::fromPrevious($exception, 1);
+            }
+
+            throw $exception;
+        }
+    }
+
+    private function write(ShortLinkId $linkId, TenantKey $tenant, DateTimeImmutable $clickedAt, ?string $ipPrefix, ?string $uaFamily, ?string $referrerHost, ?string $country, bool $machine): void
     {
         $this->connection()->insert($this->table, [
             'link_id'       => $linkId->value,
