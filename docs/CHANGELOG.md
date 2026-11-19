@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ## Table of contents
 
 - [[Unreleased]](#unreleased)
+- [[0.6.0] - 2026-11-19](#060---2026-11-19)
 - [[0.5.0] - 2026-11-19](#050---2026-11-19)
 - [[0.4.0] - 2026-11-18](#040---2026-11-18)
 - [[0.3.0] - 2026-11-17](#030---2026-11-17)
@@ -15,6 +16,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - [[0.1.0] - 2026-11-12](#010---2026-11-12)
 
 ## [Unreleased]
+
+## [0.6.0] - 2026-11-19
 
 ### Added
 
@@ -36,6 +39,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - Known issue of 0.5.0: it declared `doctrine/dbal` `^3.8.2 || ^4.0` but did not work on DBAL 3 (a `ParameterType` return type in the store is a TypeError there). 0.6.0 requires DBAL ^4 (audit UY2-2).
 - MySQL / MariaDB: two `createMany()` calls with the same source inside two host transactions could both insert it, because the `GET_LOCK` session lock was released before the host committed (audit UK-SL-2, the residual risk documented in 0.5.0). PostgreSQL was not affected.
+
+[0.6.0]: https://github.com/nowo-tech/ShortLinkBundle/releases/tag/v0.6.0
 
 ## [0.5.0] - 2026-11-19
 
@@ -274,5 +279,5 @@ First release: slices S1 (domain + persistence), S2 (public redirect) and S3 (st
 - Docs set, Spec Kit baseline, Flex recipe, demos `symfony7` (Symfony 7.4) and `symfony8` (Symfony 8.1) on FrankenPHP
   worker mode with MySQL, UiKit's admin layout and default theme (REQ-DEMO-014) and FormKit (REQ-DEMO-015).
 
-[Unreleased]: https://github.com/nowo-tech/ShortLinkBundle/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/nowo-tech/ShortLinkBundle/compare/v0.6.0...HEAD
 [0.1.0]: https://github.com/nowo-tech/ShortLinkBundle/releases/tag/v0.1.0
