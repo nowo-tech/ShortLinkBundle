@@ -30,9 +30,20 @@ expected "only one" result, never a `CONFLICT_*` code and never a lock conflict.
 - The tenant database lock is taken only outside an open transaction (counted creates were already refused inside
   one), so a failed MySQL / MariaDB `RELEASE_LOCK` closes only the bundle's own connection state, never a host
   transaction.
-- MySQL / MariaDB with three or more transactions creating the same sources at once: InnoDB may pick a deadlock
-  victim, which answers a lock conflict (`TransientStorageFailure`, nothing committed; a retry answers the existing
-  links). Never a duplicate.
+- A batch inserts its sourced links in a fixed order (kind, ref, position), so two batches never lock crosswise.
+  Deadlocks are still possible on MySQL, MariaDB and PostgreSQL (InnoDB gap locks left by a refused insert with three
+  or more racers, or the host's own locks): the victim answers a lock conflict (`TransientStorageFailure`; nothing of
+  the bundle's work is committed, a retry answers the existing links). Never a duplicate.
+- **`createMany()` inside your own transaction (audit UY-1).** On MySQL / MariaDB a deadlock victim loses your
+  **whole** transaction: InnoDB rolls it back, not only the bundle's savepoint. The bundle then throws
+  `Nowo\ShortLinkBundle\Application\HostTransactionLostException` (a `TransientStorageFailure`) and leaves the
+  connection inside a rollback-only transaction at your nesting level, so nothing you run afterwards can commit: your
+  `commit()` fails, your `rollBack()` works as usual. On PostgreSQL only the savepoint is lost. In every case: on a
+  `TransientStorageFailure` from the bundle inside your transaction, **roll back and retry your whole unit of work**;
+  never catch it and carry on. A lost connection inside your transaction is rethrown as it is, with the same
+  rollback-only guard.
+- `create()` looks up the source before the plan limit: a tenant at its limit gets its existing link instead of a
+  `QuotaExceededException`.
 - PostgreSQL under `REPEATABLE READ` or `SERIALIZABLE` (not the default): the other transaction's link is not visible
   to yours, so the loser of the race gets `CodeTakenException` (nothing duplicated, nothing written). Retry the call
   in a new transaction.
@@ -64,26 +75,38 @@ table and both index names carry the prefix.
    HAVING COUNT(*) > 1;
    ```
 
-3. Backfill: the **oldest** live row of each source (the smallest id: ids are UUIDv7) gets the slot. Duplicates keep
-   working (their codes may already be in sent e-mails) but hold no slot; `createMany()` answers the oldest one, as it
-   did before. The unique index can then never fail.
+3. Backfill: in each source group without a slotted live row, the live row with the **smallest id** (the oldest with
+   the default UUIDv7 generator) gets the slot. Duplicates keep working (their codes may already be in sent e-mails)
+   but hold no slot; `createMany()` answers the oldest one, as it did before. The query only touches groups with no
+   slotted live row (`source_slot IS NULL` and no live row of the same key holding the slot), so it is safe to run
+   again at any time (step 5) and the unique index can never fail because of it.
 
    ```sql
    -- MySQL 8.4 / MariaDB 11.4
    UPDATE nowo_short_link l
    JOIN (
-       SELECT MIN(id) AS id FROM nowo_short_link
-       WHERE source_ref IS NOT NULL AND deleted_at IS NULL
-       GROUP BY tenant_key, kind, source_ref, COALESCE(source_position, -1)
+       SELECT MIN(c.id) AS id FROM nowo_short_link c
+       WHERE c.source_ref IS NOT NULL AND c.deleted_at IS NULL AND c.source_slot IS NULL
+         AND NOT EXISTS (
+             SELECT 1 FROM nowo_short_link s
+             WHERE s.tenant_key = c.tenant_key AND s.kind = c.kind AND s.source_ref = c.source_ref
+               AND s.source_slot = COALESCE(c.source_position, -1) AND s.deleted_at IS NULL
+         )
+       GROUP BY c.tenant_key, c.kind, c.source_ref, COALESCE(c.source_position, -1)
    ) k ON k.id = l.id
    SET l.source_slot = COALESCE(l.source_position, -1);
 
    -- PostgreSQL 16 / SQLite
    UPDATE nowo_short_link SET source_slot = COALESCE(source_position, -1)
    WHERE id IN (
-       SELECT MIN(id) FROM nowo_short_link
-       WHERE source_ref IS NOT NULL AND deleted_at IS NULL
-       GROUP BY tenant_key, kind, source_ref, COALESCE(source_position, -1)
+       SELECT MIN(c.id) FROM nowo_short_link c
+       WHERE c.source_ref IS NOT NULL AND c.deleted_at IS NULL AND c.source_slot IS NULL
+         AND NOT EXISTS (
+             SELECT 1 FROM nowo_short_link s
+             WHERE s.tenant_key = c.tenant_key AND s.kind = c.kind AND s.source_ref = c.source_ref
+               AND s.source_slot = COALESCE(c.source_position, -1) AND s.deleted_at IS NULL
+         )
+       GROUP BY c.tenant_key, c.kind, c.source_ref, COALESCE(c.source_position, -1)
    );
    ```
 
@@ -106,9 +129,24 @@ table and both index names carry the prefix.
    DROP INDEX idx_short_link_tenant_source;
    ```
 
+5. After the deploy, once no 0.5.x node is left, clear the slot of rows deleted meanwhile, **then** run step 3 again
+   (in this order: a tombstone that still holds a slot would make the backfill hit the unique index). Both statements
+   are safe to repeat, on every platform:
+
+   ```sql
+   UPDATE nowo_short_link SET source_slot = NULL WHERE source_slot IS NOT NULL AND deleted_at IS NOT NULL;
+   -- then step 3 again (your platform's form)
+   ```
+
 NULLs never collide in a unique index on these platforms, so the key binds only live generated links (MySQL and MariaDB
-have no partial indexes; the same plain index is used on PostgreSQL so `doctrine:schema:update` stays empty). Run the
-migration before deploying 0.6.0: the new code writes `source_slot`. Your code must not write `source_slot` itself.
+have no partial indexes; the same plain index is used on PostgreSQL so `doctrine:schema:update` stays empty). Run
+steps 1 to 4 before deploying 0.6.0: the new code writes `source_slot`. Your code must not write `source_slot` itself.
+
+**Rolling deploy.** 0.5.x nodes may keep writing while 0.6.0 rolls out: they never read or write `source_slot`, and the
+new index and the dropped one change nothing for them. Two effects until the last 0.5.x node is gone, both repaired by
+step 5: links they create get no slot (no duplicate protection for those rows), and links they delete or erase keep
+their slot, so 0.6.0 cannot create that source again (`CodeTakenException`) until the slot is cleared. If neither is
+acceptable, stop the 0.5.x writers (or deploy at once) instead.
 
 ## To 0.5.0
 

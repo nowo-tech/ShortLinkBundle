@@ -7,9 +7,11 @@ namespace Nowo\ShortLinkBundle\Tests\Integration\Database;
 use DateTimeImmutable;
 use DateTimeZone;
 use Doctrine\DBAL\Connection;
+use Doctrine\DBAL\Exception as DbalException;
 use Doctrine\DBAL\Platforms\AbstractMySQLPlatform;
 use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
 use Doctrine\DBAL\Platforms\SQLitePlatform;
+use Nowo\ShortLinkBundle\Application\HostTransactionLostException;
 use Nowo\ShortLinkBundle\Application\Store\ShortLinkStoreInterface;
 use Nowo\ShortLinkBundle\Application\Store\StoredLink;
 use Nowo\ShortLinkBundle\Domain\Event\ShortLinkCreatedEvent;
@@ -67,6 +69,7 @@ use function is_scalar;
 use function memory_get_usage;
 use function preg_match;
 use function preg_replace;
+use function range;
 use function sort;
 use function sprintf;
 use function str_contains;
@@ -75,6 +78,7 @@ use function strlen;
 use function touch;
 use function trim;
 use function unlink;
+use function usleep;
 
 use const PHP_BINARY;
 
@@ -568,6 +572,86 @@ abstract class ShortLinkFunctionalTestCase extends KernelTestCase
         $created = $this->listener()->of(ShortLinkCreatedEvent::class);
         self::assertCount(1, $created, 'only the new source is announced here');
         self::assertSame($views[1]->id->value, $created[0]->id->value);
+    }
+
+    /**
+     * Audit UY-1, a real deadlock on two connections: this connection edits a link inside a host transaction (holding
+     * its row lock), another process inserts a source and then waits for that row; this connection's createMany() with
+     * the same source closes the cycle and is the victim.
+     *
+     * - MySQL / MariaDB: InnoDB rolled back the whole host transaction. The answer is HostTransactionLostException, the
+     *   connection stays in a rollback-only transaction at the host's level: a later write runs but can never commit,
+     *   the host's commit() fails, and neither the edit made before nor the write made after is ever committed.
+     * - PostgreSQL: the deadlock aborts only the bundle's savepoint; the host transaction survives and commits its edit.
+     */
+    public function testADeadlockVictimInsideAHostTransactionNeverCommitsHalfOfIt(): void
+    {
+        $this->skipOnSqlite();
+        $locked     = $this->manager()->create($this->tenant, new CreateShortLink('https://example.com/old', kind: LinkKind::email(), system: true));
+        $connection = $this->host()->connection($this->kernel);
+        $mysql      = $connection->getDatabasePlatform() instanceof AbstractMySQLPlatform;
+        $this->sessionLockWaits($connection, 20);
+        if (!$mysql) {
+            $connection->executeStatement("SET deadlock_timeout = '100ms'");
+        }
+        $refs = array_map(static fn (int $i): string => 'dl-' . $i, range(0, 19));
+
+        $connection->beginTransaction();
+        $this->manager()->update($this->tenant, $locked->id, new UpdateShortLink('https://example.com/edited', system: true));
+        $child = new Process([PHP_BINARY, dirname(__DIR__, 2) . '/Fixtures/bin/deadlock-partner.php', TestKernel::defaultDatabaseUrl(), 'deadlock_partner', $this->host()->kind, $this->tenant->value, $locked->id->value, ...$refs], timeout: 120);
+        $child->start();
+        $child->waitUntil(static fn (string $type, string $output): bool => str_contains($output, 'inserted'));
+        // Give the other process time to block on the row lock (a test, never a worker request).
+        usleep(500_000); // @phpstan-ignore frankenphp.hardening.noBlockingSleep
+        $failure = null;
+        try {
+            $this->manager()->createMany($this->tenant, [new CreateShortLink('https://example.com/victim', kind: LinkKind::email(), source: new LinkSource('dl-0', null, 0), system: true)]);
+        } catch (TransientStorageFailure $caught) {
+            $failure = $caught;
+        }
+
+        if ($mysql) {
+            self::assertInstanceOf(HostTransactionLostException::class, $failure);
+            self::assertTrue($connection->isTransactionActive(), 'the host\'s level is open again, rollback-only');
+            $now   = new DateTimeImmutable(Host::NOW);
+            $after = new StoredLink(ShortLinkId::fromString('0190a6d0-0000-7000-8000-0000000000d1'), $this->tenant, ShortCode::random('after12'), TargetUrl::fromString('https://example.com/after'), null, LinkKind::email(), null, null, true, null, null, $now, $now, null, null, null);
+            $this->store()->insert($after);
+            try {
+                $connection->commit();
+                self::fail('a rollback-only transaction never commits');
+            } catch (DbalException) {
+                $connection->rollBack();
+            }
+            $child->wait();
+            self::assertTrue($child->isSuccessful(), $child->getOutput() . $child->getErrorOutput());
+            self::assertSame('https://example.com/old', $this->store()->find($this->tenant, $locked->id)?->target->toString(), 'the edit made before was never committed');
+            self::assertNull($this->store()->find($this->tenant, $after->id), 'the write made after was never committed');
+        } else {
+            self::assertInstanceOf(TransientStorageFailure::class, $failure);
+            self::assertNotInstanceOf(HostTransactionLostException::class, $failure);
+            $connection->commit();
+            $child->wait();
+            self::assertTrue($child->isSuccessful(), $child->getOutput() . $child->getErrorOutput());
+            self::assertSame('https://example.com/edited', $this->store()->find($this->tenant, $locked->id)?->target->toString(), 'the host transaction survived');
+        }
+        self::assertSame(1, $this->liveLinksOf('dl-0'));
+    }
+
+    /**
+     * Audit UY-5: a tenant at its plan limit still gets the existing link of a source from create() and createMany().
+     */
+    public function testATenantAtItsLimitGetsTheExistingLinkOfASource(): void
+    {
+        $this->setLimit(1);
+        $source = new LinkSource('at-limit', null, 0);
+        $first  = $this->manager()->create($this->tenant, new CreateShortLink('https://example.com/a', source: $source, system: true));
+        $this->listener()->clear();
+
+        self::assertSame($first->id->value, $this->manager()->create($this->tenant, new CreateShortLink('https://example.com/b', source: $source, system: true))->id->value);
+        self::assertSame($first->id->value, $this->manager()->createMany($this->tenant, [new CreateShortLink('https://example.com/c', source: $source, system: true)])[0]->id->value);
+        self::assertSame([], $this->listener()->events);
+        $this->expectException(QuotaExceededException::class);
+        $this->manager()->create($this->tenant, new CreateShortLink('https://example.com/d', source: new LinkSource('other', null, 0), system: true));
     }
 
     /**

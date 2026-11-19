@@ -25,6 +25,9 @@ final class RacingStore extends ScriptedStore
     /** The live link of the same source that another connection committed first (insert answers it). */
     public ?StoredLink $winner = null;
 
+    /** @var list<StoredLink> links passed to insert(), in order */
+    public array $inserted = [];
+
     public function __construct(public ?StoredLink $before = null, public ?StoredLink $fresh = null)
     {
         parent::__construct();
@@ -39,6 +42,8 @@ final class RacingStore extends ScriptedStore
 
     public function insert(StoredLink $link): StoredLink
     {
+        $this->inserted[] = $link;
+
         return $this->winner ?? $link;
     }
 

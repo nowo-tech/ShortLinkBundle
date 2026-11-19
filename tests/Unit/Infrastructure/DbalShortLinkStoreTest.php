@@ -11,6 +11,7 @@ use Doctrine\DBAL\Exception\ConnectionLost;
 use Doctrine\DBAL\Exception\DeadlockException;
 use Doctrine\DBAL\Exception\LockWaitTimeoutException;
 use Doctrine\DBAL\Exception\UniqueConstraintViolationException;
+use Doctrine\DBAL\Platforms\AbstractPlatform;
 use Doctrine\DBAL\Platforms\MySQL80Platform;
 use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
 use Doctrine\DBAL\Platforms\SQLitePlatform;
@@ -18,6 +19,7 @@ use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\Persistence\ManagerRegistry;
 use Doctrine\Persistence\ObjectManager;
 use LogicException;
+use Nowo\ShortLinkBundle\Application\HostTransactionLostException;
 use Nowo\ShortLinkBundle\Application\Store\StoredLink;
 use Nowo\ShortLinkBundle\Domain\Exception\CodeTakenException;
 use Nowo\ShortLinkBundle\Domain\Model\LinkKind;
@@ -29,7 +31,9 @@ use Nowo\ShortLinkBundle\Domain\Model\TenantKey;
 use Nowo\ShortLinkBundle\Infrastructure\Persistence\AfterCommitQueue;
 use Nowo\ShortLinkBundle\Infrastructure\Persistence\DbalShortLinkStore;
 use Nowo\ShortLinkBundle\Tests\Fixtures\MemoryLogger;
+use Nowo\ShortLinkBundle\Tests\Fixtures\NestingState;
 use Nowo\TransactionContract\TransientStorageFailure;
+use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
 
 use function str_ends_with;
@@ -137,6 +141,69 @@ final class DbalShortLinkStoreTest extends TestCase
         $this->store($this->registry($connection))->transactional(static function () use ($deadlock): never {
             throw $deadlock;
         });
+    }
+
+    /**
+     * Audit UY-1: a joined unit whose failure left DBAL below the host's level (MySQL / MariaDB deadlock victim: the
+     * server rolled the host transaction back, ROLLBACK TO SAVEPOINT failed and the runner closed the connection). The
+     * host's levels are opened again and marked rollback-only, so its later statements can never autocommit, and the
+     * lock conflict becomes HostTransactionLostException.
+     */
+    public function testAJoinedUnitThatLostTheHostTransactionLeavesItRollbackOnlyAndSaysSo(): void
+    {
+        $state      = new NestingState(2);
+        $connection = $this->nestingConnection(new MySQL80Platform(), $state);
+        $connection->expects(self::once())->method('setRollbackOnly');
+        $deadlock = new DeadlockException(new class('Deadlock found', '40001', 1213) extends AbstractException {
+        }, null);
+        $logger = new MemoryLogger();
+
+        $caught = null;
+        try {
+            $this->store($this->registry($connection), $logger)->transactional(static function () use ($state, $deadlock): never {
+                $state->level = 0;
+
+                throw $deadlock;
+            });
+        } catch (HostTransactionLostException $exception) {
+            $caught = $exception;
+        }
+        self::assertSame(HostTransactionLostException::MESSAGE, $caught->getMessage());
+        self::assertSame(1, $caught->retryAfterSeconds());
+        $previous = $caught->getPrevious();
+        self::assertInstanceOf(TransientStorageFailure::class, $previous);
+        self::assertSame($deadlock, $previous->getPrevious());
+        self::assertSame(2, $state->level, 'back at the host\'s level');
+        self::assertSame(['warning'], $this->bundleLogLevels($logger));
+    }
+
+    /**
+     * A lost connection that took the host transaction is not a conflict: rethrown as it is, but the host's level is
+     * still reopened rollback-only. When even that fails (the server is gone) it is logged and the failure rethrown.
+     */
+    public function testALostHostTransactionThatIsNoConflictIsRethrownAndAFailedReopenIsLogged(): void
+    {
+        foreach ([false, true] as $reopenFails) {
+            $state      = new NestingState(1, $reopenFails);
+            $connection = $this->nestingConnection(new SQLitePlatform(), $state);
+            $connection->expects($reopenFails ? self::never() : self::once())->method('setRollbackOnly');
+            $lost   = self::lost();
+            $logger = new MemoryLogger();
+
+            $caught = null;
+            try {
+                $this->store($this->registry($connection), $logger)->transactional(static function () use ($state, $lost): never {
+                    $state->level = 0;
+
+                    throw $lost;
+                });
+            } catch (ConnectionLost $exception) {
+                $caught = $exception;
+            }
+            self::assertSame($lost, $caught);
+            self::assertSame($reopenFails ? ['warning', 'error'] : ['warning'], $this->bundleLogLevels($logger));
+            self::assertSame($reopenFails ? 0 : 1, $state->level);
+        }
     }
 
     public function testMySqlTenantLockIsTakenInsideTheUnitAndReleasedAfterIt(): void
@@ -435,6 +502,45 @@ final class DbalShortLinkStoreTest extends TestCase
         $this->expectException(LogicException::class);
         $this->expectExceptionMessage('Doctrine ORM entity manager');
         $this->store($registry)->codeExists('abc1234');
+    }
+
+    /**
+     * A connection whose nesting level follows the state: beginTransaction() opens a level (or fails at level 0 when
+     * the state says the server is gone).
+     *
+     * @return Connection&MockObject
+     */
+    private function nestingConnection(AbstractPlatform $platform, NestingState $state): Connection
+    {
+        $connection = $this->createMock(Connection::class);
+        $connection->method('getDatabasePlatform')->willReturn($platform);
+        $connection->method('isTransactionActive')->willReturnCallback(static fn (): bool => $state->level > 0);
+        $connection->method('getTransactionNestingLevel')->willReturnCallback(static fn (): int => $state->level);
+        $connection->method('beginTransaction')->willReturnCallback(static function () use ($state): void {
+            if ($state->reopenFails && $state->level === 0) {
+                throw self::lost();
+            }
+            ++$state->level;
+        });
+
+        return $connection;
+    }
+
+    /**
+     * Levels of the bundle's own log records (the runner logs the failure too).
+     *
+     * @return list<mixed>
+     */
+    private function bundleLogLevels(MemoryLogger $logger): array
+    {
+        $levels = [];
+        foreach ($logger->records as $record) {
+            if (str_starts_with($record['message'], 'nowo_short_link:')) {
+                $levels[] = $record['level'];
+            }
+        }
+
+        return $levels;
     }
 
     private function store(ManagerRegistry $registry, ?MemoryLogger $logger = null): DbalShortLinkStore

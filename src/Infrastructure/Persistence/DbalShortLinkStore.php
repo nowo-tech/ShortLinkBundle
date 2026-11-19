@@ -17,6 +17,7 @@ use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\Persistence\ManagerRegistry;
 use LogicException;
+use Nowo\ShortLinkBundle\Application\HostTransactionLostException;
 use Nowo\ShortLinkBundle\Application\Store\ActiveBatch;
 use Nowo\ShortLinkBundle\Application\Store\ShortLinkStoreInterface;
 use Nowo\ShortLinkBundle\Application\Store\StoredLink;
@@ -123,7 +124,7 @@ final readonly class DbalShortLinkStore implements ShortLinkStoreInterface
             return $work();
         } : $work;
         try {
-            $result = $joined ? $this->runner($connection)->run($unit) : $this->outermost($connection, $unit);
+            $result = $joined ? $this->joined($connection, $unit) : $this->outermost($connection, $unit);
         } finally {
             if ($lockTenant instanceof TenantKey) {
                 $this->unlockTenant($connection, $lockTenant);
@@ -419,7 +420,7 @@ final readonly class DbalShortLinkStore implements ShortLinkStoreInterface
         $sql  = sprintf('SELECT %s FROM %s WHERE tenant_key = ? AND kind = ? AND source_ref = ? AND source_slot = ? AND deleted_at IS NULL%s', self::COLUMNS, $this->table, $lock);
         $rows = $connection->fetchAllAssociative($sql, [$link->tenant->value, $link->kind->value, $source->ref, $source->position ?? self::NO_POSITION_SLOT], [ParameterType::STRING, ParameterType::STRING, ParameterType::STRING, ParameterType::INTEGER]);
         foreach (array_map($this->hydrate(...), $rows) as $existing) {
-            if ($existing->tenant->equals($link->tenant) && $existing->source?->ref === $source->ref && $existing->source->position === $source->position) {
+            if ($existing->tenant->equals($link->tenant) && $existing->kind->equals($link->kind) && $existing->source?->ref === $source->ref && $existing->source->position === $source->position) {
                 return $existing;
             }
         }
@@ -564,6 +565,45 @@ final readonly class DbalShortLinkStore implements ShortLinkStoreInterface
             $connection->close();
 
             return $this->runner($connection)->run($work);
+        }
+    }
+
+    /**
+     * A write unit that joined an open host transaction (a savepoint). On MySQL / MariaDB a deadlock victim loses the
+     * whole host transaction: the server rolls it back, ROLLBACK TO SAVEPOINT then fails (1305) and the runner closes
+     * the connection, leaving DBAL at a lower nesting level on a fresh session where the host's next statements would
+     * autocommit (audit UY-1). The host's levels are therefore opened again and marked rollback-only: nothing the host
+     * runs afterwards can commit, its commit() fails loudly and its rollBack() balances. A lock conflict is rethrown as
+     * {@see HostTransactionLostException}; any other failure (a lost connection) is rethrown as it is.
+     *
+     * @template T
+     *
+     * @param Closure(): T $work
+     *
+     * @return T
+     */
+    private function joined(Connection $connection, Closure $work): mixed
+    {
+        $entryLevel = $connection->getTransactionNestingLevel();
+        try {
+            return $this->runner($connection)->run($work);
+        } catch (Throwable $failure) {
+            if ($connection->getTransactionNestingLevel() >= $entryLevel) {
+                throw $failure;
+            }
+            $this->logger?->warning('nowo_short_link: the database rolled back the whole host transaction; the connection is left rollback-only at the host\'s level: {class}', ['class' => $failure::class]);
+            try {
+                while ($connection->getTransactionNestingLevel() < $entryLevel) {
+                    $connection->beginTransaction();
+                }
+                $connection->setRollbackOnly();
+            } catch (Throwable $restore) {
+                $this->logger?->error('nowo_short_link: could not reopen the lost host transaction as rollback-only: {class}', ['class' => $restore::class]);
+            }
+            if ($failure instanceof TransientStorageFailure) {
+                throw new HostTransactionLostException($failure->retryAfterSeconds(), $failure);
+            }
+            throw $failure;
         }
     }
 

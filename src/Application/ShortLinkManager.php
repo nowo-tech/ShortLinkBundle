@@ -27,6 +27,7 @@ use Nowo\ShortLinkBundle\Domain\Model\CreateShortLink;
 use Nowo\ShortLinkBundle\Domain\Model\Expiry;
 use Nowo\ShortLinkBundle\Domain\Model\GuardStage;
 use Nowo\ShortLinkBundle\Domain\Model\LinkKind;
+use Nowo\ShortLinkBundle\Domain\Model\LinkSource;
 use Nowo\ShortLinkBundle\Domain\Model\LinkTitle;
 use Nowo\ShortLinkBundle\Domain\Model\ShortCode;
 use Nowo\ShortLinkBundle\Domain\Model\ShortLinkId;
@@ -55,6 +56,8 @@ use function array_slice;
 use function count;
 use function in_array;
 use function ksort;
+use function strcmp;
+use function uasort;
 
 /**
  * Default {@see ShortLinkManagerInterface} (contract §3.3, §6). Stateless (worker mode): every value comes from the
@@ -104,6 +107,13 @@ final readonly class ShortLinkManager implements ShortLinkManagerInterface
         $actor  = $this->access->currentActor();
 
         $insert = function () use ($tenant, $command, $kind, $target, $expiry, $title, $custom, $actor, $now): array {
+            // A source that already has a live link answers it before the quota (audit UY-5): a tenant at its plan
+            // limit still gets its existing link, as with createMany().
+            $source   = $command->source;
+            $existing = $source instanceof LinkSource ? $this->store->findBySource($tenant, $kind, $source->ref, $source->position) : null;
+            if ($existing instanceof StoredLink) {
+                return [$existing, false];
+            }
             $this->assertQuota($tenant, $kind, 1);
             $link = new StoredLink(
                 $this->ids->generate(),
@@ -206,6 +216,9 @@ final readonly class ShortLinkManager implements ShortLinkManagerInterface
             foreach ($new as $kind => $count) {
                 $this->assertQuota($tenant, LinkKind::fromString($kind), $count);
             }
+            // A fixed lock order (audit UY-2): sourced links by (kind, ref, position), so two batches with the same
+            // sources in another order never wait for each other crosswise (no A=[s1,s2] / B=[s2,s1] deadlock).
+            uasort($pending, $this->insertOrder(...));
             foreach ($pending as $index => [$command, $kind, $target, $expiry, $title]) {
                 $link = new StoredLink($this->ids->generate(), $tenant, $this->newRandomCode($tenant), $target, $title, $kind, $command->source, $command->metadata, $command->active, $expiry, $command->active ? null : ShortLinkStateChangedEvent::REASON_MANUAL, $now, $now, null, $actor, $actor);
                 // The live-source unique key decides a race with another connection (audit UK-SL-2): the loser gets the
@@ -545,6 +558,23 @@ final readonly class ShortLinkManager implements ShortLinkManagerInterface
                 ]);
             }
         }
+    }
+
+    /**
+     * Insert order of a batch: sourced links first, by kind, source ref (byte order) and position; then the others.
+     *
+     * @param array{CreateShortLink, LinkKind, mixed, mixed, mixed} $a
+     * @param array{CreateShortLink, LinkKind, mixed, mixed, mixed} $b
+     */
+    private function insertOrder(array $a, array $b): int
+    {
+        $left  = $a[0]->source;
+        $right = $b[0]->source;
+        if ($left === null || $right === null) {
+            return ($left === null) <=> ($right === null);
+        }
+
+        return [strcmp($a[1]->value, $b[1]->value), strcmp($left->ref, $right->ref), $left->position ?? -1] <=> [0, 0, $right->position ?? -1];
     }
 
     /**

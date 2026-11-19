@@ -18,12 +18,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- `Nowo\ShortLinkBundle\Application\HostTransactionLostException` (a `TransientStorageFailure`): a bundle write that joined a host transaction was the deadlock victim and the database (MySQL / MariaDB) rolled back the whole host transaction. The connection is left in a rollback-only transaction at the host's nesting level, so the host's later statements can never autocommit; the host must roll back and retry its whole unit (audit UY-1).
 - `nowo_short_link.source_slot` column and unique index `uniq_short_link_live_source (tenant_key, kind, source_ref, source_slot)`: one live generated link per tenant, kind, source ref and position on MySQL, MariaDB, PostgreSQL and SQLite (audit UK-SL-2). Migration, duplicate check and backfill per database in UPGRADING.
 
 ### Changed
 
 - `createMany()` with sources and no counted kind no longer takes the tenant database lock: the unique key decides the race, and the call can join a host transaction on every platform. The loser of the race gets the winner's link (inside a savepoint, so the host transaction survives on PostgreSQL), never a `CONFLICT_*` code.
-- `create()` with a source that already has a live link returns that link without an event, as `createMany()` does.
+- `create()` with a source that already has a live link returns that link without an event, as `createMany()` does, and looks it up before the plan limit: a tenant at its limit gets its existing link (audit UY-5).
+- `createMany()` inserts its sourced links in a fixed order (kind, ref, position), so two batches with the same sources never lock crosswise (audit UY-2).
 - The tenant database lock (`transactional()` with a tenant) is refused inside an open transaction; only counted creates take it, and those were already refused inside host transactions. A failed MySQL / MariaDB `RELEASE_LOCK` therefore always closes the connection, never inside a host transaction; the deferred release added in 0.5.0 is removed.
 - The index `idx_short_link_tenant_source` is dropped; the new unique index serves the source lookups.
 
