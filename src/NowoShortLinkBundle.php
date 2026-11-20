@@ -53,3 +53,5 @@ final class NowoShortLinkBundle extends Bundle
         return $this->extension;
     }
 }
+
+// TEMP pilot measurement (CI light mode), reverted before merge.
