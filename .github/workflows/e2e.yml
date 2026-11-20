@@ -6,19 +6,35 @@ on:
   push:
     branches: [main]
   pull_request:
+    # Light mode (docs/GITHUB_CI.md#light-mode-for-deps-and-docs-only-prs): skipped when the PR only touches these.
+    # Only allowed because this workflow holds no required check (a path-filtered workflow leaves required checks pending).
+    paths-ignore:
+      - 'composer.json'
+      - 'composer.lock'
+      - 'demo/*/composer.json'
+      - 'demo/*/composer.lock'
+      - 'docs/**'
+      - '**.md'
+      - '.github/ISSUE_TEMPLATE/**'
+      - 'specs/**'
+      - '.cursor/**'
   workflow_dispatch:
 
 permissions:
   contents: read
 
+# Superseded PR runs are cancelled; push runs never are (own group per run).
 concurrency:
-  group: e2e-${{ github.ref }}
-  cancel-in-progress: true
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   e2e:
     name: Demo symfony8 Playwright e2e
     runs-on: ubuntu-latest
+    # Light mode switch (docs/GITHUB_CI.md#light-mode-for-deps-and-docs-only-prs): NOWO_CI_PR_MODE=light skips it on
+    # every PR (not a required check); push / dispatch always run it.
+    if: ${{ github.event_name != 'pull_request' || vars.NOWO_CI_PR_MODE != 'light' }}
     timeout-minutes: 45
 
     steps:
