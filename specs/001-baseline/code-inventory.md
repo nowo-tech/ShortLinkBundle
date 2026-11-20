@@ -2,9 +2,9 @@
 
 **Baseline spec**: [`spec.md`](spec.md)  
 **Package**: `nowo-tech/short-link-bundle`  
-**Last audited**: 2026-11-19 (0.4.0 + Unreleased; concurrency: conflict listener and commit-tracking pass mapped)
+**Last audited**: 2026-11-20 (0.6.0; concurrency: host-transaction-lost exception mapped)
 
-Scope: every file under `src/`. Audit command: `find src -type f | wc -l` → **151**.
+Scope: every file under `src/`. Audit command: `find src -type f | wc -l` → **152**.
 
 | Source file | Spec section | Requirement IDs |
 | --- | --- | --- |
@@ -25,6 +25,7 @@ Scope: every file under `src/`. Audit command: `find src -type f | wc -l` → **
 | `src/Application/Guard/DenylistGuard.php` | Target guard | FR-TARGET-001, FR-GUARD-001 |
 | `src/Application/Guard/OwnHostGuard.php` | Target guard | FR-GUARD-002 |
 | `src/Application/Guard/SelfLoopGuard.php` | Target guard | FR-TARGET-001, FR-GUARD-001 |
+| `src/Application/HostTransactionLostException.php` | Concurrency | FR-CONCURRENCY-001 |
 | `src/Application/ManagerSettings.php` | Manager | FR-MANAGE-001, FR-BULK-001, FR-ACCESS-001, FR-QUOTA-001 |
 | `src/Application/QuotaReader.php` | Quota | FR-QUOTA-002 |
 | `src/Application/QuotaUsage.php` | Quota | FR-QUOTA-002 |
@@ -160,5 +161,5 @@ Scope: every file under `src/`. Audit command: `find src -type f | wc -l` → **
 | `src/Resources/views/ui/list.html.twig` | Management UI | FR-UI-001 |
 | `src/Resources/views/ui/stats.html.twig` | Management UI | FR-UI-001 |
 
-| Total production sources | 148 |
+| Total production sources | 149 |
 | --- | --- |
