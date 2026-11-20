@@ -35,7 +35,7 @@ jobs:
         env:
           EVENT: ${{ github.event_name }}
           SWITCH: ${{ vars.NOWO_CI_PR_MODE }}
-          LIGHT: '^((demo/([^/]+/)?)?composer\.(json|lock)|docs/.*|specs/.*|\.cursor/.*|\.github/ISSUE_TEMPLATE/.*|.*\.md|\.github/workflows/.*)$' # TEMP pilot measurement only: reverted before merge
+          LIGHT: '^((demo/([^/]+/)?)?composer\.(json|lock)|docs/.*|specs/.*|\.cursor/.*|\.github/ISSUE_TEMPLATE/.*|.*\.md)$'
         run: |
           mode=full; paths=""
           if [ "$EVENT" != pull_request ]; then
