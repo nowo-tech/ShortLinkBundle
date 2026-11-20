@@ -32,6 +32,9 @@ jobs:
   e2e:
     name: Demo symfony8 Playwright e2e
     runs-on: ubuntu-latest
+    # Light mode switch (docs/GITHUB_CI.md#light-mode-for-deps-and-docs-only-prs): NOWO_CI_PR_MODE=light skips it on
+    # every PR (not a required check); push / dispatch always run it.
+    if: ${{ github.event_name != 'pull_request' || vars.NOWO_CI_PR_MODE != 'light' }}
     timeout-minutes: 45
 
     steps:

@@ -221,21 +221,31 @@ Compliance matrix: `python3 .scripts/audit-bundles-checklist.py` (checker `REQ-G
 
 ## Light mode for deps and docs-only PRs
 
-Bundle PRs that only touch dependencies or documentation run a reduced CI, so bursts of Dependabot / docs PRs do not
+Bundle PRs run a reduced CI when they only touch dependencies or documentation, or on every PR while the
+organisation switch says so, so bursts of Dependabot / docs PRs do not
 hold the organisation's runner pool for hours. Releases are not affected: they are tagged from a **push** run, which
 always runs everything.
 
 ### Classification
 
-The `changes` job of `ci.yml` diffs the PR merge commit against its base parent (`git diff --name-only --no-renames
-HEAD^1 HEAD`, no third-party action) and sets `mode`:
+The `changes` job of `ci.yml` sets `mode` (and writes the reason and the changed paths to the job summary). The
+organisation Actions variable `NOWO_CI_PR_MODE` decides how pull requests are treated; a repository variable with
+the same name overrides it for one repo:
 
-| Mode | When |
-|------|------|
-| `light` | `pull_request` and every changed path is one of: `composer.json` / `composer.lock` (root or `demo/<app>/`), `docs/**`, `*.md`, `.github/ISSUE_TEMPLATE/**`, `specs/**`, `.cursor/**` |
-| `full` | Anything else, and every `push` (main/master), tag, `workflow_dispatch` and `schedule` run |
+| `NOWO_CI_PR_MODE` | Pull requests | push (main/master), tags, `workflow_dispatch`, `schedule` |
+|-------------------|---------------|-------------------------------------------------------------|
+| `light` | every PR is light, whatever it touches | always full |
+| `auto`, unset or empty | light only when every changed path is `composer.json` / `composer.lock` (root or `demo/<app>/`), `docs/**`, `*.md`, `.github/ISSUE_TEMPLATE/**`, `specs/**` or `.cursor/**`; full otherwise | always full |
+| `full` | every PR is full | always full |
 
-It is fail-closed: jobs are only reduced on `mode == 'light'`, so an error or an empty output means a full run.
+In `auto` the job diffs the PR merge commit against its base parent (`git diff --name-only --no-renames HEAD^1 HEAD`,
+no third-party action). It is fail-closed: jobs are only reduced on `mode == 'light'`, so an error, an unknown
+variable value or an empty output means a full run.
+
+**Switching back to full CI is a one-place change**: set the organisation variable `NOWO_CI_PR_MODE` to `auto`
+(path-based) or `full` (Settings → Secrets and variables → Actions → Variables, or
+`gh variable set NOWO_CI_PR_MODE --org nowo-tech --body full`). No workflow edit is needed. One repo can opt out
+with a repository variable of the same name (`gh variable set NOWO_CI_PR_MODE -R nowo-tech/<repo> --body full`).
 
 ### What still runs in light mode
 
@@ -248,8 +258,9 @@ The other matrix cells still start and report success after one echo step: a mat
 never appear and the PR would stay blocked. Matrix jobs with service containers also pass an empty service `image` in
 light mode, so no database container is pulled. Non-matrix jobs (coverage, databases, demo smoke, …) are skipped with
 a job-level `if:`: a skipped job reports its own name with a successful conclusion for branch protection. Workflows
-without any required check may use `paths-ignore` with the same list instead (never on a workflow that holds a
-required check: a path-filtered workflow leaves its checks pending).
+without any required check may use `paths-ignore` with the same list plus a job-level
+`if: ${{ github.event_name != 'pull_request' || vars.NOWO_CI_PR_MODE != 'light' }}` instead (never on a workflow
+that holds a required check: a path-filtered workflow leaves its checks pending).
 
 ### Concurrency
 

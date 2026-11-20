@@ -13,10 +13,11 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  # Light mode (docs/GITHUB_CI.md#light-mode-for-deps-and-docs-only-prs): a PR that only touches composer.json /
-  # composer.lock (root or demo), docs/**, *.md, .github/ISSUE_TEMPLATE/**, specs/** or .cursor/** runs one
-  # representative cell plus the cheap gates. Every other PR, and every push, runs everything. Fail-closed: any error
-  # or an empty output means full (jobs skip only on mode == 'light').
+  # Light mode (docs/GITHUB_CI.md#light-mode-for-deps-and-docs-only-prs): one representative cell plus the cheap
+  # gates. The org (or repo) Actions variable NOWO_CI_PR_MODE picks the PR mode: light = every PR light; full = every
+  # PR full; auto / unset = light only when the PR touches nothing but composer.json / composer.lock (root or demo),
+  # docs/**, *.md, .github/ISSUE_TEMPLATE/**, specs/** or .cursor/**. push, tags, workflow_dispatch and schedule are
+  # always full. Fail-closed: any error, unknown value or empty output means full (jobs reduce only on 'light').
   changes:
     name: Change scope (light or full)
     runs-on: ubuntu-latest
@@ -33,18 +34,38 @@ jobs:
         id: classify
         env:
           EVENT: ${{ github.event_name }}
+          SWITCH: ${{ vars.NOWO_CI_PR_MODE }}
           LIGHT: '^((demo/([^/]+/)?)?composer\.(json|lock)|docs/.*|specs/.*|\.cursor/.*|\.github/ISSUE_TEMPLATE/.*|.*\.md|\.github/workflows/.*)$' # TEMP pilot measurement only: reverted before merge
         run: |
-          mode=full
-          if [ "$EVENT" = pull_request ] && files=$(git diff --name-only --no-renames HEAD^1 HEAD); then
-            mode=light
-            while IFS= read -r f; do
-              [ -n "$f" ] || continue
-              if ! printf '%s\n' "$f" | grep -Eq "$LIGHT"; then echo "full because of: $f"; mode=full; fi
-            done <<< "$files"
+          mode=full; paths=""
+          if [ "$EVENT" != pull_request ]; then
+            reason="event '$EVENT' always runs full"
+          else
+            case "$SWITCH" in
+              light) mode=light; reason="NOWO_CI_PR_MODE=light: every PR is light" ;;
+              full) reason="NOWO_CI_PR_MODE=full: every PR is full" ;;
+              ''|auto)
+                if files=$(git diff --name-only --no-renames HEAD^1 HEAD); then
+                  mode=light; reason="NOWO_CI_PR_MODE=${SWITCH:-unset} (auto): only deps/docs paths changed"
+                  while IFS= read -r f; do
+                    [ -n "$f" ] || continue
+                    if ! printf '%s\n' "$f" | grep -Eq "$LIGHT"; then mode=full; paths="$paths $f"; fi
+                  done <<< "$files"
+                  [ "$mode" = light ] || reason="NOWO_CI_PR_MODE=${SWITCH:-unset} (auto): non deps/docs paths changed:$paths"
+                else
+                  reason="NOWO_CI_PR_MODE=${SWITCH:-unset} (auto): git diff failed, fail-closed"
+                fi ;;
+              *) reason="NOWO_CI_PR_MODE='$SWITCH' is not light/auto/full, fail-closed" ;;
+            esac
           fi
-          echo "mode=$mode"
+          echo "mode=$mode ($reason)"
           echo "mode=$mode" >> "$GITHUB_OUTPUT"
+          {
+            echo "### CI mode: \`$mode\`"
+            echo ""
+            echo "$reason"
+            if [ "$EVENT" = pull_request ] && [ -n "${files:-}" ]; then echo ""; echo "Changed paths:"; echo '```'; echo "$files" | head -200; echo '```'; fi
+          } >> "$GITHUB_STEP_SUMMARY"
 
   git-hygiene:
     name: Git history (no agent co-author)
