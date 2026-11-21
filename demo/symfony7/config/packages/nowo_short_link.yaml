@@ -9,4 +9,4 @@ nowo_short_link:
         provider: App\ShortLink\DemoAccess
     ui:
         enabled: true
-        layout_template: base.html.twig   # the demo shell (masthead + navigation) around the UiKit page scaffolds
+        layout_template: base.html.twig   # the demo platform shell around the UiKit page scaffolds
