@@ -18,6 +18,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Fixed
+
+- **Numeric tenant keys in usage counts (audit YD2-L1).** `ShortLinkCounts::$byTenant` is a PHP array, so a tenant key that is a decimal integer (`"123"`) is an `int` key there, and a `strict_types` host that passed the key on to a `string` parameter (`new TenantKey($tenant)`) got a `TypeError`. New `ShortLinkCounts::perTenant()` yields every tenant asked for with its count, keyed by the exact tenant key as a string; `byTenant` and `forTenant()` are unchanged (documented in docs/USAGE.md). Counting and the deduplication of `ShortLinkCountQuery` were already exact (`"123"` and `"0123"` stay two tenants).
+- **Source erasure result (audit YD2-I1).** `eraseSourcesCreatedBefore()` no longer counts, in `SourceErasureResult::$batches`, a batch whose listed sources another run erased first (it wrote nothing). `SourceErasureResult` and docs/USAGE.md now say that `complete` is also `false` in that case (the call stops rather than spin; call it again).
+
 ## [0.7.0] - 2026-11-21
 
 ### Added

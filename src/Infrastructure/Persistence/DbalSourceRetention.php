@@ -118,15 +118,16 @@ final readonly class DbalSourceRetention implements ShortLinkRetentionInterface
 
                 throw new ConcurrencyConflict(1, $kind, $failure->retryAfterSeconds(), $failure, true);
             }
-            ++$batches;
-            $sources += $erased;
-            $rows += $count;
             if ($erased === 0) {
-                // Listed but gone by the time the batch locked them: another run erased them. Stop rather than spin.
+                // Listed but gone by the time the batch locked them: another run erased them. Stop rather than spin;
+                // the empty batch wrote nothing, so it is not counted (0.7.1, audit YD2-I1).
                 $this->logger?->info('nowo_short_link: the listed sources were erased by another run meanwhile.');
 
                 return new SourceErasureResult($sources, $rows, $batches, false);
             }
+            ++$batches;
+            $sources += $erased;
+            $rows += $count;
             if ($page->next === null) {
                 return new SourceErasureResult($sources, $rows, $batches, true);
             }

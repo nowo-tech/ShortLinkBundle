@@ -119,6 +119,35 @@ class UsageRetentionTest extends KernelTestCase
         }
     }
 
+    /**
+     * 0.7.1 (audit YD2-L1): a decimal-integer tenant key ("123") is an int key of `byTenant` (PHP), but `perTenant()`
+     * hands it back as the exact string, so a strict_types host can pass it on to a string parameter.
+     */
+    public function testANumericTenantKeyStaysAStringThroughPerTenant(): void
+    {
+        $numeric = TenantKey::fromString('123');
+        $padded  = TenantKey::fromString('0123');
+        if ($this->host()->kind !== Host::STANDARD) {
+            $access = $this->container()->get(TestAccess::class);
+            self::assertInstanceOf(TestAccess::class, $access);
+            $access->granted[$numeric->value] = [ShortLinkPermission::View, ShortLinkPermission::Manage];
+            $access->granted[$padded->value]  = [ShortLinkPermission::View, ShortLinkPermission::Manage];
+        }
+        $this->create($numeric, 'https://example.com/n1');
+        $this->create($numeric, 'https://example.com/n2');
+        $this->create($padded, 'https://example.com/p1');
+
+        $counts = $this->usage()->count(new ShortLinkCountQuery([$numeric, $padded, $numeric, $this->tenantA], LinkKind::manual()));
+        $seen   = [];
+        foreach ($counts->perTenant() as $tenant => $links) {
+            $seen[TenantKey::fromString($tenant)->value . '|'] = $links;
+        }
+        self::assertSame(['123|' => 2, '0123|' => 1, $this->tenantA->value . '|' => 0], $seen);
+        self::assertSame(3, $counts->total);
+        self::assertSame(2, $counts->forTenant($numeric));
+        self::assertSame(1, $counts->forTenant($padded));
+    }
+
     public function testOneKeptAliveKernelCountsManyTenantsWithoutBleedOrGrowth(): void
     {
         $this->create($this->tenantA, 'https://example.com/a');
