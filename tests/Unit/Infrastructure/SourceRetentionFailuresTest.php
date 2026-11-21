@@ -39,8 +39,17 @@ final class SourceRetentionFailuresTest extends TestCase
         $logger = new MemoryLogger();
         $result = (new DbalSourceRetention($this->tables($links), null, $logger))->eraseSourcesCreatedBefore($this->query(2));
 
-        self::assertSame([0, 0, 1, false], [$result->sources, $result->rows, $result->batches, $result->complete]);
+        self::assertSame([0, 0, 0, false], [$result->sources, $result->rows, $result->batches, $result->complete], '0.7.1: the empty batch is not counted');
         self::assertCount(1, $logger->records);
+    }
+
+    public function testAnEmptyBatchAfterACommittedOneIsNotCounted(): void
+    {
+        $listing = [['tenant_key' => self::TENANT, 'source_ref' => 's1'], ['tenant_key' => self::TENANT, 'source_ref' => 's2']];
+        $links   = $this->connection([$listing, $this->batch(), [['tenant_key' => self::TENANT, 'source_ref' => 's2']], []], []);
+        $result  = (new DbalSourceRetention($this->tables($links), null, new MemoryLogger()))->eraseSourcesCreatedBefore($this->query(1));
+
+        self::assertSame([1, 1, false], [$result->sources, $result->batches, $result->complete], 'one committed batch; s2 was erased by another run');
     }
 
     public function testAConflictInTheFirstBatchIsRetrySafe(): void
