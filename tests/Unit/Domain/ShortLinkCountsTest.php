@@ -10,6 +10,7 @@ use Nowo\ShortLinkBundle\Domain\Model\ShortLinkCounts;
 use Nowo\ShortLinkBundle\Domain\Model\TenantKey;
 use PHPUnit\Framework\TestCase;
 
+use function array_combine;
 use function array_keys;
 use function array_map;
 use function iterator_to_array;
@@ -22,7 +23,8 @@ final class ShortLinkCountsTest extends TestCase
 {
     public function testNumericTenantKeysStayStringsThroughPerTenant(): void
     {
-        $counts = new ShortLinkCounts(['123' => 2, 'org-a' => 1, '0123' => 4, '-1' => 0]);
+        // Built from string keys, as the usage reader does (array_fill_keys over the tenant keys).
+        $counts = new ShortLinkCounts(array_combine(['123', 'org-a', '0123', '-1'], [2, 1, 4, 0]));
 
         self::assertSame(7, $counts->total);
         self::assertSame([123, 'org-a', '0123', -1], array_keys($counts->byTenant), 'PHP turns decimal-integer keys into ints');
