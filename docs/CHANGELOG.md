@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ## Table of contents
 
 - [[Unreleased]](#unreleased)
+- [[0.7.1] - 2026-11-21](#071---2026-11-21)
 - [[0.7.0] - 2026-11-21](#070---2026-11-21)
 - [[0.6.0] - 2026-11-19](#060---2026-11-19)
 - [[0.5.0] - 2026-11-19](#050---2026-11-19)
@@ -18,10 +19,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.7.1] - 2026-11-21
+
 ### Fixed
 
 - **Numeric tenant keys in usage counts (audit YD2-L1).** `ShortLinkCounts::$byTenant` is a PHP array, so a tenant key that is a decimal integer (`"123"`) is an `int` key there, and a `strict_types` host that passed the key on to a `string` parameter (`new TenantKey($tenant)`) got a `TypeError`. New `ShortLinkCounts::perTenant()` yields every tenant asked for with its count, keyed by the exact tenant key as a string; `byTenant` and `forTenant()` are unchanged (documented in docs/USAGE.md). Counting and the deduplication of `ShortLinkCountQuery` were already exact (`"123"` and `"0123"` stay two tenants).
 - **Source erasure result (audit YD2-I1).** `eraseSourcesCreatedBefore()` no longer counts, in `SourceErasureResult::$batches`, a batch whose listed sources another run erased first (it wrote nothing). `SourceErasureResult` and docs/USAGE.md now say that `complete` is also `false` in that case (the call stops rather than spin; call it again).
+
+[0.7.1]: https://github.com/nowo-tech/ShortLinkBundle/releases/tag/v0.7.1
 
 ## [0.7.0] - 2026-11-21
 
@@ -301,5 +306,5 @@ First release: slices S1 (domain + persistence), S2 (public redirect) and S3 (st
 - Docs set, Spec Kit baseline, Flex recipe, demos `symfony7` (Symfony 7.4) and `symfony8` (Symfony 8.1) on FrankenPHP
   worker mode with MySQL, UiKit's admin layout and default theme (REQ-DEMO-014) and FormKit (REQ-DEMO-015).
 
-[Unreleased]: https://github.com/nowo-tech/ShortLinkBundle/compare/v0.7.0...HEAD
+[Unreleased]: https://github.com/nowo-tech/ShortLinkBundle/compare/v0.7.1...HEAD
 [0.1.0]: https://github.com/nowo-tech/ShortLinkBundle/releases/tag/v0.1.0

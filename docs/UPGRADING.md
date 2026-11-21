@@ -3,6 +3,7 @@
 ## Table of contents
 
 - [Unreleased](#unreleased)
+- [To 0.7.1](#to-071)
 - [To 0.7.0](#to-070)
 - [To 0.6.0](#to-060)
   - [To 0.6.0: one live link per source (UK-SL-2)](#to-060-one-live-link-per-source-uk-sl-2)
@@ -14,6 +15,14 @@
 - [To 0.1.0](#to-010)
 
 ## Unreleased
+
+## To 0.7.1
+
+From **0.7.0**:
+
+```bash
+composer update nowo-tech/short-link-bundle
+```
 
 ## To 0.7.0
 
