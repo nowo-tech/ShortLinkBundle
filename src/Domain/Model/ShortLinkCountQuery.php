@@ -5,12 +5,13 @@ declare(strict_types=1);
 namespace Nowo\ShortLinkBundle\Domain\Model;
 
 use Nowo\ShortLinkBundle\Domain\Exception\InvalidShortLinkArgumentException;
+use Nowo\ShortLinkBundle\Domain\Service\ShortLinkUsageReaderInterface;
 
 use function array_values;
 use function count;
 
 /**
- * What {@see \Nowo\ShortLinkBundle\Domain\Service\ShortLinkUsageReaderInterface::count()} counts: the links of one kind
+ * What {@see ShortLinkUsageReaderInterface::count()} counts: the links of one kind
  * in some tenants, optionally in one state. Tenants are deduplicated by their exact key.
  */
 final readonly class ShortLinkCountQuery

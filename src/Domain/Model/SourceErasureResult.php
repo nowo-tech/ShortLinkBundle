@@ -4,8 +4,10 @@ declare(strict_types=1);
 
 namespace Nowo\ShortLinkBundle\Domain\Model;
 
+use Nowo\ShortLinkBundle\Domain\Service\ShortLinkRetentionInterface;
+
 /**
- * What one {@see \Nowo\ShortLinkBundle\Domain\Service\ShortLinkRetentionInterface::eraseSourcesCreatedBefore()} call
+ * What one {@see ShortLinkRetentionInterface::eraseSourcesCreatedBefore()} call
  * erased. Every batch it counts is committed.
  */
 final readonly class SourceErasureResult

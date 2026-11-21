@@ -6,11 +6,12 @@ namespace Nowo\ShortLinkBundle\Domain\Model;
 
 use DateTimeImmutable;
 use Nowo\ShortLinkBundle\Domain\Exception\InvalidShortLinkArgumentException;
+use Nowo\ShortLinkBundle\Domain\Service\ShortLinkRetentionInterface;
 
 /**
  * Sources (the `ref` of a {@see LinkSource}, e.g. an e-mail send id) of one tenant and kind that have a link created
  * before a moment, read or erased {@see self::$batchSize} at a time
- * ({@see \Nowo\ShortLinkBundle\Domain\Service\ShortLinkRetentionInterface}).
+ * ({@see ShortLinkRetentionInterface}).
  */
 final readonly class SourceRetentionQuery
 {

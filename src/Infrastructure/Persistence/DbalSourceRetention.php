@@ -120,7 +120,7 @@ final readonly class DbalSourceRetention implements ShortLinkRetentionInterface
             }
             ++$batches;
             $sources += $erased;
-            $rows    += $count;
+            $rows += $count;
             if ($erased === 0) {
                 // Listed but gone by the time the batch locked them: another run erased them. Stop rather than spin.
                 $this->logger?->info('nowo_short_link: the listed sources were erased by another run meanwhile.');

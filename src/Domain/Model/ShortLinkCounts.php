@@ -4,10 +4,12 @@ declare(strict_types=1);
 
 namespace Nowo\ShortLinkBundle\Domain\Model;
 
+use Nowo\ShortLinkBundle\Domain\Service\ShortLinkUsageReaderInterface;
+
 use function array_sum;
 
 /**
- * Answer of {@see \Nowo\ShortLinkBundle\Domain\Service\ShortLinkUsageReaderInterface::count()}: the total and the count
+ * Answer of {@see ShortLinkUsageReaderInterface::count()}: the total and the count
  * of every tenant asked for (zero included), keyed by the exact tenant key.
  */
 final readonly class ShortLinkCounts

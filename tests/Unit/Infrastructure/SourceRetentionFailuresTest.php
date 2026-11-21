@@ -140,6 +140,6 @@ final class SourceRetentionFailuresTest extends TestCase
         $registry->method('getManager')->willReturn($em);
         $registry->method('getConnection')->willReturn($clicks ?? $links);
 
-        return new ClickTables($registry, $clicks === null ? null : 'clicks');
+        return new ClickTables($registry, $clicks instanceof Connection ? 'clicks' : null);
     }
 }

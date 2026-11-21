@@ -45,15 +45,15 @@ final readonly class DbalUsageReader implements ShortLinkUsageReaderInterface
      */
     public function count(ShortLinkCountQuery $query): ShortLinkCounts
     {
-        $keys   = array_map(static fn (TenantKey $tenant): string => $tenant->value, $query->tenants);
-        $counts = array_fill_keys($keys, 0);
+        $keys                               = array_map(static fn (TenantKey $tenant): string => $tenant->value, $query->tenants);
+        $counts                             = array_fill_keys($keys, 0);
         [$state, $stateParams, $stateTypes] = $this->state($query->state);
         $connection                         = $this->tables->linkConnection();
         foreach (array_chunk($keys, self::CHUNK) as $chunk) {
             $rows = $connection->fetchAllAssociative(
                 sprintf('SELECT tenant_key, COUNT(*) AS links FROM %s WHERE tenant_key IN (?) AND kind = ? AND %s GROUP BY tenant_key', $this->tables->links, $state),
                 [$chunk, $query->kind->value, ...$stateParams],
-                [ArrayParameterType::STRING, ...$stateTypes],
+                [ArrayParameterType::STRING, ParameterType::STRING, ...$stateTypes],
             );
             foreach ($rows as $row) {
                 $key = $this->text($row['tenant_key']);
