@@ -2,9 +2,9 @@
 
 **Baseline spec**: [`spec.md`](spec.md)  
 **Package**: `nowo-tech/short-link-bundle`  
-**Last audited**: 2026-11-20 (0.6.0; concurrency: host-transaction-lost exception mapped)
+**Last audited**: 2026-11-21 (0.7.0 unreleased; usage and source-retention ports mapped)
 
-Scope: every file under `src/`. Audit command: `find src -type f | wc -l` → **152**.
+Scope: every file under `src/`. Audit command: `find src -type f | wc -l` → **161**.
 
 | Source file | Spec section | Requirement IDs |
 | --- | --- | --- |
@@ -75,12 +75,17 @@ Scope: every file under `src/`. Audit command: `find src -type f | wc -l` → **
 | `src/Domain/Model/ReferrerHost.php` | Redirect and click log | FR-REDIRECT-001, FR-CLICK-001 |
 | `src/Domain/Model/ResolvedLink.php` | Redirect and click log | FR-REDIRECT-001, FR-CLICK-001 |
 | `src/Domain/Model/ShortCode.php` | Codes | FR-CODE-001, FR-CODE-002 |
+| `src/Domain/Model/ShortLinkCountQuery.php` | Usage | FR-USAGE-001, FR-VO-001 |
+| `src/Domain/Model/ShortLinkCounts.php` | Usage | FR-USAGE-001, FR-VO-001 |
 | `src/Domain/Model/ShortLinkId.php` | Value objects | FR-VO-001 |
 | `src/Domain/Model/ShortLinkListQuery.php` | Value objects | FR-VO-001 |
 | `src/Domain/Model/ShortLinkPage.php` | Value objects | FR-VO-001 |
 | `src/Domain/Model/ShortLinkPermission.php` | Value objects | FR-VO-001 |
 | `src/Domain/Model/ShortLinkState.php` | Value objects | FR-VO-001 |
 | `src/Domain/Model/ShortLinkView.php` | Value objects | FR-VO-001 |
+| `src/Domain/Model/SourceErasureResult.php` | Retention | FR-RETENTION-002, FR-VO-001 |
+| `src/Domain/Model/SourceRefPage.php` | Retention | FR-RETENTION-002, FR-VO-001 |
+| `src/Domain/Model/SourceRetentionQuery.php` | Retention | FR-RETENTION-002, FR-VO-001 |
 | `src/Domain/Model/TargetRefusal.php` | Target guard | FR-TARGET-001, FR-GUARD-001 |
 | `src/Domain/Model/TargetUrl.php` | Target guard | FR-TARGET-001, FR-GUARD-001 |
 | `src/Domain/Model/TargetVerdict.php` | Target guard | FR-TARGET-001, FR-GUARD-001 |
@@ -102,7 +107,9 @@ Scope: every file under `src/`. Audit command: `find src -type f | wc -l` → **
 | `src/Domain/Port/UserAgentClassifierInterface.php` | Redirect and click log | FR-REDIRECT-001, FR-CLICK-001 |
 | `src/Domain/Service/ShortLinkEraserInterface.php` | GDPR | FR-GDPR-001 |
 | `src/Domain/Service/ShortLinkManagerInterface.php` | Manager | FR-MANAGE-001, FR-BULK-001, FR-ACCESS-001, FR-QUOTA-001 |
+| `src/Domain/Service/ShortLinkRetentionInterface.php` | Retention | FR-RETENTION-002, FR-PORT-001 |
 | `src/Domain/Service/ShortLinkStatsReaderInterface.php` | Statistics | FR-STATS-001 |
+| `src/Domain/Service/ShortLinkUsageReaderInterface.php` | Usage | FR-USAGE-001, FR-PORT-001 |
 | `src/Infrastructure/Console/PurgeCommand.php` | Retention and recheck | FR-RETENTION-001 |
 | `src/Infrastructure/Console/RecheckCommand.php` | Retention and recheck | FR-RETENTION-001 |
 | `src/Infrastructure/Console/RollupCommand.php` | Retention and recheck | FR-RETENTION-001 |
@@ -127,7 +134,9 @@ Scope: every file under `src/`. Audit command: `find src -type f | wc -l` → **
 | `src/Infrastructure/Persistence/DbalClickStore.php` | Redirect and click log | FR-REDIRECT-001, FR-CLICK-001 |
 | `src/Infrastructure/Persistence/DbalEraser.php` | GDPR | FR-GDPR-001 |
 | `src/Infrastructure/Persistence/DbalShortLinkStore.php` | Persistence | FR-DB-001, FR-DB-002, FR-EVENT-001 |
+| `src/Infrastructure/Persistence/DbalSourceRetention.php` | Retention | FR-RETENTION-002, FR-CONCURRENCY-001 |
 | `src/Infrastructure/Persistence/DbalStatsReader.php` | Statistics | FR-STATS-001 |
+| `src/Infrastructure/Persistence/DbalUsageReader.php` | Usage | FR-USAGE-001 |
 | `src/Infrastructure/RateLimit/RateLimiterCustomCodeLimiter.php` | Custom codes | FR-CODE-003 |
 | `src/Infrastructure/Routing/ControllerAttributeRouteLoader.php` | Routes (REQ-SF-004) | FR-ROUTE-001 |
 | `src/Infrastructure/Routing/RedirectRouteLoader.php` | Redirect and click log | FR-REDIRECT-001, FR-ROUTE-001 |

@@ -35,6 +35,8 @@ conflict is rethrown as a `TransientStorageFailure`. Events go out after the out
 | `nowo:short-link:rollup` | One transaction per day | Idempotent rewrite of the day; runs serialised by `symfony/lock` (TTL 3600 s) when available; a day written by another run at the same time (deadlock or duplicate) is skipped and redone by the next run | Command error for other failures |
 | `nowo:short-link:purge` | Keyset batches of 500, each statement its own unit | Idempotent deletes; a re-run finishes an interrupted one | Command error |
 | GDPR eraser (`ShortLinkEraserInterface`) | One transaction when the link and click tables share a connection | Exact-key `UPDATE` / `DELETE` | Exception to the caller |
+| `ShortLinkRetentionInterface::eraseSourcesCreatedBefore()` | One unit per batch through the DBAL runner; refused inside an open transaction (each batch commits on its own) | The batch's links are read again with `SELECT … FOR UPDATE` in id order (SQLite serialises writers): a concurrent run waits, then finds them erased (the source ref is blanked) and skips them. Idempotent: a re-run erases only what is left | `TransientStorageFailure` to the caller: `CONFLICT_001` in the first batch (nothing committed); a `ConcurrencyConflict` with `committed` true after a committed batch, or once click rows on a separate `doctrine.connection` were deleted (`CONFLICT_002`) |
+| `ShortLinkUsageReaderInterface`, `sourcesCreatedBefore()` | None (reads) | — | — |
 
 The redirect itself only reads (one indexed query); it answers 404 / 302 / 429 and never a conflict.
 
@@ -104,6 +106,10 @@ connection.
   - the UI edit blocked by a row lock answers 409 + `Retry-After` + `CONFLICT_001`, nothing saved, and the retry on the
     same connection succeeds; with a write committed earlier in the request it answers `CONFLICT_002` without
     `Retry-After`.
+  - the batched source erasure: another connection holds a link of the first batch, the erasure waits (1 s session
+    lock wait) and gives up with a transient failure whose code is `CONFLICT_001`, nothing erased; with a committed
+    batch before the conflict it is a committed `ConcurrencyConflict` (`CONFLICT_002`), and the retry erases only
+    what is left (standard and DDD host).
 - Unit tests cover the conflict mapping (every vendor code, the 503 policy, the runner hint, the request mark, Messenger
   stamps, unique violations and lost connections not mapped, host routes untouched), the replay rule, the per-platform
   tenant lock and the commit-tracking scoping.

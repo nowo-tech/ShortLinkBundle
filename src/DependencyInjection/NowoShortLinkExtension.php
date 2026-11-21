@@ -43,7 +43,9 @@ use Nowo\ShortLinkBundle\Domain\Port\TenantLockInterface;
 use Nowo\ShortLinkBundle\Domain\Port\UserAgentClassifierInterface;
 use Nowo\ShortLinkBundle\Domain\Service\ShortLinkEraserInterface;
 use Nowo\ShortLinkBundle\Domain\Service\ShortLinkManagerInterface;
+use Nowo\ShortLinkBundle\Domain\Service\ShortLinkRetentionInterface;
 use Nowo\ShortLinkBundle\Domain\Service\ShortLinkStatsReaderInterface;
+use Nowo\ShortLinkBundle\Domain\Service\ShortLinkUsageReaderInterface;
 use Nowo\ShortLinkBundle\Infrastructure\Console\PurgeCommand;
 use Nowo\ShortLinkBundle\Infrastructure\Console\RecheckCommand;
 use Nowo\ShortLinkBundle\Infrastructure\Console\RollupCommand;
@@ -63,7 +65,9 @@ use Nowo\ShortLinkBundle\Infrastructure\Persistence\DbalClickMaintenance;
 use Nowo\ShortLinkBundle\Infrastructure\Persistence\DbalClickStore;
 use Nowo\ShortLinkBundle\Infrastructure\Persistence\DbalEraser;
 use Nowo\ShortLinkBundle\Infrastructure\Persistence\DbalShortLinkStore;
+use Nowo\ShortLinkBundle\Infrastructure\Persistence\DbalSourceRetention;
 use Nowo\ShortLinkBundle\Infrastructure\Persistence\DbalStatsReader;
+use Nowo\ShortLinkBundle\Infrastructure\Persistence\DbalUsageReader;
 use Nowo\ShortLinkBundle\Infrastructure\RateLimit\RateLimiterCustomCodeLimiter;
 use Nowo\ShortLinkBundle\Infrastructure\Routing\RedirectRouteLoader;
 use Nowo\ShortLinkBundle\Infrastructure\Routing\ShortUrlBuilder;
@@ -408,7 +412,7 @@ final class NowoShortLinkExtension extends Extension implements PrependExtension
     }
 
     /**
-     * S3: statistics, retention commands, recheck and GDPR erasure.
+     * S3: statistics, retention commands, recheck, GDPR erasure, usage counts and source retention.
      *
      * @param array{code: array{quarantine: string|null}, target: array{recheck_max_unresolvable_percent: int, recheck_min_sample: int}, click_log: array{retention: string|null, rollup: array{lag_days: int, referrer_top_n: int, retention: string|null}}, doctrine: array{entity_manager: string|null, connection: string|null, table_prefix: string}} $config
      */
@@ -422,6 +426,10 @@ final class NowoShortLinkExtension extends Extension implements PrependExtension
         $container->setAlias(ShortLinkStatsReaderInterface::class, DbalStatsReader::class)->setPublic(true);
         $container->register(DbalEraser::class, DbalEraser::class)->setArguments([new Reference(ClickTables::class), $clock]);
         $container->setAlias(ShortLinkEraserInterface::class, DbalEraser::class)->setPublic(true);
+        $container->register(DbalUsageReader::class, DbalUsageReader::class)->setArguments([new Reference(ClickTables::class), $clock]);
+        $container->setAlias(ShortLinkUsageReaderInterface::class, DbalUsageReader::class)->setPublic(true);
+        $container->register(DbalSourceRetention::class, DbalSourceRetention::class)->setArguments([new Reference(ClickTables::class), $clock, new Reference('logger', ContainerInterface::NULL_ON_INVALID_REFERENCE)]);
+        $container->setAlias(ShortLinkRetentionInterface::class, DbalSourceRetention::class)->setPublic(true);
 
         $container->register(RollupCommand::class, RollupCommand::class)->setAutoconfigured(true)->setPublic(true)
             ->setArguments([new Reference(DbalClickMaintenance::class), $config['click_log']['rollup']['lag_days'], $config['click_log']['rollup']['referrer_top_n'], $clock, $config['click_log']['retention'], new Reference('lock.factory', ContainerInterface::NULL_ON_INVALID_REFERENCE)]);

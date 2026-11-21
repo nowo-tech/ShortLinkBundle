@@ -8,6 +8,8 @@
 - [Errors](#errors)
 - [Events](#events)
 - [Ports for multi-tenant and DDD hosts](#ports-for-multi-tenant-and-ddd-hosts)
+- [Usage counts](#usage-counts)
+- [Source retention](#source-retention)
 - [Management UI](#management-ui)
 - [Redirect path and firewalls](#redirect-path-and-firewalls)
 
@@ -125,6 +127,64 @@ $stats->bySource($tenant, LinkKind::email(), $sendId);                 // e-mail
 Human and machine clicks (bots, link previews, e-mail scanners) are always apart. Rolled days come from the daily
 rollup, the others from the raw clicks, so the numbers are exact before the rollup runs. The reader does not check
 access: check `View` yourself.
+
+## Usage counts
+
+`ShortLinkUsageReaderInterface` counts links across tenants, for billing or plan pages. It is a system API: it checks
+no access, so pass only the tenants the caller may count.
+
+```php
+use Nowo\ShortLinkBundle\Domain\Model\{LinkKind, ShortLinkCountQuery, ShortLinkState, TenantKey};
+use Nowo\ShortLinkBundle\Domain\Service\ShortLinkUsageReaderInterface;
+
+$counts = $usage->count(new ShortLinkCountQuery([$orgA, $orgB], LinkKind::manual()));
+$counts->total;              // links that are not deleted (active, disabled and expired ones) in both tenants
+$counts->byTenant;           // ['<orgA>' => 12, '<orgB>' => 0]: every tenant asked for, zeros included
+$counts->forTenant($orgA);   // 12
+
+$usage->count(new ShortLinkCountQuery([$orgA], LinkKind::manual(), ShortLinkState::Active))->total; // live, not expired
+```
+
+States: `null` (default) = not deleted; `Active` = enabled and not expired; `Disabled`; `Expired` (enabled, past
+`expires_at`); `Deleted` = tombstones still in the tenant. `Active` and `Expired` are judged against the clock at the
+call. A query names at most 10 000 tenants (deduplicated by exact key) and runs one grouped query per 500.
+
+## Source retention
+
+Generated links usually expire with their source (an e-mail send). `ShortLinkRetentionInterface` finds and erases the
+sources of a tenant and kind that have a link created before a moment. Erasing works like `eraseSource()`: every link
+of the source (a newer one too) becomes a blanked tombstone (the codes stay taken until `code.quarantine` ends), clicks and daily rollups deleted.
+
+```php
+use Nowo\ShortLinkBundle\Domain\Model\{LinkKind, SourceRetentionQuery};
+use Nowo\ShortLinkBundle\Domain\Service\ShortLinkRetentionInterface;
+
+$query = new SourceRetentionQuery($tenant, LinkKind::email(), new \DateTimeImmutable('-90 days'), batchSize: 500);
+
+// Erase everything older than the bound, 500 sources per transaction (or stop after N batches: maxBatches: N).
+$result = $retention->eraseSourcesCreatedBefore($query);
+$result->sources;   // sources erased by this call
+$result->rows;      // links blanked + click and rollup rows deleted
+$result->complete;  // false when it stopped at maxBatches: call it again
+
+// Or read them first, page by page (ascending ref order).
+$after = null;
+do {
+    $page  = $retention->sourcesCreatedBefore($query, $after);
+    // ... $page->sourceRefs
+    $after = $page->next;
+} while ($after !== null);
+```
+
+- A source matches when one of its links (deleted ones included) was created before the bound; erased tombstones no
+  longer carry the source and never match again, so the erasure is **idempotent**: a re-run, or two runs at once, erase
+  only what is left (each batch locks its links before writing).
+- Call `eraseSourcesCreatedBefore()` **outside an open transaction** (each batch commits on its own; inside one it throws
+  a `LogicException`).
+- A lock conflict is a `TransientStorageFailure`: in the first batch nothing is committed (`CONFLICT_001`, retry the
+  call); after a committed batch it is a `ConcurrencyConflict` with `committed` true (`CONFLICT_002`: the earlier batches
+  stay erased, and calling again finishes the rest). See [CONCURRENCY.md](CONCURRENCY.md).
+- A system API: no access check, no event (like the eraser).
 
 ## Maintenance commands
 

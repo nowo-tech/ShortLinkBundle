@@ -81,6 +81,11 @@ registers no service, route, listener or table, whatever the configuration says;
   rollups older than their retention go, and tombstones older than the quarantine free their codes.
 - **Given** a send, **when** the host erases or exports it, **then** its clicks and rollups go (links tombstoned) or are
   listed; a tenant erasure leaves `~erased` blanked tombstones that still hold the codes and answer 404.
+- **Given** links in several tenants, **when** the host counts one kind (and state) across them, **then** it gets each
+  tenant's count and the total without querying the table itself.
+- **Given** sends older than the host's retention, **when** the host erases the sources created before the bound in
+  batches, **then** each batch commits on its own, a re-run or a concurrent run erases nothing twice, and a lock conflict
+  answers `CONFLICT_001` before any committed batch and `CONFLICT_002` after.
 - **Given** a target that now resolves to a private address, **when** the recheck runs, **then** the link is disabled
   with `recheck_refused` and events.
 
@@ -127,6 +132,8 @@ registers no service, route, listener or table, whatever the configuration says;
 | FR-GDPR-001 | Eraser: tenant (`~erased` tombstones), source, actor, export. |
 | FR-CODE-003 | Custom-code lookups limited per tenant + actor (`CustomCodeLimiterInterface`, default `RateLimiterCustomCodeLimiter`, `UnlimitedCustomCodeLimiter` when `code.custom_code_rate_limit.enabled: false`); over the limit `CodeAttemptsExceededException`, no code in the message. |
 | FR-QUOTA-002 | Quota display: `QuotaReader` returns the `QuotaUsage` (live links of a counted kind against the plan limit) for the UI; stateless. |
+| FR-USAGE-001 | Usage reader (0.7.0): `ShortLinkUsageReaderInterface::count()` counts the links of one kind and optional state in several tenants (per tenant + total, one grouped query per 500 tenants, exact tenant keys); system API, stateless. |
+| FR-RETENTION-002 | Source retention (0.7.0): `ShortLinkRetentionInterface` pages the sources with a link created before a moment (keyset, ascending ref) and erases them like `eraseSource()` in batches of 1–1000 sources per runner unit; idempotent, links locked in id order, refused inside an open transaction, `CONFLICT_001` before any committed batch and a committed `ConcurrencyConflict` (`CONFLICT_002`) after; never touches an EntityManager. |
 | FR-UI-001 | Management UI (S4, contract §11): `ShortLinkUiController` list / create / edit / disable / enable / delete / statistics / CSV behind `UiRouteLoader` (`routes/ui.php`, host prefix); `ShortLinkPages` builds UiKit list / form / show view models (`ShortLinkRow`, `DailyChart` SVG, `StatsCsv`); views `ui/list`, `ui/form`, `ui/stats` extend the UiKit page scaffolds. |
 | FR-UI-002 | UI forms are FormKit Types: `ShortLinkType` (create / edit), `ShortLinkActionType` (CSRF-only row actions, one token id per action), `ShortLinkFilterType` and `StatsRangeType` (GET, bookmarkable keys). |
 | FR-ERROR-001 | Every deliberate exception implements `ShortLinkExceptionInterface`. |

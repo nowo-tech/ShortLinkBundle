@@ -14,6 +14,20 @@
 
 ## Unreleased
 
+From **0.6.x**: `composer update nowo-tech/short-link-bundle`. No configuration, schema or behaviour change: the
+release only adds services.
+
+- **Usage counts.** Code that counts links with its own SQL over `nowo_short_link` (for example
+  `SELECT COUNT(*) … WHERE tenant_key IN (…) AND kind = ? AND deleted_at IS NULL`) can call
+  `ShortLinkUsageReaderInterface::count(new ShortLinkCountQuery($tenants, $kind))` instead; `->total` is the same
+  number, `->byTenant` splits it per tenant.
+- **Source retention.** Code that lists old sources with its own SQL (`SELECT DISTINCT source_ref … created_at < ?`) and
+  calls `eraseSource()` for each can call `ShortLinkRetentionInterface::eraseSourcesCreatedBefore(new
+  SourceRetentionQuery($tenant, $kind, $before))` instead (`->sources` is the number of sources erased), or page through
+  `sourcesCreatedBefore()` when it must do its own work per source first. Call it outside any open transaction.
+- The table name, its columns and `eraseSource()` stay as they are, so existing SQL keeps working; the ports are the
+  supported way and keep working when the table changes.
+
 ## To 0.6.0
 
 From **0.5.0**:
