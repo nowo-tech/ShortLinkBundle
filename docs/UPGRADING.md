@@ -3,6 +3,7 @@
 ## Table of contents
 
 - [Unreleased](#unreleased)
+- [To 0.7.0](#to-070)
 - [To 0.6.0](#to-060)
   - [To 0.6.0: one live link per source (UK-SL-2)](#to-060-one-live-link-per-source-uk-sl-2)
 - [To 0.5.0](#to-050)
@@ -13,6 +14,14 @@
 - [To 0.1.0](#to-010)
 
 ## Unreleased
+
+## To 0.7.0
+
+From **0.6.0**:
+
+```bash
+composer update nowo-tech/short-link-bundle
+```
 
 From **0.6.x**: `composer update nowo-tech/short-link-bundle`. No configuration, schema or behaviour change: the
 release only adds services.

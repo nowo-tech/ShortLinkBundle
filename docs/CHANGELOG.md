@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ## Table of contents
 
 - [[Unreleased]](#unreleased)
+- [[0.7.0] - 2026-11-21](#070---2026-11-21)
 - [[0.6.0] - 2026-11-19](#060---2026-11-19)
 - [[0.5.0] - 2026-11-19](#050---2026-11-19)
 - [[0.4.0] - 2026-11-18](#040---2026-11-18)
@@ -16,6 +17,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - [[0.1.0] - 2026-11-12](#010---2026-11-12)
 
 ## [Unreleased]
+
+## [0.7.0] - 2026-11-21
 
 ### Added
 
@@ -28,6 +31,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Changed
 
 - Demo (Symfony 8 and Symfony 7 apps): runs in UiKit's demo platform shell (`nowo-tech/ui-kit-bundle` ^2.60); the demo's own masthead is gone and the management pages render inside the shell. Demo only, no bundle change.
+
+[0.7.0]: https://github.com/nowo-tech/ShortLinkBundle/releases/tag/v0.7.0
 
 ## [0.6.0] - 2026-11-19
 
@@ -291,5 +296,5 @@ First release: slices S1 (domain + persistence), S2 (public redirect) and S3 (st
 - Docs set, Spec Kit baseline, Flex recipe, demos `symfony7` (Symfony 7.4) and `symfony8` (Symfony 8.1) on FrankenPHP
   worker mode with MySQL, UiKit's admin layout and default theme (REQ-DEMO-014) and FormKit (REQ-DEMO-015).
 
-[Unreleased]: https://github.com/nowo-tech/ShortLinkBundle/compare/v0.6.0...HEAD
+[Unreleased]: https://github.com/nowo-tech/ShortLinkBundle/compare/v0.7.0...HEAD
 [0.1.0]: https://github.com/nowo-tech/ShortLinkBundle/releases/tag/v0.1.0
