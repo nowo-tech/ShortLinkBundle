@@ -141,6 +141,9 @@ $counts = $usage->count(new ShortLinkCountQuery([$orgA, $orgB], LinkKind::manual
 $counts->total;              // links that are not deleted (active, disabled and expired ones) in both tenants
 $counts->byTenant;           // ['<orgA>' => 12, '<orgB>' => 0]: every tenant asked for, zeros included
 $counts->forTenant($orgA);   // 12
+foreach ($counts->perTenant() as $tenant => $links) {
+    // $tenant is always the exact tenant key as a string, also for a key such as "123"
+}
 
 $usage->count(new ShortLinkCountQuery([$orgA], LinkKind::manual(), ShortLinkState::Active))->total; // live, not expired
 ```
@@ -148,6 +151,10 @@ $usage->count(new ShortLinkCountQuery([$orgA], LinkKind::manual(), ShortLinkStat
 States: `null` (default) = not deleted; `Active` = enabled and not expired; `Disabled`; `Expired` (enabled, past
 `expires_at`); `Deleted` = tombstones still in the tenant. `Active` and `Expired` are judged against the clock at the
 call. A query names at most 10 000 tenants (deduplicated by exact key) and runs one grouped query per 500.
+
+`byTenant` is a PHP array, so a tenant key that is a decimal integer (`"123"`) is an `int` key there: read a tenant
+with `forTenant()`, and iterate `perTenant()` (string keys, since 0.7.1) instead of `byTenant` under `strict_types`
+when the key goes on to a `string` parameter (`new TenantKey($tenant)`).
 
 ## Source retention
 
@@ -165,7 +172,7 @@ $query = new SourceRetentionQuery($tenant, LinkKind::email(), new \DateTimeImmut
 $result = $retention->eraseSourcesCreatedBefore($query);
 $result->sources;   // sources erased by this call
 $result->rows;      // links blanked + click and rollup rows deleted
-$result->complete;  // false when it stopped at maxBatches: call it again
+$result->complete;  // false when it stopped at maxBatches or another run erased the listed sources first: call it again
 
 // Or read them first, page by page (ascending ref order).
 $after = null;
