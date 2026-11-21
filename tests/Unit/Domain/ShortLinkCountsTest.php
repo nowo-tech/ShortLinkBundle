@@ -23,8 +23,11 @@ final class ShortLinkCountsTest extends TestCase
 {
     public function testNumericTenantKeysStayStringsThroughPerTenant(): void
     {
-        // Built from string keys, as the usage reader does (array_fill_keys over the tenant keys).
-        $counts = new ShortLinkCounts(array_combine(['123', 'org-a', '0123', '-1'], [2, 1, 4, 0]));
+        // Built from string keys, as the usage reader does (array_fill_keys over the tenant keys): the documented
+        // array<string, int> shape, which PHP stores with int keys for "123" and "-1".
+        /** @var array<string, int> $byTenant */
+        $byTenant = array_combine(['123', 'org-a', '0123', '-1'], [2, 1, 4, 0]);
+        $counts   = new ShortLinkCounts($byTenant);
 
         self::assertSame(7, $counts->total);
         self::assertSame([123, 'org-a', '0123', -1], array_keys($counts->byTenant), 'PHP turns decimal-integer keys into ints');
