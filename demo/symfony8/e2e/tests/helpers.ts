@@ -4,18 +4,9 @@ import { expect, type APIRequestContext, type Page } from '@playwright/test';
 export const BROWSER_UA =
   'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36';
 
-/** Wait until the Symfony Web Debug Toolbar has finished loading (optional outside dev). */
+/** Hide the Symfony Web Debug Toolbar (dev chrome) so it never appears in a capture. */
 export async function waitForWebProfiler(page: Page): Promise<void> {
-  await page.waitForSelector('.sf-toolbar', { state: 'visible', timeout: 20000 }).catch(() => undefined);
-  await page
-    .waitForFunction(
-      () => {
-        const bar = document.querySelector('.sf-toolbar') as HTMLElement | null;
-        return !bar || bar.offsetParent === null || !!document.querySelector('.sf-toolbar-block');
-      },
-      { timeout: 25000, polling: 250 },
-    )
-    .catch(() => undefined);
+  await page.addStyleTag({ content: '.sf-toolbar,.sf-minitoolbar,[id^="sfwdt"]{display:none!important}' });
 }
 
 /** A code no earlier run used (custom codes stay taken for a year after a delete). */
@@ -32,8 +23,8 @@ export async function createLink(page: Page, target: string, title: string, code
   }
   await page.getByLabel('Title').fill(title);
   await page.getByRole('button', { name: 'New short link' }).click();
-  await expect(page.getByRole('alert').filter({ hasText: 'created' })).toBeVisible();
-  const flash = (await page.getByRole('alert').filter({ hasText: 'created' }).first().textContent()) ?? '';
+  await expect(page.getByTestId('demo-platform-flashes').locator('.nowo-ui-flash').filter({ hasText: 'created' })).toBeVisible();
+  const flash = (await page.getByTestId('demo-platform-flashes').locator('.nowo-ui-flash').filter({ hasText: 'created' }).first().textContent()) ?? '';
   const match = flash.match(/Short link (\S+) created\./);
   expect(match).not.toBeNull();
   return match![1];

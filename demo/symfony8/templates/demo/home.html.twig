@@ -3,21 +3,18 @@
 {% block title %}Overview{% endblock %}
 
 {% block nowo_ui_page_header %}
+    {% set _toolbar %}<a class="nowo-ui-btn nowo-ui-btn--primary" href="{{ path('nowo_short_link_index') }}" data-testid="demo-open-ui">Management pages</a>{% endset %}
     {{ include(nowo_ui_partial('page_header'), {
         title: 'Short Link Bundle',
         intro: 'Per-tenant short links with a public stateless redirect, a target guard, a privacy-preserving click log and a UiKit + FormKit management UI.',
+        toolbar: _toolbar,
     }) }}
 {% endblock %}
 
 {% block body %}
-    <section class="nowo-ui-card" data-testid="demo-status">
-        <div class="nowo-ui-card__body">
-            <p>
-                <span class="nowo-ui-badge nowo-ui-badge--info">S4</span>
-                Create short links in the <a href="{{ path('nowo_short_link_index') }}" data-testid="demo-open-ui">management pages</a>,
-                open them through <code class="nowo-ui-code">{{ redirect_prefix }}/{code}</code> and follow their clicks on the
-                statistics page (daily chart, referrer sites, countries, browser families, CSV export).
-            </p>
+    {% embed '@NowoUiKit/demo_platform/_section.html.twig' with {title: 'Installation status', intro: 'Create short links in the management pages, open them through the redirect path and follow their clicks on the statistics page (daily chart, referrer sites, countries, browser families, CSV export).', kind: 'detail', testid: 'demo-status', redirect_prefix: redirect_prefix, ui_prefix: ui_prefix, ui_enabled: ui_enabled, database: database, worker: worker} %}
+        {% block section_actions %}<span class="nowo-ui-badge nowo-ui-badge--info">S4</span>{% endblock %}
+        {% block section_body %}
             <table class="nowo-ui-data-table">
                 <tbody>
                     <tr><th scope="row">Bundle</th><td><code class="nowo-ui-code">Nowo\ShortLinkBundle\NowoShortLinkBundle</code> registered</td></tr>
@@ -27,6 +24,6 @@
                     <tr><th scope="row">FrankenPHP</th><td>{{ worker ? 'worker mode (kernel kept alive, not reset)' : 'classic mode' }}</td></tr>
                 </tbody>
             </table>
-        </div>
-    </section>
+        {% endblock %}
+    {% endembed %}
 {% endblock %}

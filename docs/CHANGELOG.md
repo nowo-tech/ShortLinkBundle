@@ -17,6 +17,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Changed
+
+- Demo (Symfony 8 and Symfony 7 apps): runs in UiKit's demo platform shell (`nowo-tech/ui-kit-bundle` ^2.60); the demo's own masthead is gone and the management pages render inside the shell. Demo only, no bundle change.
+
 ## [0.6.0] - 2026-11-19
 
 ### Added

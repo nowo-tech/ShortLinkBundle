@@ -46,13 +46,13 @@ test.describe('Short Link demo', () => {
     const row = page.locator('tr', { has: page.getByTestId(`short-link-state-${code}`) });
 
     await row.getByRole('button', { name: 'Disable' }).click();
-    await expect(page.getByRole('alert').filter({ hasText: 'Short link disabled.' })).toBeVisible();
+    await expect(page.getByTestId('demo-platform-flashes').locator('.nowo-ui-flash').filter({ hasText: 'Short link disabled.' })).toBeVisible();
     await expect(page.getByTestId(`short-link-state-${code}`)).toHaveText('Disabled');
     expect((await follow(request, code)).status()).toBe(404);
 
     await page.locator('tr', { has: page.getByTestId(`short-link-state-${code}`) }).getByRole('button', { name: 'Delete' }).click();
     await page.getByRole('dialog').getByRole('button', { name: 'Delete' }).click();
-    await expect(page.getByRole('alert').filter({ hasText: 'Short link deleted.' })).toBeVisible();
+    await expect(page.getByTestId('demo-platform-flashes').locator('.nowo-ui-flash').filter({ hasText: 'Short link deleted.' })).toBeVisible();
     await expect(page.getByTestId(`short-link-state-${code}`)).toHaveCount(0);
     expect((await follow(request, code)).status()).toBe(404);
   });
