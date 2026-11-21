@@ -31,6 +31,7 @@ between requests (REQ-RUNTIME-002).
 | Request-dependent reads | ✅ | Access (token storage), tenant context and short-URL base (request context) are read on every call |
 | Redirect | ✅ | `RedirectController`, `RedirectResolver`, `ClickRecorder`, `ClickTerminateListener` are readonly; the click payload travels on the request attribute `_nowo_short_link_click` (removed when recorded) or in a Messenger message; limiters are created per call from their factories |
 | Worker tests | ✅ | `WorkerRequestLoopTest` (2,000 requests) and the functional `testOneKeptAliveKernelServesManyCallsWithoutBleedOrGrowth` (300 creates alternating two tenants, no cross-tenant read, memory flat) on both host kinds; `RedirectTest::testOneKeptAliveKernelServesThousandsOfRedirectsWithoutBleedOrGrowth` (5,000 redirects over two tenants and three states, terminate mode, memory flat, in-kernel p95 < 20 ms) |
+| Usage and retention ports (0.7.0) | ✅ | `DbalUsageReader` and `DbalSourceRetention` are readonly, keep nothing between calls (the batch loop's counters are locals) and leave no transaction open (each batch is one runner unit; the erasure refuses an open transaction). `UsageRetentionTest::testOneKeptAliveKernelCountsManyTenantsWithoutBleedOrGrowth` (500 counts alternating two tenants, memory flat) on both host kinds |
 | Boot-time caches | ✅ | `NowoShortLinkBundle::getContainerExtension()` keeps its extension (Symfony's own pattern, `@igor-ignore`) |
 | Worker test | ✅ | `tests/Integration/Worker/WorkerRequestLoopTest.php` |
 

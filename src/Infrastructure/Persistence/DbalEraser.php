@@ -35,7 +35,7 @@ use function substr;
 final readonly class DbalEraser implements ShortLinkEraserInterface
 {
     /** Columns blanked on an erased tombstone (the code, kind, id and dates stay: the code stays taken). */
-    private const BLANK = "target_url = '', target_host = '', title = NULL, source_ref = NULL, source_label = NULL, source_position = NULL, source_slot = NULL, metadata = NULL, active = ?, disabled_reason = NULL, created_by = NULL, updated_by = NULL, updated_at = ?";
+    public const BLANK = "target_url = '', target_host = '', title = NULL, source_ref = NULL, source_label = NULL, source_position = NULL, source_slot = NULL, metadata = NULL, active = ?, disabled_reason = NULL, created_by = NULL, updated_by = NULL, updated_at = ?";
 
     /** Tenant key of erased tombstones (outside the TenantKey pattern on purpose). */
     public const ERASED_TENANT = '~erased';

@@ -17,6 +17,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- `Nowo\ShortLinkBundle\Domain\Service\ShortLinkUsageReaderInterface::count(ShortLinkCountQuery): ShortLinkCounts`: counts the links of one kind in several tenants, optionally in one state (`null` = not deleted: active, disabled and expired; `Active`, `Disabled`, `Expired`, `Deleted`), with the total and the count of every tenant asked for (zeros included). One grouped query per 500 tenants; tenant keys compare exactly. A system API (no access check) for billing and plan dashboards, so hosts no longer query the `nowo_short_link` table themselves (DDD-host checklist B7).
+- `Nowo\ShortLinkBundle\Domain\Service\ShortLinkRetentionInterface` (source retention, B7):
+  - `sourcesCreatedBefore(SourceRetentionQuery, ?string $after = null): SourceRefPage`: the sources of a tenant and kind with a link created before a moment, keyset-paged in ascending ref order (deleted links count, erased tombstones do not);
+  - `eraseSourcesCreatedBefore(SourceRetentionQuery, ?int $maxBatches = null): SourceErasureResult`: erases those sources like `eraseSource()`, `batchSize` sources (1 to 1000, default 500) per transaction. Idempotent (an erased source no longer matches), its links are locked in id order before each batch writes (a concurrent run waits, then skips them), refused inside an open transaction, and it never touches an EntityManager. A lock conflict in the first batch is a `TransientStorageFailure` (`CONFLICT_001`, nothing committed); after a committed batch it is a `ConcurrencyConflict` with `committed` true (`CONFLICT_002`) (REQ-RUNTIME-003 rule 6).
+- Value objects `ShortLinkCountQuery`, `ShortLinkCounts`, `SourceRetentionQuery`, `SourceRefPage` and `SourceErasureResult` (`Nowo\ShortLinkBundle\Domain\Model`). Both services are public aliases, available on standard and DDD hosts, with no configuration and no schema change.
+
 ### Changed
 
 - Demo (Symfony 8 and Symfony 7 apps): runs in UiKit's demo platform shell (`nowo-tech/ui-kit-bundle` ^2.60); the demo's own masthead is gone and the management pages render inside the shell. Demo only, no bundle change.

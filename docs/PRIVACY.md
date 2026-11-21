@@ -26,7 +26,9 @@
 
 E-mail-kind links usually reach one recipient, so their rollup rows remain personal data for as long as they are kept.
 Either set `click_log.rollup.retention` (e.g. `P13M`), or erase each send with `eraseSource()` when the host's own
-retention for the send ends; `exportSource()` includes the rollup rows.
+retention for the send ends (or every send older than the retention at once with
+`ShortLinkRetentionInterface::eraseSourcesCreatedBefore()`, see [USAGE.md](USAGE.md#source-retention));
+`exportSource()` includes the rollup rows.
 
 ## Erasure and export
 

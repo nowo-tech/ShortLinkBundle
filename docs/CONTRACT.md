@@ -206,6 +206,17 @@ interface ShortLinkEraserInterface   // GDPR and tenant lifecycle
     public function anonymiseActor(ActorRef $actor): int;                       // created_by / updated_by → null
     public function exportSource(TenantKey $tenant, LinkKind $kind, string $sourceRef): array; // personal-data export rows
 }
+
+interface ShortLinkUsageReaderInterface   // 0.7.0, system API (no access check)
+{
+    public function count(ShortLinkCountQuery $query): ShortLinkCounts;   // links of one kind (and state) per tenant + total
+}
+
+interface ShortLinkRetentionInterface     // 0.7.0, system API (no access check)
+{
+    public function sourcesCreatedBefore(SourceRetentionQuery $query, ?string $after = null): SourceRefPage;   // keyset pages, ascending ref
+    public function eraseSourcesCreatedBefore(SourceRetentionQuery $query, ?int $maxBatches = null): SourceErasureResult; // batches of eraseSource(), idempotent
+}
 ```
 
 Every method takes the tenant explicitly and every query filters on it (another tenant's id answers as missing). The UI
