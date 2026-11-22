@@ -45,6 +45,7 @@
         "doctrine/orm": "^3.7",
         "doctrine/persistence": "^3.4 || ^4.0",
         "nowo-tech/form-kit-bundle": "^2.22",
+        "nowo-tech/migrations-kit-contracts": "^1.0",
         "nowo-tech/outbound-url-guard-bundle": "^1.5",
         "nowo-tech/transaction-contract": "^1.0",
         "nowo-tech/transaction-doctrine": "^1.6",
@@ -73,6 +74,7 @@
     "require-dev": {
         "friendsofphp/php-cs-fixer": "^3.0",
         "igor-php/igor-php": "^0.10.1",
+        "nowo-tech/migrations-kit-bundle": "^2.8",
         "nowo-tech/phpstan-frankenphp": "^1.3",
         "phpstan/extension-installer": "^1.4",
         "phpstan/phpstan": "^2.0",
@@ -91,6 +93,7 @@
         "symfony/yaml": "^7.4 || ^8.0"
     },
     "suggest": {
+        "nowo-tech/migrations-kit-bundle": "Host-side REQ-SEC-006 gate: nowo:migrations:check-key-collations asserts the declared identity columns",
         "symfony/flex": "For automatic recipe installation",
         "symfony/messenger": "Click write mode `messenger` (click_log.write)",
         "symfony/lock": "Exact plan limits under concurrent creates (quota)"

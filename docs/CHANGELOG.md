@@ -19,6 +19,27 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- **The bundle declares its own identity / access-key columns (REQ-SEC-006).** New service
+  `Nowo\ShortLinkBundle\Infrastructure\Doctrine\ShortLinkExactKeyColumns`, an implementation of
+  `Nowo\MigrationsKitContracts\Collation\ExactKeyColumnsInterface` (new runtime dependency
+  `nowo-tech/migrations-kit-contracts`, interfaces only). It names the eleven columns compared for equality — on
+  `nowo_short_link`: `id`, `tenant_key`, `code`, `source_ref`, `created_by`, `updated_by`; on `nowo_short_link_click`:
+  `link_id`, `tenant_key`; on `nowo_short_link_click_daily`: `link_id`, `tenant_key`, `value` — with the configured
+  `doctrine.table_prefix` applied, so a prefixed host is checked under its real table names. A host that installs
+  `nowo-tech/migrations-kit-bundle` gets them in `nowo:migrations:check-key-collations` with no registration (the
+  service is autoconfigured), and the same declaration exempts those columns from the uniform collation gate: the
+  `collation_check.ignore_tables` / `ignore_columns` entries a host wrote for them can go (see
+  [UPGRADING.md](UPGRADING.md)). When `doctrine.connection` gives the click tables their own connection, their five
+  columns are declared inactive with that condition and reported as skipped instead of missing.
+- The bundle's own CI now runs that gate: `ExactKeyColumnsGateTest` (database suite, MySQL 8.4 and MariaDB 11.4)
+  extends MigrationsKit's `ExactKeyColumnsTestCase` and asserts every declared column of a freshly created schema is
+  binary NO PAD, through a host with a table prefix. A new identity column left on the server default collation
+  (`utf8mb4_0900_ai_ci`: case-, accent-insensitive and PAD SPACE) now fails this bundle's pipeline, not a host's.
+  `ClickTablesSchemaListener::CLICK_BINARY_COLUMNS` / `DAILY_BINARY_COLUMNS` make the schema and the declaration one
+  list, so they cannot drift apart. No schema, configuration or behaviour change.
+
 ## [0.7.1] - 2026-11-21
 
 ### Fixed

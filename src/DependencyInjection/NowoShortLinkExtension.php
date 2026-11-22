@@ -50,6 +50,7 @@ use Nowo\ShortLinkBundle\Infrastructure\Console\PurgeCommand;
 use Nowo\ShortLinkBundle\Infrastructure\Console\RecheckCommand;
 use Nowo\ShortLinkBundle\Infrastructure\Console\RollupCommand;
 use Nowo\ShortLinkBundle\Infrastructure\Doctrine\ClickTablesSchemaListener;
+use Nowo\ShortLinkBundle\Infrastructure\Doctrine\ShortLinkExactKeyColumns;
 use Nowo\ShortLinkBundle\Infrastructure\Doctrine\ShortLinkMetadataListener;
 use Nowo\ShortLinkBundle\Infrastructure\Guard\OutboundUrlGuardBridge;
 use Nowo\ShortLinkBundle\Infrastructure\Http\ClickTerminateListener;
@@ -265,6 +266,11 @@ final class NowoShortLinkExtension extends Extension implements PrependExtension
                 ->setArguments([$prefix])
                 ->addTag('doctrine.event_listener', ['event' => 'postGenerateSchema']);
         }
+        // REQ-SEC-006: the identity / access-key columns, for nowo:migrations:check-key-collations. Autoconfigured, so
+        // MigrationsKit tags it when installed and a host registers nothing; harmless when it is not installed.
+        $container->register(ShortLinkExactKeyColumns::class, ShortLinkExactKeyColumns::class)
+            ->setArguments([$prefix, $config['doctrine']['connection'] === null])
+            ->setAutoconfigured(true);
         $container->register(DbalShortLinkStore::class, DbalShortLinkStore::class)
             ->setArguments([new Reference('doctrine'), new Reference(AfterCommitQueue::class), $config['doctrine']['entity_manager'], $prefix, $logger, $config['quota']['lock_timeout']]);
         $container->setAlias(ShortLinkStoreInterface::class, DbalShortLinkStore::class);

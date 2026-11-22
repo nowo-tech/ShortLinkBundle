@@ -3,6 +3,7 @@
 ## Table of contents
 
 - [Unreleased](#unreleased)
+  - [Identity-column declaration (REQ-SEC-006): drop the collation-gate exemptions](#identity-column-declaration-req-sec-006-drop-the-collation-gate-exemptions)
 - [To 0.7.1](#to-071)
 - [To 0.7.0](#to-070)
 - [To 0.6.0](#to-060)
@@ -15,6 +16,30 @@
 - [To 0.1.0](#to-010)
 
 ## Unreleased
+
+### Identity-column declaration (REQ-SEC-006): drop the collation-gate exemptions
+
+`composer update nowo-tech/short-link-bundle` pulls one new runtime dependency (`nowo-tech/migrations-kit-contracts`,
+interfaces and value objects only). No schema, configuration or behaviour change.
+
+The bundle now declares its identity / access-key columns itself, so a host no longer excuses them by hand:
+
+- With `nowo-tech/migrations-kit-bundle` installed, `nowo:migrations:check-key-collations` checks the eleven columns
+  (`nowo_short_link.id`, `.tenant_key`, `.code`, `.source_ref`, `.created_by`, `.updated_by`,
+  `nowo_short_link_click.link_id`, `.tenant_key`, `nowo_short_link_click_daily.link_id`, `.tenant_key`, `.value`,
+  each with your `doctrine.table_prefix`) against the live schema. Nothing to register: the service is autoconfigured.
+- **Delete the entries you wrote for these tables** in `nowo_migrations_kit.collation_check.ignore_tables` /
+  `ignore_columns` (`nowo_short_link`, `nowo_short_link_click`, `nowo_short_link_click_daily`,
+  `nowo_short_link_rollup_day`). The declaration already exempts the declared columns from the uniform collation gate,
+  so the entries add nothing today and outlive the declaration tomorrow — while they are there, these columns are in
+  neither gate. `nowo_short_link_rollup_day` needs no entry at all: it has no text column.
+- What changes once they are gone: the key gate watches the eleven key columns (binary NO PAD, `ALTER TABLE` printed
+  when one is not), and the uniform gate watches the *other* columns of those tables (`target_url`, `target_host`,
+  `kind`, `dimension`, `ip_prefix`, …). Those carry no explicit collation: they inherit your database default, so they
+  pass when that default is your `expected_collation`. If your database default is something else, convert them (or
+  keep a narrow `ignore_columns` entry for them, never a whole-table one).
+- A host that keeps the click tables on their own connection (`nowo_short_link.doctrine.connection`) sees those five
+  columns as `skipped` with that condition: run the command against that connection to cover them.
 
 ## To 0.7.1
 
