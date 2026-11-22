@@ -16,6 +16,7 @@ use Nowo\ShortLinkBundle\Domain\Port\TargetDenylistInterface;
 use Nowo\ShortLinkBundle\Domain\Port\TargetGuardInterface;
 use Nowo\ShortLinkBundle\Domain\Service\ShortLinkManagerInterface;
 use Nowo\ShortLinkBundle\Infrastructure\Doctrine\ClickTablesSchemaListener;
+use Nowo\ShortLinkBundle\Infrastructure\Doctrine\ShortLinkExactKeyColumns;
 use Nowo\ShortLinkBundle\Infrastructure\Http\RedirectController;
 use Nowo\ShortLinkBundle\Infrastructure\Http\ShortLinkConflictListener;
 use Nowo\ShortLinkBundle\Infrastructure\Messenger\RecordShortLinkClickHandler;
@@ -45,6 +46,9 @@ final class ExtensionTest extends TestCase
         self::assertTrue($container->getAlias(ShortLinkManagerInterface::class)->isPublic());
         self::assertSame(ChainTargetGuard::class, (string) $container->getAlias(TargetGuardInterface::class));
         self::assertTrue($container->hasDefinition(ClickTablesSchemaListener::class));
+        $keys = $container->getDefinition(ShortLinkExactKeyColumns::class);
+        self::assertSame(['', true], $keys->getArguments(), 'REQ-SEC-006: no prefix, click tables on the link connection');
+        self::assertTrue($keys->isAutoconfigured(), 'MigrationsKit tags it by autoconfiguration; a host registers nothing');
         self::assertTrue($this->bridge($container)->getArgument(1), 'auto guard resolves DNS on save');
     }
 
@@ -68,6 +72,7 @@ final class ExtensionTest extends TestCase
         self::assertSame('app.quota', (string) $container->getAlias(ShortLinkQuotaInterface::class));
         self::assertSame('app.denylist', (string) $container->getAlias(TargetDenylistInterface::class));
         self::assertFalse($container->hasDefinition(ClickTablesSchemaListener::class), 'a separate click connection: the host creates those tables');
+        self::assertSame(['app_', false], $container->getDefinition(ShortLinkExactKeyColumns::class)->getArguments(), 'the declaration carries the prefix and skips the click tables of another connection');
         self::assertFalse($this->bridge($container)->getArgument(1), 'basic guard never resolves DNS');
         self::assertNull($container->getDefinition(CodeGenerator::class)->getArgument(1));
     }

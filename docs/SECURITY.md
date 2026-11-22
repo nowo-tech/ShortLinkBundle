@@ -100,6 +100,14 @@ From contract §9. Each threat names the control and the slice that ships it.
   characters; `anonymiseActor()` re-checks candidates with `===` and updates by primary key; identifier columns use
   NO PAD binary collations (`utf8mb4_0900_bin` / `utf8mb4_nopad_bin`; `utf8mb4_bin` only on MySQL 5.7). Test emulates a
   PAD collation (MySQL `utf8mb4_bin`, SQLite `RTRIM`).
+- **Identity-column declaration (REQ-SEC-006, unreleased):** `ShortLinkExactKeyColumns` declares the eleven columns
+  compared for equality (link `id`, `tenant_key`, `code`, `source_ref`, `created_by`, `updated_by`; click `link_id`,
+  `tenant_key`; daily `link_id`, `tenant_key`, `value`) under the configured table prefix, so a host's
+  `nowo:migrations:check-key-collations` asserts their collation on a schema this bundle did not create (an old
+  migration, a host-built schema) and no longer has to excuse the tables by hand. Columns that are *not* exact keys
+  (`target_host`, `kind`, `dimension`, `country`, the click attributes) are deliberately left out: they are filtered
+  and displayed, never used as a key. The declaration is checked in this bundle's own CI
+  (`ExactKeyColumnsGateTest`, MySQL 8.4 + MariaDB 11.4).
 - **`target.allow_own_host` (Beacon re-audit C4, unreleased):** opt-in; when on, a target whose
   `scheme://host:port` equals the origin of `public_base_url` or an exact `own_hosts` entry on its default port skips
   OutboundUrlGuard and the denylist (intended for intranet / `localhost` deployments linking to their own pages). The
