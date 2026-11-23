@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ## Table of contents
 
 - [[Unreleased]](#unreleased)
+- [[0.8.0] - 2026-11-23](#080---2026-11-23)
 - [[0.7.1] - 2026-11-21](#071---2026-11-21)
 - [[0.7.0] - 2026-11-21](#070---2026-11-21)
 - [[0.6.0] - 2026-11-19](#060---2026-11-19)
@@ -18,6 +19,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - [[0.1.0] - 2026-11-12](#010---2026-11-12)
 
 ## [Unreleased]
+
+## [0.8.0] - 2026-11-23
 
 ### Added
 
@@ -39,6 +42,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   (`utf8mb4_0900_ai_ci`: case-, accent-insensitive and PAD SPACE) now fails this bundle's pipeline, not a host's.
   `ClickTablesSchemaListener::CLICK_BINARY_COLUMNS` / `DAILY_BINARY_COLUMNS` make the schema and the declaration one
   list, so they cannot drift apart. No schema, configuration or behaviour change.
+
+[0.8.0]: https://github.com/nowo-tech/ShortLinkBundle/releases/tag/v0.8.0
 
 ## [0.7.1] - 2026-11-21
 
@@ -327,5 +332,5 @@ First release: slices S1 (domain + persistence), S2 (public redirect) and S3 (st
 - Docs set, Spec Kit baseline, Flex recipe, demos `symfony7` (Symfony 7.4) and `symfony8` (Symfony 8.1) on FrankenPHP
   worker mode with MySQL, UiKit's admin layout and default theme (REQ-DEMO-014) and FormKit (REQ-DEMO-015).
 
-[Unreleased]: https://github.com/nowo-tech/ShortLinkBundle/compare/v0.7.1...HEAD
+[Unreleased]: https://github.com/nowo-tech/ShortLinkBundle/compare/v0.8.0...HEAD
 [0.1.0]: https://github.com/nowo-tech/ShortLinkBundle/releases/tag/v0.1.0
