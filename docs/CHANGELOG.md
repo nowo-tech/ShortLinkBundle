@@ -20,6 +20,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+Preparation of **1.0.0** (contract §13, Audit row). No code, configuration, schema or behaviour change from 0.8.0;
+see [UPGRADING.md](UPGRADING.md#to-100) for what 1.0.0 commits to.
+
+### Documentation
+
+- Spec Kit baseline (REQ-SPECKIT-001 / 003): `code-inventory.md` maps `ShortLinkExactKeyColumns` (new `FR-DB-003`),
+  162 / 162 files under `src/`, and its total row matches the audit command again (it still said 149); `spec.md`
+  states the mapped count (`SC-002`) and the NO PAD collations of `FR-DB-001`.
+- `docs/SECURITY.md`: controls that were still marked "Unreleased" name the release that shipped them (0.4.0, 0.5.0,
+  0.8.0).
+- `docs/FRANKENPHP-WORKER-AUDIT.md`: re-checked on 0.8.0; the identity-column declaration is stateless.
+- `docs/UPGRADING.md`: "To 1.0.0" lists the public API that becomes a semver commitment and what stays internal.
+
 ## [0.8.0] - 2026-11-23
 
 ### Added
