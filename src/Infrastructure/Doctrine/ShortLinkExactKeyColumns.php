@@ -26,8 +26,10 @@ use Nowo\MigrationsKitContracts\Collation\ExactKeyColumnsInterface;
  * Stateless and free of per-request state (REQ-RUNTIME-002): the list is computed on each call from constructor
  * arguments only.
  *
- * @internal Discovered through ExactKeyColumnsInterface; the class, its constants and its constructor are not part of
- *           the public API and may change in any minor.
+ * Hosts reach it only through {@see ExactKeyColumnsInterface} discovery: the class, its constants and its constructor
+ * are not part of the public API and may change in any minor.
+ *
+ * @internal
  *
  * @author Héctor Franco Aceituno <hectorfranco@nowo.tech>
  * @copyright 2026 Nowo.tech
