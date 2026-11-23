@@ -63,7 +63,8 @@ Coming from an older 0.x release, apply the sections below in order first (the s
 
 **Not covered** (may change in any minor): classes and interfaces marked `@internal` (the DBAL store and readers,
 `ShortLinkStoreInterface`, `ClickStoreInterface`, `ShortUrlBuilderInterface`, the Doctrine listeners, `ShortLinkRecord`,
-`ShortLinkPages`), the markup and CSS classes inside the templates, log messages, and the
+`ShortLinkPages`, `ShortLinkExactKeyColumns` and its constants; the declared columns themselves are covered under
+**Database**), the markup and CSS classes inside the templates, log messages, and the
 infrastructure services' constructors.
 
 ## To 0.8.0

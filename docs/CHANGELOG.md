@@ -23,6 +23,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 Preparation of **1.0.0** (contract §13, Audit row). No code, configuration, schema or behaviour change from 0.8.0;
 see [UPGRADING.md](UPGRADING.md#to-100) for what 1.0.0 commits to.
 
+### Changed
+
+- `ShortLinkExactKeyColumns` is marked `@internal`: hosts reach it only through MigrationsKit's
+  `ExactKeyColumnsInterface` discovery, so its class constants are not part of the 1.0 API (docblock only, no
+  behaviour change).
+
 ### Documentation
 
 - Spec Kit baseline (REQ-SPECKIT-001 / 003): `code-inventory.md` maps `ShortLinkExactKeyColumns` (new `FR-DB-003`),
