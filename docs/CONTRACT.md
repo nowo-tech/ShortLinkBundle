@@ -3,6 +3,9 @@
 Status 2026-11-12: **v1.0.** The owner answered Q-O1 to Q-O15 (§15) and Symfony Beacon answered Q-B1 to Q-B13 (§16);
 the answers are recorded in §17. The slices of §13 build the bundle; `docs/ROADMAP.md` tracks them.
 
+Release status 2026-11-23: slices S0 to S5 are released (0.1.0 to 0.3.0); later minors up to **0.8.0**. 1.0.0 waits for
+the **Audit** row of §13 (REQ audit at 100 %, REQ-SEC-004 audit of the candidate, owner OK); see `docs/ROADMAP.md`.
+
 - Source: Beacon spec `230-short-links-and-email-tracking` (Symfony Beacon, private)
   Block A (FR-001 to FR-003, SC-002, SC-003 redirect half, SC-004), task T002, owner decision **D-20261112-16**
   (`docs/DECISIONS.md`: public short links per organization, targets through OutboundUrlGuard, plan module with a
@@ -663,7 +666,7 @@ Every slice is one PR on the new repo (after Q-O1), green `make release-check` a
 | ARCH-001, RUNTIME-001, RUNTIME-002, PHP-001, PKG-001..004, SF-001..006, DI-001, ORM-001, ORM-002, OBS-001, PERF-001, BC-001, SEC-001..005, CS-001..008, MAKE-001..004, 006..010, TEST-001..003, 005..008, 010, 011, CI-001..003, REL-001..003, GIT-001, GIT-002, DOC-001, DOC-002, DEMO-001..015, ENV-001, GITIGNORE-001..003, DOCS-001..005, 008..019, TWIG-001..005, UI-001..003, I18N-001..003, SPECKIT-001..003, RECIPE-001, IDE-001..006, GH-001..008 | Applies |
 | MSG-001 | Applies (`messenger` write mode, async purge message) |
 | CFG-001, CFG-002 | N/A: single configuration, tenant variation via ports |
-| ASSETS-001..004, UX-001, TEST-009 | N/A unless the copy button needs bundle JS (§11; decided in S0) |
+| ASSETS-001..004, UX-001, TEST-009 | N/A: the bundle ships no JS; the copy button uses UiKit's `data-nowo-ui-clipboard` (decided in S0) |
 | TEST-004, MAKE-005, GH-009 | N/A: no Python, no PoC, docs are Markdown |
 | GH-010, GH-011 | Optional maintainer tooling; follow the template bundle |
 
