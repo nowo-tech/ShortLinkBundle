@@ -40,8 +40,11 @@ The bundle now declares its identity / access-key columns itself, so a host no l
 - **Delete the entries you wrote for these tables** in `nowo_migrations_kit.collation_check.ignore_tables` /
   `ignore_columns` (`nowo_short_link`, `nowo_short_link_click`, `nowo_short_link_click_daily`,
   `nowo_short_link_rollup_day`). The declaration already exempts the declared columns from the uniform collation gate,
-  so the entries add nothing today and outlive the declaration tomorrow — while they are there, these columns are in
-  neither gate. `nowo_short_link_rollup_day` needs no entry at all: it has no text column.
+  so the entries add nothing today and outlive the declaration tomorrow. An `ignore_tables` entry only affects the
+  uniform gate: the key gate (MigrationsKit 2.9's `ExactKeyChecker`) reads only its own `ignore_columns` and never
+  `collation_check.ignore_tables`, so the declared columns are still checked there while the entries remain; the
+  entries merely keep the table's *other* columns out of the uniform gate. `nowo_short_link_rollup_day` needs no
+  entry at all: it has no text column.
 - What changes once they are gone: the key gate watches the eleven key columns (binary NO PAD, `ALTER TABLE` printed
   when one is not), and the uniform gate watches the *other* columns of those tables (`target_url`, `target_host`,
   `kind`, `dimension`, `ip_prefix`, …). Those carry no explicit collation: they inherit your database default, so they
