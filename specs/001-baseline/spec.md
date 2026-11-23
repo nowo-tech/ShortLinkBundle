@@ -107,7 +107,7 @@ registers no service, route, listener or table, whatever the configuration says;
 | FR-CONFIG-001 | Strict tree: every key of contract §4 with its default; invalid values name the path; built-in kinds keep their defaults for flags a host entry omits. |
 | FR-CONFIG-002 | Container parameters published for host routing / firewalls. |
 | FR-WORKER-001 | One kernel kept alive serves N requests with no bleed between tenants and flat memory. |
-| FR-DB-001 | Short codes are unique and compare exactly on SQLite, MySQL (`utf8mb4_bin`), MariaDB (`utf8mb4_bin`) and PostgreSQL. |
+| FR-DB-001 | Short codes are unique and compare exactly on SQLite, MySQL (`utf8mb4_0900_bin`; `utf8mb4_bin` only on MySQL 5.7), MariaDB (`utf8mb4_nopad_bin`) and PostgreSQL. |
 | FR-I18N-001 | Seven translation catalogues with the same keys (en, es, it, fr, pt, de, nl). |
 | FR-VO-001 | Value objects of contract §3.1 validated on construction; messages name the rule, never the value. |
 | FR-PORT-001 | Ports of §3.2 are framework-free interfaces with defaults; each is a public alias hosts can replace. |
@@ -122,6 +122,7 @@ registers no service, route, listener or table, whatever the configuration says;
 | FR-QUOTA-001 | Quota on counted kinds only; exact under concurrency: count and insert under a tenant database lock (MySQL / MariaDB `GET_LOCK`, PostgreSQL advisory lock, SQLite writer serialisation), plus symfony/lock when a lock factory exists. |
 | FR-EVENT-001 | Events after the outermost commit, none on rollback, ids / VOs / target host only. |
 | FR-DB-002 | DBAL store on the entity manager's connection; never flushes the host EntityManager; XML mapping default + attribute twin; table and index prefix; binary collation on MySQL / MariaDB; click tables by schema listener. |
+| FR-DB-003 | Identity-column declaration (0.8.0, REQ-SEC-006): `ShortLinkExactKeyColumns` declares the eleven exact-key columns of the three tables under the configured table prefix to MigrationsKit's collation gate; the click-table columns are declared inactive when `doctrine.connection` puts them on another connection. Stateless. |
 | FR-URL-001 | Absolute short URLs from `public_base_url` (re-checked at runtime) or the router request context. |
 | FR-WIRING-001 | Services wired by the extension; DoctrineBundle required; symfony/lock tenant lock when a lock factory exists. |
 | FR-REDIRECT-001 | Redirect step order §7.1, headers §7.2, neutral 404 / 429, limiters, stateless route, guard without DNS, refusal event. |
@@ -143,6 +144,8 @@ registers no service, route, listener or table, whatever the configuration says;
 
 - **SC-001**: `make release-check` green; CI green (matrix, coverage 100 %, PHPStan max, CS, Rector, Igor, databases,
   demo smoke for both demos).
+- **SC-002**: [`code-inventory.md`](code-inventory.md) maps **162 / 162** files under `src/` (`find src -type f | wc -l`),
+  each to a semantic `FR-*` of this spec.
 
 ## Non-goals
 

@@ -2,9 +2,9 @@
 
 **Baseline spec**: [`spec.md`](spec.md)  
 **Package**: `nowo-tech/short-link-bundle`  
-**Last audited**: 2026-11-21 (0.7.0 unreleased; usage and source-retention ports mapped)
+**Last audited**: 2026-11-23 (0.8.0; identity-column declaration mapped, counts re-checked for the 1.0.0 candidate)
 
-Scope: every file under `src/`. Audit command: `find src -type f | wc -l` → **161**.
+Scope: every file under `src/`. Audit command: `find src -type f | wc -l` → **162**.
 
 | Source file | Spec section | Requirement IDs |
 | --- | --- | --- |
@@ -116,6 +116,7 @@ Scope: every file under `src/`. Audit command: `find src -type f | wc -l` → **
 | `src/Infrastructure/Doctrine/BinaryCollation.php` | Persistence | FR-DB-001, FR-DB-002 |
 | `src/Infrastructure/Doctrine/ClickTablesSchemaListener.php` | Statistics | FR-STATS-001 |
 | `src/Infrastructure/Doctrine/Entity/ShortLinkRecord.php` | Persistence | FR-DB-001, FR-DB-002, FR-EVENT-001 |
+| `src/Infrastructure/Doctrine/ShortLinkExactKeyColumns.php` | Persistence | FR-DB-001, FR-DB-003 |
 | `src/Infrastructure/Doctrine/ShortLinkMetadataListener.php` | Persistence | FR-DB-001, FR-DB-002, FR-EVENT-001 |
 | `src/Infrastructure/Guard/OutboundUrlGuardBridge.php` | Target guard | FR-TARGET-001, FR-GUARD-001 |
 | `src/Infrastructure/Http/ClickTerminateListener.php` | Redirect and click log | FR-REDIRECT-001, FR-CLICK-001 |
@@ -170,5 +171,5 @@ Scope: every file under `src/`. Audit command: `find src -type f | wc -l` → **
 | `src/Resources/views/ui/list.html.twig` | Management UI | FR-UI-001 |
 | `src/Resources/views/ui/stats.html.twig` | Management UI | FR-UI-001 |
 
-| Total production sources | 149 |
+| Total production sources | 162 |
 | --- | --- |

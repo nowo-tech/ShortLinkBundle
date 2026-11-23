@@ -3,6 +3,7 @@
 ## Table of contents
 
 - [Unreleased](#unreleased)
+  - [To 1.0.0](#to-100)
 - [To 0.8.0](#to-080)
   - [Identity-column declaration (REQ-SEC-006): drop the collation-gate exemptions](#identity-column-declaration-req-sec-006-drop-the-collation-gate-exemptions)
 - [To 0.7.1](#to-071)
@@ -17,6 +18,53 @@
 - [To 0.1.0](#to-010)
 
 ## Unreleased
+
+### To 1.0.0
+
+From **0.8.0**:
+
+```bash
+composer update nowo-tech/short-link-bundle
+```
+
+No code, configuration, schema or behaviour change from 0.8.0: nothing was deprecated in 0.x, so nothing is removed.
+Coming from an older 0.x release, apply the sections below in order first (the schema steps of 0.5.0, 0.6.0 and
+0.8.0, and the Twig override note of 0.3.0).
+
+**What 1.0.0 commits to (semver: no breaking change before 2.0.0).**
+
+- **PHP API:** the services `ShortLinkManagerInterface`, `ShortLinkStatsReaderInterface`, `ShortLinkEraserInterface`,
+  `ShortLinkUsageReaderInterface` and `ShortLinkRetentionInterface` (`Nowo\ShortLinkBundle\Domain\Service`), with the
+  value objects and enums of `Nowo\ShortLinkBundle\Domain\Model` they take and return.
+- **Ports a host implements or replaces** (`Nowo\ShortLinkBundle\Domain\Port`): `ShortLinkAccessInterface`,
+  `ShortLinkTenantContextInterface`, `ShortLinkQuotaInterface`, `TenantLockInterface`, `TargetGuardInterface`,
+  `TargetDenylistInterface`, `ReservedCodeProviderInterface`, `CodeBlocklistInterface`, `CustomCodeLimiterInterface`,
+  `ShortLinkIdGeneratorInterface`, `UserAgentClassifierInterface`, `ClickCountryResolverInterface`. Adding a method to
+  one of them is a major change.
+- **Events** (`Nowo\ShortLinkBundle\Domain\Event`): `ShortLinkCreatedEvent`, `ShortLinkUpdatedEvent`,
+  `ShortLinkStateChangedEvent`, `ShortLinkDeletedEvent`, `ShortLinkTargetRefusedEvent`, `ShortLinkClickedEvent`, and
+  the rule that they are dispatched after the outermost commit with ids, value objects and the target host only.
+- **Exceptions:** `ShortLinkExceptionInterface` and the classes of `Nowo\ShortLinkBundle\Domain\Exception`,
+  `Application\HostTransactionLostException`, and the 409 / 503 answers with `X-Conflict-Code` `CONFLICT_001` /
+  `CONFLICT_002` on the bundle's routes ([CONCURRENCY.md](CONCURRENCY.md)).
+- **Configuration:** the `nowo_short_link` tree of [CONFIGURATION.md](CONFIGURATION.md) (`public_base_url`,
+  `redirect`, `code`, `target`, `click_log`, `tenancy`, `access`, `quota`, `kinds`, `ui`, `doctrine`,
+  `conflict_response`), its defaults and its validation, and the published container parameters.
+- **Routes:** the route names `nowo_short_link_redirect` and `nowo_short_link_index`, `_new`, `_edit`, `_disable`,
+  `_enable`, `_delete`, `_stats`, `_stats_csv`, their paths under the configured prefixes, and the two imports
+  `routes/redirect.php` and `routes/ui.php`.
+- **Database:** the tables `nowo_short_link`, `nowo_short_link_click`, `nowo_short_link_click_daily` and
+  `nowo_short_link_rollup_day` (with `doctrine.table_prefix`), their columns, indexes and collations. A schema change
+  ships with migration SQL in this file.
+- **Console:** `nowo:short-link:rollup`, `nowo:short-link:purge`, `nowo:short-link:recheck` and their options.
+- **Templates:** the `@NowoShortLinkBundle` template paths, the Twig blocks documented in [TEMPLATES.md](TEMPLATES.md),
+  the translation domain `NowoShortLinkBundle` and its keys, and the FormKit profile `short_link`.
+- **Messenger:** the message `RecordShortLinkClick` for `click_log.write: messenger`.
+
+**Not covered** (may change in any minor): classes and interfaces marked `@internal` (the DBAL store and readers,
+`ShortLinkStoreInterface`, `ClickStoreInterface`, `ShortUrlBuilderInterface`, the Doctrine listeners, `ShortLinkRecord`,
+`ShortLinkPages`), the markup and CSS classes inside the templates, log messages, and the
+infrastructure services' constructors.
 
 ## To 0.8.0
 

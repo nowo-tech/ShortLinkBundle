@@ -43,15 +43,15 @@ From contract §9. Each threat names the control and the slice that ships it.
 | Intranet pivot from the visitor's browser | Private, loopback, link-local, CGNAT, metadata targets refused at save (DNS) and at redirect (literals) | S1, S2 |
 | Scheme abuse, header injection | VO: http/https only, no control characters, no userinfo | S1 |
 | Redirect chains | `self_paths` on `own_hosts` refused | S1 |
-| Own-host trust laundering (`target.allow_own_host`) | Off by default; own origins from configuration only (exact `public_base_url` origin, `own_hosts` on default ports, never the `Host` header); short-link paths still refused as `SelfLoop`; userinfo / scheme-relative / backslash refused by the VO; case, trailing dot and IDN normalised before the comparison | Unreleased |
+| Own-host trust laundering (`target.allow_own_host`) | Off by default; own origins from configuration only (exact `public_base_url` origin, `own_hosts` on default ports, never the `Host` header); short-link paths still refused as `SelfLoop`; userinfo / scheme-relative / backslash refused by the VO; case, trailing dot and IDN normalised before the comparison | 0.4.0 |
 | Enumeration | 62^7 space, miss limiter, identical 404, no timing branch, neutral `CodeTaken`, per-person custom-code limiter | S1, S2, S4 |
 | Code collision / takeover | Unique index, binary NO PAD collation (`utf8mb4_0900_bin` / `utf8mb4_nopad_bin`), PHP `===`, tombstone quarantine (365 days), immutable codes | S0 (test), S1 |
 | Cross-tenant access | Every query filters on the tenant; another tenant's id answers as missing | S1–S4 |
 | CSRF, XSS, CSV injection | FormKit CSRF forms, Twig escaping, CSV cell prefixing | S4 |
 | Session / cookie on the public path | `stateless: true`, no `Set-Cookie` | S2 |
 | Log flooding, bots | Hit limiter, HEAD unlogged, machine flag, retention P90D | S2, S3 |
-| Plan-limit race | Count + insert under a tenant database lock in the same transaction (MySQL / MariaDB `GET_LOCK`, PostgreSQL advisory lock), plus `symfony/lock` when available; see [CONCURRENCY.md](CONCURRENCY.md) | S1, Unreleased |
-| Lost update (edit vs disable / delete) | Row read again with `SELECT … FOR UPDATE`, only changed fields written | Unreleased |
+| Plan-limit race | Count + insert under a tenant database lock in the same transaction (MySQL / MariaDB `GET_LOCK`, PostgreSQL advisory lock), plus `symfony/lock` when available; see [CONCURRENCY.md](CONCURRENCY.md) | S1, 0.5.0 |
+| Lost update (edit vs disable / delete) | Row read again with `SELECT … FOR UPDATE`, only changed fields written | 0.5.0 |
 
 ## Controls by slice
 
@@ -68,7 +68,7 @@ From contract §9. Each threat names the control and the slice that ships it.
   every anchored pattern; L5 counted creates refused inside a host transaction + a 10-process parallel test that
   creates exactly the limit (MySQL / MariaDB / PostgreSQL CI); L8 hidden kinds never listed for people; L9 no
   invisible / bidi characters, ASCII-only targets.
-- **Known gaps (closed, Unreleased):** up to 0.4.0, without symfony/lock (or with a lock store local to one server),
+- **Known gaps (closed in 0.5.0):** up to 0.4.0, without symfony/lock (or with a lock store local to one server),
   concurrent creates could overshoot a plan limit by a few links; the tenant database lock makes the limit exact.
 - **S2:** the redirect takes only `{code}` (query ignored, `Location` from the database, no CRLF possible); one
   neutral 404 for every reason after the same single query; miss limiter peeked before the lookup; hit limiter with
@@ -100,7 +100,7 @@ From contract §9. Each threat names the control and the slice that ships it.
   characters; `anonymiseActor()` re-checks candidates with `===` and updates by primary key; identifier columns use
   NO PAD binary collations (`utf8mb4_0900_bin` / `utf8mb4_nopad_bin`; `utf8mb4_bin` only on MySQL 5.7). Test emulates a
   PAD collation (MySQL `utf8mb4_bin`, SQLite `RTRIM`).
-- **Identity-column declaration (REQ-SEC-006, unreleased):** `ShortLinkExactKeyColumns` declares the eleven columns
+- **Identity-column declaration (REQ-SEC-006, 0.8.0):** `ShortLinkExactKeyColumns` declares the eleven columns
   compared for equality (link `id`, `tenant_key`, `code`, `source_ref`, `created_by`, `updated_by`; click `link_id`,
   `tenant_key`; daily `link_id`, `tenant_key`, `value`) under the configured table prefix, so a host's
   `nowo:migrations:check-key-collations` asserts their collation on a schema this bundle did not create (an old
@@ -108,7 +108,7 @@ From contract §9. Each threat names the control and the slice that ships it.
   (`target_host`, `kind`, `dimension`, `country`, the click attributes) are deliberately left out: they are filtered
   and displayed, never used as a key. The declaration is checked in this bundle's own CI
   (`ExactKeyColumnsGateTest`, MySQL 8.4 + MariaDB 11.4).
-- **`target.allow_own_host` (Beacon re-audit C4, unreleased):** opt-in; when on, a target whose
+- **`target.allow_own_host` (Beacon re-audit C4, 0.4.0):** opt-in; when on, a target whose
   `scheme://host:port` equals the origin of `public_base_url` or an exact `own_hosts` entry on its default port skips
   OutboundUrlGuard and the denylist (intended for intranet / `localhost` deployments linking to their own pages). The
   `Host` header is never consulted (spoofable without `framework.trusted_hosts`, absent on the CLI and in Messenger), so

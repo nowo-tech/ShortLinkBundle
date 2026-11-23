@@ -3,7 +3,7 @@
 | Field | Value |
 |-------|-------|
 | Package | `nowo-tech/short-link-bundle` (`symfony-bundle`) |
-| Audited revision | S2 redirect (unreleased, branch `feat/s2-redirect`) |
+| Audited revision | S2 redirect (2026-11-12), re-checked per release; last re-check 0.8.0 (`704be94`, 2026-11-23) for the 1.0.0 candidate |
 | Audit date | 2026-11-12 |
 | Method | Manual review of every file under `src/`; PHPStan `ruleset-classic` + `ruleset-worker-strict` + `ruleset-hardening`; Igor (`composer igor`); `WorkerRequestLoopTest` (one kernel, 2,000 requests, two tenants alternating, memory drift < 1 MiB) |
 | **Verdict** | ✅ **Viable** — every S1 service is `readonly` and stateless except the after-commit queue, which holds request-scoped work and drops it at every request / message boundary and on `kernel.reset` |
@@ -32,6 +32,7 @@ between requests (REQ-RUNTIME-002).
 | Redirect | ✅ | `RedirectController`, `RedirectResolver`, `ClickRecorder`, `ClickTerminateListener` are readonly; the click payload travels on the request attribute `_nowo_short_link_click` (removed when recorded) or in a Messenger message; limiters are created per call from their factories |
 | Worker tests | ✅ | `WorkerRequestLoopTest` (2,000 requests) and the functional `testOneKeptAliveKernelServesManyCallsWithoutBleedOrGrowth` (300 creates alternating two tenants, no cross-tenant read, memory flat) on both host kinds; `RedirectTest::testOneKeptAliveKernelServesThousandsOfRedirectsWithoutBleedOrGrowth` (5,000 redirects over two tenants and three states, terminate mode, memory flat, in-kernel p95 < 20 ms) |
 | Usage and retention ports (0.7.0) | ✅ | `DbalUsageReader` and `DbalSourceRetention` are readonly, keep nothing between calls (the batch loop's counters are locals) and leave no transaction open (each batch is one runner unit; the erasure refuses an open transaction). `UsageRetentionTest::testOneKeptAliveKernelCountsManyTenantsWithoutBleedOrGrowth` (500 counts alternating two tenants, memory flat) on both host kinds |
+| Identity-column declaration (0.8.0) | ✅ | `ShortLinkExactKeyColumns` is readonly and builds its list on each call from constructor arguments (table prefix, connection flag) and class constants only |
 | Boot-time caches | ✅ | `NowoShortLinkBundle::getContainerExtension()` keeps its extension (Symfony's own pattern, `@igor-ignore`) |
 | Worker test | ✅ | `tests/Integration/Worker/WorkerRequestLoopTest.php` |
 
