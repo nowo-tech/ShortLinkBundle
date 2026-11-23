@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ## Table of contents
 
 - [[Unreleased]](#unreleased)
+- [[1.0.0] - 2026-11-23](#100---2026-11-23)
 - [[0.8.0] - 2026-11-23](#080---2026-11-23)
 - [[0.7.1] - 2026-11-21](#071---2026-11-21)
 - [[0.7.0] - 2026-11-21](#070---2026-11-21)
@@ -19,6 +20,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - [[0.1.0] - 2026-11-12](#010---2026-11-12)
 
 ## [Unreleased]
+
+## [1.0.0] - 2026-11-23
 
 Preparation of **1.0.0** (contract §13, Audit row). No code, configuration, schema or behaviour change from 0.8.0;
 see [UPGRADING.md](UPGRADING.md#to-100) for what 1.0.0 commits to.
@@ -38,6 +41,8 @@ see [UPGRADING.md](UPGRADING.md#to-100) for what 1.0.0 commits to.
   0.8.0).
 - `docs/FRANKENPHP-WORKER-AUDIT.md`: re-checked on 0.8.0; the identity-column declaration is stateless.
 - `docs/UPGRADING.md`: "To 1.0.0" lists the public API that becomes a semver commitment and what stays internal.
+
+[1.0.0]: https://github.com/nowo-tech/ShortLinkBundle/releases/tag/v1.0.0
 
 ## [0.8.0] - 2026-11-23
 
@@ -351,5 +356,5 @@ First release: slices S1 (domain + persistence), S2 (public redirect) and S3 (st
 - Docs set, Spec Kit baseline, Flex recipe, demos `symfony7` (Symfony 7.4) and `symfony8` (Symfony 8.1) on FrankenPHP
   worker mode with MySQL, UiKit's admin layout and default theme (REQ-DEMO-014) and FormKit (REQ-DEMO-015).
 
-[Unreleased]: https://github.com/nowo-tech/ShortLinkBundle/compare/v0.8.0...HEAD
+[Unreleased]: https://github.com/nowo-tech/ShortLinkBundle/compare/v1.0.0...HEAD
 [0.1.0]: https://github.com/nowo-tech/ShortLinkBundle/releases/tag/v0.1.0

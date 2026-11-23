@@ -3,7 +3,8 @@
 ## Table of contents
 
 - [Unreleased](#unreleased)
-  - [To 1.0.0](#to-100)
+- [To 1.0.0](#to-100)
+  - [To 1.0.0](#to-100-1)
 - [To 0.8.0](#to-080)
   - [Identity-column declaration (REQ-SEC-006): drop the collation-gate exemptions](#identity-column-declaration-req-sec-006-drop-the-collation-gate-exemptions)
 - [To 0.7.1](#to-071)
@@ -18,6 +19,14 @@
 - [To 0.1.0](#to-010)
 
 ## Unreleased
+
+## To 1.0.0
+
+From **0.8.0**:
+
+```bash
+composer update nowo-tech/short-link-bundle
+```
 
 ### To 1.0.0
 
