@@ -6,7 +6,7 @@ namespace Nowo\ShortLinkBundle\Infrastructure\Routing;
 
 use LogicException;
 use Nowo\ShortLinkBundle\Application\ShortUrlBuilderInterface;
-use Nowo\ShortLinkBundle\DependencyInjection\Configuration;
+use Nowo\ShortLinkBundle\Domain\Model\PublicBaseUrl;
 use Nowo\ShortLinkBundle\Domain\Model\ShortCode;
 use Symfony\Component\Routing\RequestContext;
 
@@ -42,7 +42,7 @@ final readonly class ShortUrlBuilder implements ShortUrlBuilderInterface
     private function base(): string
     {
         if ($this->publicBaseUrl !== null && $this->publicBaseUrl !== '') {
-            if (!Configuration::isBaseUrl($this->publicBaseUrl)) {
+            if (!PublicBaseUrl::isValid($this->publicBaseUrl)) {
                 throw new LogicException('nowo_short_link.public_base_url must be an absolute http(s) URL without query or fragment.');
             }
 

@@ -32,7 +32,7 @@ use Nowo\ShortLinkBundle\Domain\Port\ShortLinkAccessInterface;
 use Nowo\ShortLinkBundle\Domain\Port\ShortLinkTenantContextInterface;
 use Nowo\ShortLinkBundle\Domain\Service\ShortLinkManagerInterface;
 use Nowo\ShortLinkBundle\Domain\Service\ShortLinkStatsReaderInterface;
-use Nowo\ShortLinkBundle\NowoShortLinkBundle;
+use Nowo\ShortLinkBundle\Domain\TranslationDomain;
 use Nowo\ShortLinkBundle\Presentation\Csv\StatsCsv;
 use Nowo\ShortLinkBundle\Presentation\Form\ShortLinkActionType;
 use Nowo\ShortLinkBundle\Presentation\Form\ShortLinkFilterType;
@@ -87,7 +87,7 @@ final readonly class ShortLinkUiController
     /** Range presets of the statistics page (days). */
     public const PRESETS = [7, 30, 90];
 
-    private const DOMAIN = NowoShortLinkBundle::TRANSLATION_DOMAIN;
+    private const DOMAIN = TranslationDomain::NAME;
 
     /**
      * @param string|null $tenantParameter `ui.tenant_route_parameter`: host route parameter kept in every UI link

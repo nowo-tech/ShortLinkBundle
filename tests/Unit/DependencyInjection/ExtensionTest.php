@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Nowo\ShortLinkBundle\Tests\Unit\DependencyInjection;
 
 use LogicException;
+use Nowo\ShortLinkBundle\Application\Click\ClickRecorder;
 use Nowo\ShortLinkBundle\Application\CodeGenerator;
 use Nowo\ShortLinkBundle\Application\Guard\ChainTargetGuard;
 use Nowo\ShortLinkBundle\Application\Guard\OwnHostGuard;
@@ -14,6 +15,7 @@ use Nowo\ShortLinkBundle\Domain\Port\ShortLinkAccessInterface;
 use Nowo\ShortLinkBundle\Domain\Port\ShortLinkQuotaInterface;
 use Nowo\ShortLinkBundle\Domain\Port\TargetDenylistInterface;
 use Nowo\ShortLinkBundle\Domain\Port\TargetGuardInterface;
+use Nowo\ShortLinkBundle\Domain\Port\TransientFailureDetectorInterface;
 use Nowo\ShortLinkBundle\Domain\Service\ShortLinkManagerInterface;
 use Nowo\ShortLinkBundle\Infrastructure\Doctrine\ClickTablesSchemaListener;
 use Nowo\ShortLinkBundle\Infrastructure\Doctrine\ShortLinkExactKeyColumns;
@@ -21,6 +23,7 @@ use Nowo\ShortLinkBundle\Infrastructure\Http\RedirectController;
 use Nowo\ShortLinkBundle\Infrastructure\Http\ShortLinkConflictListener;
 use Nowo\ShortLinkBundle\Infrastructure\Messenger\RecordShortLinkClickHandler;
 use Nowo\ShortLinkBundle\Infrastructure\Persistence\DbalShortLinkStore;
+use Nowo\ShortLinkBundle\Infrastructure\Persistence\DbalTransientFailureDetector;
 use Nowo\ShortLinkBundle\Infrastructure\Routing\RedirectRouteLoader;
 use Nowo\ShortLinkBundle\Presentation\Controller\ShortLinkUiController;
 use Nowo\ShortLinkBundle\Presentation\Routing\UiRouteLoader;
@@ -50,6 +53,10 @@ final class ExtensionTest extends TestCase
         self::assertSame(['', true], $keys->getArguments(), 'REQ-SEC-006: no prefix, click tables on the link connection');
         self::assertTrue($keys->isAutoconfigured(), 'MigrationsKit tags it by autoconfiguration; a host registers nothing');
         self::assertTrue($this->bridge($container)->getArgument(1), 'auto guard resolves DNS on save');
+        self::assertSame(DbalTransientFailureDetector::class, (string) $container->getAlias(TransientFailureDetectorInterface::class), 'REQ-ARCH-002 port: raw DBAL lock errors are detected by transaction-doctrine');
+        $transient = $container->getDefinition(ClickRecorder::class)->getArgument('$transient');
+        self::assertInstanceOf(Reference::class, $transient);
+        self::assertSame(TransientFailureDetectorInterface::class, (string) $transient);
     }
 
     public function testHostServicesAndOptionsReplaceTheDefaults(): void

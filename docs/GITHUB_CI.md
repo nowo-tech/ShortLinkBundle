@@ -251,7 +251,7 @@ with a repository variable of the same name (`gh variable set NOWO_CI_PR_MODE -R
 
 - The newest PHP × newest Symfony cell of the test matrix (SQLite): `composer validate --strict`, install, `composer
   audit`, the whole PHPUnit suite.
-- PHPStan, Code Style Check, Dependency floor (it validates the demo lock), Git history and the semantic PR title.
+- PHPStan (with the Deptrac layer check, REQ-ARCH-002), Code Style Check, Dependency floor (it validates the demo lock), Git history and the semantic PR title.
 
 The other matrix cells still start and report success after one echo step: a matrix job skipped with a job-level
 `if:` reports its un-expanded name (`PHP ${{ matrix.php }} - …`), so the required contexts `PHP x - Symfony y` would

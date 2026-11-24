@@ -1,0 +1,128 @@
+# REQ-ARCH-002: layer dependencies of src/ checked by Deptrac (strict ruleset; skipped violations only for public API
+# that cannot change before the next major, each with its reason below).
+# Run: composer deptrac / make deptrac. Layers follow REQ-ARCH-001; docs/ARCHITECTURE.md explains them.
+deptrac:
+  paths:
+    - ./src
+  exclude_files:
+    - '#.*/src/Resources/.*#'
+  layers:
+    # --- Bundle layers -------------------------------------------------------------------------------------------
+    - name: Domain
+      collectors:
+        - type: classLike
+          value: '^Nowo\\ShortLinkBundle\\Domain\\'
+    # Application: use cases, plus the Messenger message RecordShortLinkClick (Infrastructure\Messenger, not re-laid
+    # out: hosts route it by class name): a framework-free DTO around Application\Click\ClickPayload that the redirect
+    # controller (UI) dispatches and the handler (Infrastructure) consumes.
+    - name: Application
+      collectors:
+        - type: classLike
+          value: '^Nowo\\ShortLinkBundle\\(Application\\|Infrastructure\\Messenger\\RecordShortLinkClick$)'
+    # Infrastructure: DBAL stores, locks, Messenger, rate limiter, id generator, outbound URL guard adapter, console
+    # commands and the short-URL builder.
+    - name: Infrastructure
+      collectors:
+        - type: bool
+          must:
+            - type: classLike
+              value: '^Nowo\\ShortLinkBundle\\Infrastructure\\'
+          must_not:
+            - type: classLike
+              value: '^Nowo\\ShortLinkBundle\\Infrastructure\\(Http\\|Security\\|Routing\\(ControllerAttributeRouteLoader|RedirectRouteLoader)$|Messenger\\RecordShortLinkClick$)'
+    # UI: controllers, forms, CSV export, view models (src/Presentation) and the HTTP edge kept under Infrastructure
+    # (not re-laid out): redirect controller, kernel listeners, route loaders, role-based access guard.
+    - name: UI
+      collectors:
+        - type: classLike
+          value: '^Nowo\\ShortLinkBundle\\(Presentation\\|Infrastructure\\(Http\\|Security\\|Routing\\(ControllerAttributeRouteLoader|RedirectRouteLoader)$))'
+    # DependencyInjection: the composition root (bundle class, extension, compiler passes). It wires every layer.
+    - name: DependencyInjection
+      collectors:
+        - type: classLike
+          value: '^Nowo\\ShortLinkBundle\\(DependencyInjection\\|NowoShortLinkBundle$)'
+    # --- Vendor layers -------------------------------------------------------------------------------------------
+    # Framework-free contract packages, listed by name (Domain and Application may use them).
+    - name: Psr
+      collectors:
+        - type: classLike
+          value: '^Psr\\(Clock|Log|EventDispatcher)\\'
+    - name: TransactionContract
+      collectors:
+        - type: classLike
+          value: '^Nowo\\TransactionContract\\'
+    # Framework and library code: Infrastructure, UI and DependencyInjection only.
+    - name: SymfonyContracts
+      collectors:
+        - type: classLike
+          value: '^Symfony\\Contracts\\'
+    - name: Symfony
+      collectors:
+        - type: classLike
+          value: '^Symfony\\(Component|Bundle|Bridge)\\'
+    - name: Doctrine
+      collectors:
+        - type: classLike
+          value: '^Doctrine\\'
+    - name: Twig
+      collectors:
+        - type: classLike
+          value: '^Twig\\'
+    - name: TransactionDoctrine          # NOT framework-free (ConflictCode imports HttpFoundation / Messenger)
+      collectors:
+        - type: classLike
+          value: '^Nowo\\TransactionDoctrine\\'
+    - name: NowoBundles
+      collectors:
+        - type: classLike
+          value: '^Nowo\\(UiKitBundle|FormKitBundle)\\'
+    # Optional / schema packages used by Infrastructure adapters (outbound URL guard, collation helper).
+    - name: AdaptedPackages
+      collectors:
+        - type: classLike
+          value: '^Nowo\\(OutboundUrlGuardBundle|MigrationsKitContracts)\\'
+  ruleset:
+    Domain:
+      - Psr
+      - TransactionContract
+    Application:
+      - Domain
+      - Psr
+      - TransactionContract
+    Infrastructure:
+      - Domain
+      - Application
+      - Psr
+      - TransactionContract
+      - SymfonyContracts
+      - Symfony
+      - Doctrine
+      - Twig
+      - TransactionDoctrine
+      - NowoBundles
+      - AdaptedPackages
+    UI:
+      - Domain
+      - Application
+      - Psr
+      - TransactionContract
+      - SymfonyContracts
+      - Symfony
+      - Twig
+      - TransactionDoctrine
+      - NowoBundles
+    DependencyInjection:
+      - Domain
+      - Application
+      - Infrastructure
+      - UI
+      - Psr
+      - TransactionContract
+      - SymfonyContracts
+      - Symfony
+      - Doctrine
+      - Twig
+      - TransactionDoctrine
+      - NowoBundles
+      - AdaptedPackages
+  skip_violations: {}

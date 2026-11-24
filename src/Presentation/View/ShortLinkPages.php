@@ -13,7 +13,7 @@ use Nowo\ShortLinkBundle\Domain\Model\Expiry;
 use Nowo\ShortLinkBundle\Domain\Model\LinkClickTotals;
 use Nowo\ShortLinkBundle\Domain\Model\ShortLinkState;
 use Nowo\ShortLinkBundle\Domain\Model\ShortLinkView;
-use Nowo\ShortLinkBundle\NowoShortLinkBundle;
+use Nowo\ShortLinkBundle\Domain\TranslationDomain;
 use Nowo\UiKitBundle\View\Action;
 use Nowo\UiKitBundle\View\BackLink;
 use Nowo\UiKitBundle\View\Column;
@@ -46,7 +46,7 @@ use function assert;
 final readonly class ShortLinkPages
 {
     /** Translation domain of every label. */
-    public const DOMAIN = NowoShortLinkBundle::TRANSLATION_DOMAIN;
+    public const DOMAIN = TranslationDomain::NAME;
 
     /** Bundle name for per-bundle theme exceptions (`nowo_ui_kit.theme.bundles.NowoShortLinkBundle`). */
     public const BUNDLE = 'NowoShortLinkBundle';

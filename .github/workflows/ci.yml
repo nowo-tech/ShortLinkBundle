@@ -253,6 +253,9 @@ jobs:
       - name: Run PHPStan (REQ-CS-006)
         run: composer phpstan
 
+      - name: Deptrac layer check (REQ-ARCH-002)
+        run: composer deptrac
+
       - name: PHPDoc on every class and public method of src/ (REQ-CS-001)
         run: composer validate-phpdoc
 

@@ -7,6 +7,7 @@ namespace Nowo\ShortLinkBundle\DependencyInjection;
 use DateInterval;
 use DateTimeImmutable;
 use DateTimeZone;
+use Nowo\ShortLinkBundle\Domain\Model\PublicBaseUrl;
 use Nowo\TransactionDoctrine\Symfony\Conflict\ConflictResponsePolicy;
 use Symfony\Component\Config\Definition\Builder\ArrayNodeDefinition;
 use Symfony\Component\Config\Definition\Builder\TreeBuilder;
@@ -17,12 +18,9 @@ use function in_array;
 use function is_array;
 use function is_int;
 use function is_string;
-use function parse_url;
 use function preg_match;
 use function str_starts_with;
 use function strtolower;
-
-use const PHP_URL_HOST;
 
 /**
  * Strict configuration tree of `nowo_short_link` (contract v1.0 §4, Beacon answers §17). Every key exists from S0 so
@@ -172,11 +170,7 @@ final class Configuration implements ConfigurationInterface
      */
     public static function isBaseUrl(mixed $value): bool
     {
-        if (!is_string($value) || preg_match('#^https?://[^\s/?\#@]+(/[^\s?\#]*)?$#iD', $value) !== 1) {
-            return false;
-        }
-
-        return is_string(parse_url($value, PHP_URL_HOST));
+        return PublicBaseUrl::isValid($value);
     }
 
     /**

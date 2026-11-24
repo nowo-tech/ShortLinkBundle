@@ -8,6 +8,7 @@ use Nowo\ShortLinkBundle\DependencyInjection\Compiler\ShortLinkCommitTrackingPas
 use Nowo\ShortLinkBundle\DependencyInjection\Compiler\ShortLinkCompilerPass;
 use Nowo\ShortLinkBundle\DependencyInjection\Compiler\TwigPathsPass;
 use Nowo\ShortLinkBundle\DependencyInjection\NowoShortLinkExtension;
+use Nowo\ShortLinkBundle\Domain\TranslationDomain;
 use Symfony\Component\DependencyInjection\Compiler\PassConfig;
 use Symfony\Component\DependencyInjection\ContainerBuilder;
 use Symfony\Component\DependencyInjection\Extension\ExtensionInterface;
@@ -26,7 +27,7 @@ use Symfony\Component\HttpKernel\Bundle\Bundle;
 final class NowoShortLinkBundle extends Bundle
 {
     /** Translation domain of the bundle UI copy (REQ-I18N-003) and Twig namespace (REQ-TWIG-002). */
-    public const TRANSLATION_DOMAIN = 'NowoShortLinkBundle';
+    public const TRANSLATION_DOMAIN = TranslationDomain::NAME;
 
     /**
      * Adds the compiler passes (DoctrineBundle check, symfony/lock tenant lock, Twig paths, and the scoping of the
