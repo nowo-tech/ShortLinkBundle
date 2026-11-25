@@ -40,6 +40,7 @@ use Nowo\ShortLinkBundle\Domain\Port\ShortLinkTenantContextInterface;
 use Nowo\ShortLinkBundle\Domain\Port\TargetDenylistInterface;
 use Nowo\ShortLinkBundle\Domain\Port\TargetGuardInterface;
 use Nowo\ShortLinkBundle\Domain\Port\TenantLockInterface;
+use Nowo\ShortLinkBundle\Domain\Port\TransientFailureDetectorInterface;
 use Nowo\ShortLinkBundle\Domain\Port\UserAgentClassifierInterface;
 use Nowo\ShortLinkBundle\Domain\Service\ShortLinkEraserInterface;
 use Nowo\ShortLinkBundle\Domain\Service\ShortLinkManagerInterface;
@@ -68,6 +69,7 @@ use Nowo\ShortLinkBundle\Infrastructure\Persistence\DbalEraser;
 use Nowo\ShortLinkBundle\Infrastructure\Persistence\DbalShortLinkStore;
 use Nowo\ShortLinkBundle\Infrastructure\Persistence\DbalSourceRetention;
 use Nowo\ShortLinkBundle\Infrastructure\Persistence\DbalStatsReader;
+use Nowo\ShortLinkBundle\Infrastructure\Persistence\DbalTransientFailureDetector;
 use Nowo\ShortLinkBundle\Infrastructure\Persistence\DbalUsageReader;
 use Nowo\ShortLinkBundle\Infrastructure\RateLimit\RateLimiterCustomCodeLimiter;
 use Nowo\ShortLinkBundle\Infrastructure\Routing\RedirectRouteLoader;
@@ -462,6 +464,8 @@ final class NowoShortLinkExtension extends Extension implements PrependExtension
         $container->register(DbalClickStore::class, DbalClickStore::class)
             ->setArguments([new Reference('doctrine'), $config['doctrine']['connection'], $config['doctrine']['entity_manager'], $config['doctrine']['table_prefix']]);
         $container->setAlias(ClickStoreInterface::class, DbalClickStore::class);
+        $container->register(DbalTransientFailureDetector::class, DbalTransientFailureDetector::class);
+        $container->setAlias(TransientFailureDetectorInterface::class, DbalTransientFailureDetector::class);
         $container->register(ClickRecorder::class, ClickRecorder::class)->setArguments([
             '$clicks'    => new Reference(ClickStoreInterface::class),
             '$countries' => new Reference(ClickCountryResolverInterface::class),
@@ -470,6 +474,7 @@ final class NowoShortLinkExtension extends Extension implements PrependExtension
             '$honourGpc' => $clicks['honour_gpc'],
             '$logger'    => $logger,
             '$links'     => new Reference(ShortLinkStoreInterface::class),
+            '$transient' => new Reference(TransientFailureDetectorInterface::class),
         ]);
         $container->register(RedirectResolver::class, RedirectResolver::class)->setArguments([
             '$store' => new Reference(ShortLinkStoreInterface::class),

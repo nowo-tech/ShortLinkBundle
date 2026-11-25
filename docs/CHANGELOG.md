@@ -21,6 +21,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Internal
+
+- **Deptrac layer check** (REQ-ARCH-002): `deptrac.yaml` with a strict ruleset (Domain / Application framework-free,
+  no skipped violations, uncovered dependencies and unassigned classes fail), `composer deptrac`, `make deptrac`, part
+  of `make release-check` and of the PHPStan CI job.
+- Layer fixes, behaviour unchanged in the container: `ClickRecorder` (now `@internal`) detects raw DBAL lock errors through the new
+  `Domain\Port\TransientFailureDetectorInterface` (transaction-doctrine adapter wired by the container; new optional last
+  constructor argument), `Domain\Model\PublicBaseUrl` holds the `public_base_url` rule (`Configuration::isBaseUrl()`
+  delegates) and `Domain\TranslationDomain` the translation domain (re-exported by the bundle constant).
+
 ## [1.0.0] - 2026-11-23
 
 Preparation of **1.0.0** (contract §13, Audit row). No code, configuration, schema or behaviour change from 0.8.0;

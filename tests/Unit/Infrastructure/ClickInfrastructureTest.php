@@ -39,6 +39,7 @@ use Nowo\ShortLinkBundle\Infrastructure\Http\RedirectController;
 use Nowo\ShortLinkBundle\Infrastructure\Messenger\RecordShortLinkClick;
 use Nowo\ShortLinkBundle\Infrastructure\Messenger\RecordShortLinkClickHandler;
 use Nowo\ShortLinkBundle\Infrastructure\Persistence\DbalClickStore;
+use Nowo\ShortLinkBundle\Infrastructure\Persistence\DbalTransientFailureDetector;
 use Nowo\ShortLinkBundle\Tests\Fixtures\MemoryLogger;
 use Nowo\ShortLinkBundle\Tests\Fixtures\ScriptedStore;
 use Nowo\TransactionContract\TransientStorageFailure;
@@ -280,7 +281,13 @@ final class ClickInfrastructureTest extends TestCase
         $clicks->expects(self::never())->method('insert');
         $click = new ClickPayload(ShortLinkId::fromString('0190a6d0-0000-7000-8000-000000000001'), TenantKey::default(), LinkKind::manual(), null, new DateTimeImmutable(), null, UserAgentFamily::Unknown, null, false);
 
+        // A recorder built by hand without a detector only rethrows the contract's TransientStorageFailure: the raw
+        // DBAL error is logged and the click dropped (the container always wires the DBAL detector).
+        $logger = new MemoryLogger();
+        (new RecordShortLinkClickHandler(new ClickRecorder($clicks, new NullCountryResolver(), $this->createStub(EventDispatcherInterface::class), logger: $logger, links: $links)))(new RecordShortLinkClick($click));
+        self::assertCount(1, $logger->records);
+
         $this->expectExceptionObject($deadlock);
-        (new RecordShortLinkClickHandler(new ClickRecorder($clicks, new NullCountryResolver(), $this->createStub(EventDispatcherInterface::class), links: $links)))(new RecordShortLinkClick($click));
+        (new RecordShortLinkClickHandler(new ClickRecorder($clicks, new NullCountryResolver(), $this->createStub(EventDispatcherInterface::class), links: $links, transient: new DbalTransientFailureDetector())))(new RecordShortLinkClick($click));
     }
 }

@@ -18,13 +18,14 @@ This project follows the [Contributor Covenant Code of Conduct](../CODE_OF_CONDU
 
 1. Clone the repository.
 2. Start the dev container: `make up` then `make install`.
-3. Run tests: `make test`, `make test-coverage-100`, `make test-with-db` (MySQL service, profile `db`), `make cs-check`, `make phpstan`, `make validate-phpdoc`, `make igor`.
+3. Run tests: `make test`, `make test-coverage-100`, `make test-with-db` (MySQL service, profile `db`), `make cs-check`, `make phpstan`, `make deptrac`, `make validate-phpdoc`, `make igor`.
 4. Pre-release: `make release-check`.
 
 ## Code style
 
 - PHP-CS-Fixer (PSR-12 + Symfony): `make cs-fix` / `make cs-check`.
 - PHPStan (level 8) including **`nowo-tech/phpstan-frankenphp`** rulesets `classic` + `worker` (REQ-CS-005; `require-dev` only — not a runtime dependency for apps).
+- Deptrac layer check (REQ-ARCH-002): `make deptrac` / `composer deptrac`; see [ARCHITECTURE.md](ARCHITECTURE.md#architecture-checks).
 - PHPDoc and Markdown docs in **English**.
 - Strict types in all PHP files.
 

@@ -6,6 +6,7 @@
 - [Standard and DDD hosts](#standard-and-ddd-hosts)
 - [What the bundle owns and what the host owns](#what-the-bundle-owns-and-what-the-host-owns)
 - [S0 state](#s0-state)
+- [Architecture checks](#architecture-checks)
 
 ## Layers
 
@@ -51,3 +52,21 @@ mounted (for Beacon: `/organizations/{uuid}/short-links`, `ui.tenant_route_param
 
 [specs/001-baseline/code-inventory.md](../specs/001-baseline/code-inventory.md) lists every file of `src/` with its
 requirement ids.
+
+## Architecture checks
+
+[Deptrac](https://github.com/deptrac/deptrac) checks the dependencies between the layers on every CI run (REQ-ARCH-002; `deptrac.yaml`, `composer deptrac` / `make deptrac`, part of `make release-check` and of the PHPStan CI job). A violation, a dependency on an unlisted vendor namespace or a class under `src/` that belongs to no layer fails the build.
+
+| Deptrac layer | Namespaces | May depend on |
+| --- | --- | --- |
+| `Domain` | `Domain` | itself, `psr/clock`, `psr/log`, `psr/event-dispatcher`, `nowo-tech/transaction-contract` |
+| `Application` | `Application`, plus the Messenger message `Infrastructure\Messenger\RecordShortLinkClick` (a framework-free DTO; hosts route it by class name, so it is not moved) | `Domain` and the same contract packages |
+| `Infrastructure` | `Infrastructure` except the HTTP edge below | `Domain`, `Application`, Symfony, Doctrine, Twig, transaction-doctrine, UiKit / FormKit, OutboundUrlGuard, MigrationsKit contracts |
+| `UI` | `Presentation`, `Infrastructure\{Http, Security}`, the route loaders in `Infrastructure\Routing` | `Domain`, `Application`, Symfony, Twig, transaction-doctrine, UiKit / FormKit |
+| `DependencyInjection` | `DependencyInjection`, the bundle class | every layer (composition root) |
+
+The click recorder asks `Domain\Port\TransientFailureDetectorInterface` whether a raw storage failure is a lock
+conflict (the container wires `Infrastructure\Persistence\DbalTransientFailureDetector`, transaction-doctrine's
+classifier); the `public_base_url` rule is `Domain\Model\PublicBaseUrl` (`Configuration::isBaseUrl()` delegates to it) and
+the translation domain is `Domain\TranslationDomain::NAME` (the bundle constant keeps the same value). No violation is
+skipped.

@@ -53,3 +53,6 @@ playwright-report/
 
 # Local tool output
 /var/
+
+# Deptrac (REQ-ARCH-002)
+/.deptrac.cache

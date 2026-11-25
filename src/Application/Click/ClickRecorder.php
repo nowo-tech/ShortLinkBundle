@@ -9,8 +9,8 @@ use Nowo\ShortLinkBundle\Application\Store\ShortLinkStoreInterface;
 use Nowo\ShortLinkBundle\Domain\Event\ShortLinkClickedEvent;
 use Nowo\ShortLinkBundle\Domain\Model\CountryCode;
 use Nowo\ShortLinkBundle\Domain\Port\ClickCountryResolverInterface;
+use Nowo\ShortLinkBundle\Domain\Port\TransientFailureDetectorInterface;
 use Nowo\TransactionContract\TransientStorageFailure;
-use Nowo\TransactionDoctrine\TransientFailureClassifier;
 use Psr\EventDispatcher\EventDispatcherInterface;
 use Psr\Log\LoggerInterface;
 use SensitiveParameter;
@@ -21,6 +21,10 @@ use Throwable;
  * keeps the time, the link and the machine flag only; `click_log.store` switches columns off. The raw IP only reaches
  * the country resolver (never stored, never logged). A broken click table, resolver, event listener or log handler never breaks the
  * redirect or the worker: the failure is logged with its exception class only. Stateless (worker mode).
+ *
+ * @internal wired by the bundle's DI (with the transient-failure detector); hosts do not construct it. Built by hand
+ *           without the `transient` argument it only rethrows TransientStorageFailure, so a raw DBAL lock error is
+ *           logged and the click is dropped instead of retried.
  */
 final readonly class ClickRecorder
 {
@@ -35,6 +39,7 @@ final readonly class ClickRecorder
         private bool $honourGpc = true,
         private ?LoggerInterface $logger = null,
         private ?ShortLinkStoreInterface $links = null,
+        private ?TransientFailureDetectorInterface $transient = null,
     ) {
     }
 
@@ -109,8 +114,9 @@ final readonly class ClickRecorder
                 throw $exception;
             }
         }
-        // A raw DBAL lock error (deadlock, lock wait timeout, serialization failure), e.g. of the liveness read.
-        if ((new TransientFailureClassifier())->isTransient($exception)) {
+        // A raw DBAL lock error (deadlock, lock wait timeout, serialization failure), e.g. of the liveness read. Without
+        // a detector (a recorder built by hand) only the contract's TransientStorageFailure is rethrown.
+        if ($this->transient?->isTransient($exception) === true) {
             throw $exception;
         }
     }
