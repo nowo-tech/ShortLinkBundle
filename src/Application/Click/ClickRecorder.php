@@ -21,6 +21,10 @@ use Throwable;
  * keeps the time, the link and the machine flag only; `click_log.store` switches columns off. The raw IP only reaches
  * the country resolver (never stored, never logged). A broken click table, resolver, event listener or log handler never breaks the
  * redirect or the worker: the failure is logged with its exception class only. Stateless (worker mode).
+ *
+ * @internal wired by the bundle's DI (with the transient-failure detector); hosts do not construct it. Built by hand
+ *           without the `transient` argument it only rethrows TransientStorageFailure, so a raw DBAL lock error is
+ *           logged and the click is dropped instead of retried.
  */
 final readonly class ClickRecorder
 {
