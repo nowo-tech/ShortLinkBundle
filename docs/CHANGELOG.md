@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ## Table of contents
 
 - [[Unreleased]](#unreleased)
+- [[1.1.0] - 2026-11-25](#110---2026-11-25)
 - [[1.0.0] - 2026-11-23](#100---2026-11-23)
 - [[0.8.0] - 2026-11-23](#080---2026-11-23)
 - [[0.7.1] - 2026-11-21](#071---2026-11-21)
@@ -21,6 +22,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-11-25
+
 ### Internal
 
 - **Deptrac layer check** (REQ-ARCH-002): `deptrac.yaml` with a strict ruleset (Domain / Application framework-free,
@@ -30,6 +33,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   `Domain\Port\TransientFailureDetectorInterface` (transaction-doctrine adapter wired by the container; new optional last
   constructor argument), `Domain\Model\PublicBaseUrl` holds the `public_base_url` rule (`Configuration::isBaseUrl()`
   delegates) and `Domain\TranslationDomain` the translation domain (re-exported by the bundle constant).
+
+[1.1.0]: https://github.com/nowo-tech/ShortLinkBundle/releases/tag/v1.1.0
 
 ## [1.0.0] - 2026-11-23
 
@@ -366,5 +371,5 @@ First release: slices S1 (domain + persistence), S2 (public redirect) and S3 (st
 - Docs set, Spec Kit baseline, Flex recipe, demos `symfony7` (Symfony 7.4) and `symfony8` (Symfony 8.1) on FrankenPHP
   worker mode with MySQL, UiKit's admin layout and default theme (REQ-DEMO-014) and FormKit (REQ-DEMO-015).
 
-[Unreleased]: https://github.com/nowo-tech/ShortLinkBundle/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/nowo-tech/ShortLinkBundle/compare/v1.1.0...HEAD
 [0.1.0]: https://github.com/nowo-tech/ShortLinkBundle/releases/tag/v0.1.0

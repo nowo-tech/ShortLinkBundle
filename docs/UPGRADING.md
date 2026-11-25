@@ -3,6 +3,7 @@
 ## Table of contents
 
 - [Unreleased](#unreleased)
+- [To 1.1.0](#to-110)
 - [To 1.0.0](#to-100)
   - [To 1.0.0](#to-100-1)
 - [To 0.8.0](#to-080)
@@ -19,6 +20,14 @@
 - [To 0.1.0](#to-010)
 
 ## Unreleased
+
+## To 1.1.0
+
+From **1.0.0**:
+
+```bash
+composer update nowo-tech/short-link-bundle
+```
 
 ## To 1.0.0
 
