@@ -2,9 +2,9 @@
 
 **Baseline spec**: [`spec.md`](spec.md)  
 **Package**: `nowo-tech/short-link-bundle`  
-**Last audited**: 2026-11-23 (0.8.0; identity-column declaration mapped, counts re-checked for the 1.0.0 candidate)
+**Last audited**: 2026-11-26 (1.1.0; Deptrac moves mapped: public base URL rule, transient-failure port, translation domain)
 
-Scope: every file under `src/`. Audit command: `find src -type f | wc -l` → **162**.
+Scope: every file under `src/`. Audit command: `find src -type f | wc -l` → **166**.
 
 | Source file | Spec section | Requirement IDs |
 | --- | --- | --- |
@@ -72,6 +72,7 @@ Scope: every file under `src/`. Audit command: `find src -type f | wc -l` → **
 | `src/Domain/Model/LinkMetadata.php` | Value objects | FR-VO-001 |
 | `src/Domain/Model/LinkSource.php` | Value objects | FR-VO-001 |
 | `src/Domain/Model/LinkTitle.php` | Value objects | FR-VO-001 |
+| `src/Domain/Model/PublicBaseUrl.php` | Short URLs | FR-URL-001 |
 | `src/Domain/Model/ReferrerHost.php` | Redirect and click log | FR-REDIRECT-001, FR-CLICK-001 |
 | `src/Domain/Model/ResolvedLink.php` | Redirect and click log | FR-REDIRECT-001, FR-CLICK-001 |
 | `src/Domain/Model/ShortCode.php` | Codes | FR-CODE-001, FR-CODE-002 |
@@ -104,12 +105,14 @@ Scope: every file under `src/`. Audit command: `find src -type f | wc -l` → **
 | `src/Domain/Port/TargetDenylistInterface.php` | Ports | FR-PORT-001 |
 | `src/Domain/Port/TargetGuardInterface.php` | Ports | FR-PORT-001 |
 | `src/Domain/Port/TenantLockInterface.php` | Ports | FR-PORT-001 |
+| `src/Domain/Port/TransientFailureDetectorInterface.php` | Concurrency | FR-CONCURRENCY-001 |
 | `src/Domain/Port/UserAgentClassifierInterface.php` | Redirect and click log | FR-REDIRECT-001, FR-CLICK-001 |
 | `src/Domain/Service/ShortLinkEraserInterface.php` | GDPR | FR-GDPR-001 |
 | `src/Domain/Service/ShortLinkManagerInterface.php` | Manager | FR-MANAGE-001, FR-BULK-001, FR-ACCESS-001, FR-QUOTA-001 |
 | `src/Domain/Service/ShortLinkRetentionInterface.php` | Retention | FR-RETENTION-002, FR-PORT-001 |
 | `src/Domain/Service/ShortLinkStatsReaderInterface.php` | Statistics | FR-STATS-001 |
 | `src/Domain/Service/ShortLinkUsageReaderInterface.php` | Usage | FR-USAGE-001, FR-PORT-001 |
+| `src/Domain/TranslationDomain.php` | Translations | FR-I18N-001 |
 | `src/Infrastructure/Console/PurgeCommand.php` | Retention and recheck | FR-RETENTION-001 |
 | `src/Infrastructure/Console/RecheckCommand.php` | Retention and recheck | FR-RETENTION-001 |
 | `src/Infrastructure/Console/RollupCommand.php` | Retention and recheck | FR-RETENTION-001 |
@@ -137,6 +140,7 @@ Scope: every file under `src/`. Audit command: `find src -type f | wc -l` → **
 | `src/Infrastructure/Persistence/DbalShortLinkStore.php` | Persistence | FR-DB-001, FR-DB-002, FR-EVENT-001 |
 | `src/Infrastructure/Persistence/DbalSourceRetention.php` | Retention | FR-RETENTION-002, FR-CONCURRENCY-001 |
 | `src/Infrastructure/Persistence/DbalStatsReader.php` | Statistics | FR-STATS-001 |
+| `src/Infrastructure/Persistence/DbalTransientFailureDetector.php` | Concurrency | FR-CONCURRENCY-001 |
 | `src/Infrastructure/Persistence/DbalUsageReader.php` | Usage | FR-USAGE-001 |
 | `src/Infrastructure/RateLimit/RateLimiterCustomCodeLimiter.php` | Custom codes | FR-CODE-003 |
 | `src/Infrastructure/Routing/ControllerAttributeRouteLoader.php` | Routes (REQ-SF-004) | FR-ROUTE-001 |
@@ -171,5 +175,5 @@ Scope: every file under `src/`. Audit command: `find src -type f | wc -l` → **
 | `src/Resources/views/ui/list.html.twig` | Management UI | FR-UI-001 |
 | `src/Resources/views/ui/stats.html.twig` | Management UI | FR-UI-001 |
 
-| Total production sources | 162 |
+| Total production sources | 166 |
 | --- | --- |

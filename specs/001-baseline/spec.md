@@ -108,7 +108,7 @@ registers no service, route, listener or table, whatever the configuration says;
 | FR-CONFIG-002 | Container parameters published for host routing / firewalls. |
 | FR-WORKER-001 | One kernel kept alive serves N requests with no bleed between tenants and flat memory. |
 | FR-DB-001 | Short codes are unique and compare exactly on SQLite, MySQL (`utf8mb4_0900_bin`; `utf8mb4_bin` only on MySQL 5.7), MariaDB (`utf8mb4_nopad_bin`) and PostgreSQL. |
-| FR-I18N-001 | Seven translation catalogues with the same keys (en, es, it, fr, pt, de, nl). |
+| FR-I18N-001 | Seven translation catalogues with the same keys (en, es, it, fr, pt, de, nl); the domain name `NowoShortLinkBundle` is read from `Domain\TranslationDomain` by every layer. |
 | FR-VO-001 | Value objects of contract §3.1 validated on construction; messages name the rule, never the value. |
 | FR-PORT-001 | Ports of §3.2 are framework-free interfaces with defaults; each is a public alias hosts can replace. |
 | FR-CODE-001 | Random base62 codes from the CSPRNG, skipping reserved and blocklisted candidates; collisions retry and grow the length after `max_attempts` (logged). |
@@ -123,7 +123,7 @@ registers no service, route, listener or table, whatever the configuration says;
 | FR-EVENT-001 | Events after the outermost commit, none on rollback, ids / VOs / target host only. |
 | FR-DB-002 | DBAL store on the entity manager's connection; never flushes the host EntityManager; XML mapping default + attribute twin; table and index prefix; binary collation on MySQL / MariaDB; click tables by schema listener. |
 | FR-DB-003 | Identity-column declaration (0.8.0, REQ-SEC-006): `ShortLinkExactKeyColumns` declares the eleven exact-key columns of the three tables under the configured table prefix to MigrationsKit's collation gate; the click-table columns are declared inactive when `doctrine.connection` puts them on another connection. Stateless. |
-| FR-URL-001 | Absolute short URLs from `public_base_url` (re-checked at runtime) or the router request context. |
+| FR-URL-001 | Absolute short URLs from `public_base_url` (re-checked at runtime) or the router request context; the rule of `public_base_url` (absolute http(s) URL with a host, no query, fragment or userinfo) lives in `Domain\Model\PublicBaseUrl`, read by the configuration tree and the URL builder (REQ-ARCH-002). |
 | FR-WIRING-001 | Services wired by the extension; DoctrineBundle required; symfony/lock tenant lock when a lock factory exists. |
 | FR-REDIRECT-001 | Redirect step order §7.1, headers §7.2, neutral 404 / 429, limiters, stateless route, guard without DNS, refusal event. |
 | FR-ROUTE-001 | Routes are `#[Route]` attributes on `RedirectController` and `ShortLinkUiController` (REQ-SF-004), read by the `nowo_short_link_redirect` (`routes/redirect.php`) and `nowo_short_link_ui` (`routes/ui.php`) loaders through the internal `ControllerAttributeRouteLoader`; the UI loader prepends `ui.path_prefix` and honours `ui.enabled`; the collection equals the 0.2 fixture; the controllers are not autoconfigured (rule 7). |
@@ -138,13 +138,13 @@ registers no service, route, listener or table, whatever the configuration says;
 | FR-UI-001 | Management UI (S4, contract §11): `ShortLinkUiController` list / create / edit / disable / enable / delete / statistics / CSV behind `UiRouteLoader` (`routes/ui.php`, host prefix); `ShortLinkPages` builds UiKit list / form / show view models (`ShortLinkRow`, `DailyChart` SVG, `StatsCsv`); views `ui/list`, `ui/form`, `ui/stats` extend the UiKit page scaffolds. |
 | FR-UI-002 | UI forms are FormKit Types: `ShortLinkType` (create / edit), `ShortLinkActionType` (CSRF-only row actions, one token id per action), `ShortLinkFilterType` and `StatsRangeType` (GET, bookmarkable keys). |
 | FR-ERROR-001 | Every deliberate exception implements `ShortLinkExceptionInterface`. |
-| FR-CONCURRENCY-001 | REQ-RUNTIME-003: one transaction per write unit through transaction-doctrine's DBAL runner; read-modify-write paths lock the row; a lock conflict on the bundle's routes answers 409 (or 503) with `X-Conflict-Code` `CONFLICT_001` + `Retry-After` or `CONFLICT_002`; commit tracking scoped to the bundle's connection or transaction-doctrine's ledger ([docs/CONCURRENCY.md](../../docs/CONCURRENCY.md)). |
+| FR-CONCURRENCY-001 | REQ-RUNTIME-003: one transaction per write unit through transaction-doctrine's DBAL runner; read-modify-write paths lock the row; a lock conflict on the bundle's routes answers 409 (or 503) with `X-Conflict-Code` `CONFLICT_001` + `Retry-After` or `CONFLICT_002`; commit tracking scoped to the bundle's connection or transaction-doctrine's ledger ([docs/CONCURRENCY.md](../../docs/CONCURRENCY.md)). The retryable-failure question is asked through `Domain\Port\TransientFailureDetectorInterface` (default `DbalTransientFailureDetector`, transaction-doctrine's classifier on driver error codes), so the Application layer stays framework-free (REQ-ARCH-002). |
 
 ## Success criteria
 
 - **SC-001**: `make release-check` green; CI green (matrix, coverage 100 %, PHPStan max, CS, Rector, Igor, databases,
   demo smoke for both demos).
-- **SC-002**: [`code-inventory.md`](code-inventory.md) maps **162 / 162** files under `src/` (`find src -type f | wc -l`),
+- **SC-002**: [`code-inventory.md`](code-inventory.md) maps **166 / 166** files under `src/` (`find src -type f | wc -l`),
   each to a semantic `FR-*` of this spec.
 
 ## Non-goals
