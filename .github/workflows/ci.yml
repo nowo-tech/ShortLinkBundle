@@ -437,3 +437,40 @@ jobs:
 
       - name: Run demo smoke
         run: make demo-smoke
+
+  # REQ-DEMO-013: Playwright e2e of the management UI against the running demo/symfony8 (FrankenPHP worker, MySQL).
+  # Required check: it lives in this workflow (no path filter) and always runs under its name; in light mode its steps
+  # are no-ops (a job-level `if` or a path-filtered workflow would leave the required name missing).
+  e2e:
+    name: Demo symfony8 Playwright e2e
+    runs-on: ubuntu-latest
+    needs: changes
+    if: ${{ !cancelled() }}
+    timeout-minutes: 45
+    env:
+      HEAVY: ${{ needs.changes.outputs.mode != 'light' }}
+
+    steps:
+      - name: Light mode (deps/docs-only PR) - the e2e has nothing to do
+        if: env.HEAVY != 'true'
+        run: echo "Light mode, this job has nothing to do."
+
+      - name: Checkout code
+        if: env.HEAVY == 'true'
+        uses: actions/checkout@v7
+
+      - name: Start the demo
+        if: env.HEAVY == 'true'
+        run: make -C demo up-symfony8
+
+      - name: Playwright e2e
+        if: env.HEAVY == 'true'
+        run: make test-e2e
+
+      - name: Demo logs on failure
+        if: failure() && env.HEAVY == 'true'
+        run: docker compose -f demo/symfony8/docker-compose.yml logs --tail=200 || true
+
+      - name: Stop the demo
+        if: always() && env.HEAVY == 'true'
+        run: make -C demo down-symfony8
