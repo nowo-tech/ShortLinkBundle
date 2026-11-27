@@ -47,7 +47,7 @@ the **Audit** row of §13 (REQ audit at 100 %, REQ-SEC-004 audit of the candidat
 | GitHub | `nowo-tech/ShortLinkBundle` (REQ-DOCS-014), public, MIT; owner registers Packagist once S0 is on `main` |
 | Namespace / class | `Nowo\ShortLinkBundle` / `NowoShortLinkBundle`; config root `nowo_short_link`; Twig namespace `@NowoShortLink` (REQ-TWIG-002); translation domain `NowoShortLinkBundle` (REQ-I18N-003) |
 | First tag | 0.x per slice for Beacon integration, **1.0.0** after audit (Q-O2) |
-| PHP / Symfony | `>=8.2 <8.6`; `^7.4 \|\| ^8.0` (REQ-SF-001); demos Symfony 7.4 + 8.1 on FrankenPHP worker (REQ-DEMO-002/010/012) |
+| PHP / Symfony | `>=8.2 <8.7`; `^7.4 \|\| ^8.0` (REQ-SF-001); demos Symfony 7.4 + 8.1 on FrankenPHP worker (REQ-DEMO-002/010/012) |
 | Runtime deps | `doctrine/dbal ^4.0` (0.6.0; DBAL 3 dropped), `doctrine/orm ^3.7`, `doctrine/doctrine-bundle ^2.8 \|\| ^3.0`, `symfony/{framework-bundle,http-kernel,routing,config,dependency-injection,event-dispatcher,clock,console,form,validator,translation,twig-bundle,rate-limiter,uid}`, `symfony/security-bundle` (default role-based access), `twig/extra-bundle ^3.12`, `nowo-tech/ui-kit-bundle ^2.49` and `nowo-tech/form-kit-bundle ^2.22` (Q-O4), `nowo-tech/outbound-url-guard-bundle ^1.5` (Q-O3), `psr/log`, `psr/clock` |
 | Suggest | `symfony/messenger` (click write mode `messenger`), `symfony/lock` (exact plan limit under concurrency) |
 | Not used | No HTTP client (the bundle never fetches a target), no GeoIP library (country via port), no UA-parser library (own small classifier, §7.3), no JS build (REQ-ASSETS-* N/A unless UiKit lacks a copy button, §11) |
