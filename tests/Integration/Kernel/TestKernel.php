@@ -131,6 +131,8 @@ final class TestKernel extends Kernel
             ($this->configure)($container, $url);
         } else {
             $container->extension('doctrine', ['dbal' => ['url' => $url], 'orm' => []]);
+            // Symfony 8.2 enables the lock component by default; only the standard host has it (Host::configure).
+            $container->extension('framework', ['lock' => false]);
         }
         $container->extension('nowo_short_link', $this->bundleConfig);
         $container->services()->set('logger', NullLogger::class);

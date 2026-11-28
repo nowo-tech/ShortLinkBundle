@@ -100,6 +100,8 @@ final readonly class Host
                     'firewalls' => ['main' => ['lazy' => true, 'provider' => 'users']],
                 ]);
             } else {
+                // Symfony 8.2 enables the lock component by default; the DDD host has only the database lock.
+                $container->extension('framework', ['lock' => false]);
                 $container->extension('doctrine', [
                     'dbal' => ['default_connection' => 'default', 'connections' => ['default' => ['url' => $url], 'ddd' => ['url' => $url]]],
                     'orm'  => ['default_entity_manager' => 'default', 'entity_managers' => ['default' => ['connection' => 'default'], 'ddd' => ['connection' => 'ddd']]],

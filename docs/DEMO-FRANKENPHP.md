@@ -57,8 +57,8 @@ The image is the same; the environment decides:
 ## PHP version policy
 
 Symfony 8 demos run on the **newest PHP minor published in the official FrankenPHP images** that the demo's
-`require.php` (`>=8.4,<8.6`) allows: today PHP **8.5** (`dunglas/frankenphp:1-php8.5-alpine`). The Symfony 7 demo
-runs PHP 8.3 (`>=8.2,<8.6`). When FrankenPHP ships a newer PHP and the constraint allows it, the image moves in a
+`require.php` (`>=8.4,<8.7`) allows: today PHP **8.5** (`dunglas/frankenphp:1-php8.5-alpine`). The Symfony 7 demo
+runs PHP 8.3 (`>=8.2,<8.7`). When FrankenPHP ships a newer PHP and the constraint allows it, the image moves in a
 follow-up change (REQ-DEMO-010). The demos pin Symfony `7.4.*` and `8.1.*` (`extra.symfony.require`, REQ-DEMO-012).
 
 ## Worker and classic mode
